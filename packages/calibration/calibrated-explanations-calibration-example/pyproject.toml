@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "calibrated-explanations-calibration-example"
+version = "0.1.0"
+description = "Official calibration plugin for calibrated-explanations"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "calibrated-explanations>=0.11",
+]
+
+[project.entry-points."calibrated_explanations.plugins"]
+example = "ce_calibration_example.plugin:ExampleIntervalCalibratorPlugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ce_calibration_example"]
+
+[tool.ce_plugin_repo]
+family = "calibration"
+import_name = "ce_calibration_example"

@@ -1,0 +1,122 @@
+name: Package Checks
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  package-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.21"
+
+      - name: Install test tooling
+        run: uv pip install --system build
+
+      - name: Determine diff base
+        id: base
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+            echo "base=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+          elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+            echo "base=$(git rev-parse origin/master)" >> "$GITHUB_OUTPUT"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            echo "base=$(git rev-parse HEAD^)" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect changed packages
+        id: changed
+        run: echo "packages=$(python scripts/list_changed_packages.py --base '${{ steps.base.outputs.base }}')" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce version bumps for changed packages
+        if: steps.changed.outputs.packages != '[]'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          packages = json.loads(r'''${{ steps.changed.outputs.packages }}''')
+          subprocess.check_call(
+              ["python", "scripts/check_version_bumps.py", "--base", r"${{ steps.base.outputs.base }}", *packages]
+          )
+          PY
+
+      - name: Validate changed plugin packages from built wheels
+        if: steps.changed.outputs.packages != '[]'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          packages = json.loads(r'''${{ steps.changed.outputs.packages }}''')
+          for package in packages:
+              if package.startswith("packages/meta/"):
+                  continue
+              subprocess.check_call(
+                  ["python", "scripts/runtime_check_package.py", "--package-path", package]
+              )
+          PY
+
+  all-plugin-runtime:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.21"
+
+      - name: Install runtime tooling
+        run: uv pip install --system build
+
+      - name: Validate every official plugin from built wheels
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+
+          packages = json.loads(
+              subprocess.check_output(["python", "scripts/list_official_plugin_packages.py"], text=True)
+          )
+          for package in packages:
+              subprocess.check_call(
+                  [
+                      "python",
+                      "scripts/runtime_check_package.py",
+                      "--package-path",
+                      package,
+                      "--skip-pytest",
+                  ]
+              )
+          PY

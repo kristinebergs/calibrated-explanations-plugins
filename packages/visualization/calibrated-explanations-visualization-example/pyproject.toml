@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "calibrated-explanations-visualization-example"
+version = "0.1.0"
+description = "Official visualization plugin for calibrated-explanations"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "calibrated-explanations[viz]>=0.11",
+]
+
+[project.entry-points."calibrated_explanations.plugins"]
+example = "ce_visualization_example.plugin:ExampleVisualizationBootstrap"
+
+[project.entry-points."calibrated_explanations.plugins.plot_builders"]
+example = "ce_visualization_example.plugin:ExamplePlotBuilder"
+
+[project.entry-points."calibrated_explanations.plugins.plot_renderers"]
+example = "ce_visualization_example.plugin:ExamplePlotRenderer"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ce_visualization_example"]
+
+[tool.ce_plugin_repo]
+family = "visualization"
+import_name = "ce_visualization_example"

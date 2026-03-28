@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "calibrated-explanations-visualization"
+version = "0.1.0"
+description = "Official metapackage for calibrated-explanations plugins"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "calibrated-explanations-visualization-example>=0.1,<1"
+]
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.ce_plugin_repo]
+family = "meta"

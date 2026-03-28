@@ -1,0 +1,68 @@
+name: Meta Package Checks
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "packages/**"
+      - "docs/**"
+      - "scripts/**"
+      - ".github/workflows/meta-package-checks.yml"
+  pull_request:
+    paths:
+      - "packages/**"
+      - "docs/**"
+      - "scripts/**"
+      - ".github/workflows/meta-package-checks.yml"
+
+jobs:
+  meta-package-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.21"
+
+      - name: Install build tooling
+        run: uv pip install --system build
+
+      - name: Validate metapackage dependency sync
+        run: python scripts/check_meta_package_sync.py
+
+      - name: Validate docs install commands
+        run: python scripts/check_docs_install_commands.py
+
+      - name: Build local wheelhouse
+        shell: bash
+        run: |
+          mkdir -p .wheelhouse
+          python - <<'PY'
+          import json
+          import subprocess
+
+          packages = json.loads(
+              subprocess.check_output(["python", "scripts/list_buildable_packages.py"], text=True)
+          )
+          for package in packages:
+              subprocess.check_call(["python", "-m", "build", "--outdir", ".wheelhouse", package])
+          PY
+
+      - name: Install metapackages against local wheelhouse
+        shell: bash
+        run: |
+          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-calibration
+          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-explanation
+          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-visualization
+          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-plugins

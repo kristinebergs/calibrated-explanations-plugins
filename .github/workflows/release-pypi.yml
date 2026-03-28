@@ -1,0 +1,78 @@
+name: Release PyPI Packages
+
+on:
+  push:
+    tags:
+      - "pkg/**"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.21"
+
+      - name: Install release tooling
+        run: uv pip install --system build
+
+      - name: Resolve tagged package
+        id: release
+        run: python scripts/resolve_release_tag.py --tag "${GITHUB_REF_NAME}" --github-output "${GITHUB_OUTPUT}"
+
+      - name: Build tagged package
+        shell: bash
+        run: |
+          mkdir -p dist
+          python -m build --outdir dist "${{ steps.release.outputs.package_path }}"
+
+      - name: Validate tagged plugin package
+        if: steps.release.outputs.package_type == 'plugin'
+        shell: bash
+        run: |
+          python scripts/runtime_check_package.py \
+            --package-path "${{ steps.release.outputs.package_path }}" \
+            --artifact-dir dist
+
+      - name: Validate tagged metapackage
+        if: steps.release.outputs.package_type == 'meta'
+        shell: bash
+        run: |
+          python scripts/check_meta_package_sync.py
+          mkdir -p .wheelhouse
+          python - <<'PY'
+          import json
+          import subprocess
+
+          packages = json.loads(
+              subprocess.check_output(["python", "scripts/list_buildable_packages.py"], text=True)
+          )
+          for package in packages:
+              subprocess.check_call(["python", "-m", "build", "--outdir", ".wheelhouse", package])
+          PY
+          python scripts/runtime_check_metapackage.py \
+            --package-path "${{ steps.release.outputs.package_path }}" \
+            --artifact-dir dist \
+            --wheelhouse .wheelhouse
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
