@@ -48,6 +48,18 @@ Example factual explanation plugin:
 pip install calibrated-explanations-explanation-factual-example
 ```
 
+Factual LIME explanation plugin:
+
+```bash
+pip install calibrated-explanations-explanation-factual-lime
+```
+
+Factual SHAP explanation plugin:
+
+```bash
+pip install calibrated-explanations-explanation-factual-shap
+```
+
 Example alternative explanation plugin:
 
 ```bash

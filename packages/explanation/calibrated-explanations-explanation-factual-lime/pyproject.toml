@@ -1,0 +1,24 @@
+        [build-system]
+        requires = ["hatchling"]
+        build-backend = "hatchling.build"
+
+        [project]
+        name = "calibrated-explanations-explanation-factual-lime"
+        version = "0.1.0"
+        description = "Official explanation plugin for calibrated-explanations"
+        readme = "README.md"
+        requires-python = ">=3.11"
+        dependencies = [
+            "calibrated-explanations>=0.11",
+            "lime>=0.2.0.1",
+        ]
+
+        [project.entry-points."calibrated_explanations.plugins"]
+factual_lime = "ce_explanation_factual_lime.plugin:FactualLimeExplanationPlugin"
+
+        [tool.hatch.build.targets.wheel]
+        packages = ["src/ce_explanation_factual_lime"]
+
+        [tool.ce_plugin_repo]
+        family = "explanation"
+        import_name = "ce_explanation_factual_lime"

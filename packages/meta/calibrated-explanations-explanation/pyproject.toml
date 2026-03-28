@@ -10,7 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "calibrated-explanations-explanation-alternative-example>=0.1,<1",
-    "calibrated-explanations-explanation-factual-example>=0.1,<1"
+    "calibrated-explanations-explanation-factual-example>=0.1,<1",
+    "calibrated-explanations-explanation-factual-lime>=0.1,<1",
+    "calibrated-explanations-explanation-factual-shap>=0.1,<1"
 ]
 
 [tool.hatch.build.targets.wheel]
