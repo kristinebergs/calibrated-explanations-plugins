@@ -236,7 +236,6 @@ def assert_non_empty_collection(collection: Any) -> None:
 
 def validate_calibration_runtime(package_path: Path) -> None:
     import numpy as np
-
     from calibrated_explanations.plugins.registry import find_interval_descriptor
 
     meta = main_plugin_meta(package_path)
@@ -277,8 +276,6 @@ def _invoke_explanation(explainer: Any, mode: str, x_test: "np.ndarray"):
 
 
 def validate_explanation_runtime(package_path: Path) -> None:
-    import numpy as np
-
     from calibrated_explanations.plugins.registry import find_explanation_descriptor
 
     meta = main_plugin_meta(package_path)
