@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
 import tempfile
 import venv
 from pathlib import Path
@@ -13,7 +12,6 @@ except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore
 
 from official_plugins import official_plugin_paths_for_meta_distribution
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,6 +73,15 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ce-meta-runtime-") as tmp_dir:
         tmp_path = Path(tmp_dir)
         python_bin = create_virtualenv(tmp_path / "venv")
+        run_checked(
+            [
+                str(python_bin),
+                "-m",
+                "pip",
+                "install",
+                "calibrated-explanations[viz]",
+            ]
+        )
         run_checked(
             [
                 str(python_bin),
