@@ -4,13 +4,10 @@ import ast
 import os
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
-from sklearn.datasets import make_classification, make_regression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
+if TYPE_CHECKING:
+    import numpy as np
 
 try:
     import tomllib
@@ -183,7 +180,10 @@ def configure_trust(package_path: Path) -> None:
     registry.load_entrypoint_plugins(include_untrusted=False)
 
 
-def make_classification_fixture() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def make_classification_fixture() -> tuple["np.ndarray", "np.ndarray", "np.ndarray", "np.ndarray"]:
+    from sklearn.datasets import make_classification
+    from sklearn.model_selection import train_test_split
+
     x, y = make_classification(
         n_samples=120,
         n_features=6,
@@ -197,7 +197,10 @@ def make_classification_fixture() -> tuple[np.ndarray, np.ndarray, np.ndarray, n
     return x_train, x_test, y_train, y_test
 
 
-def make_regression_fixture() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def make_regression_fixture() -> tuple["np.ndarray", "np.ndarray", "np.ndarray", "np.ndarray"]:
+    from sklearn.datasets import make_regression
+    from sklearn.model_selection import train_test_split
+
     x, y = make_regression(
         n_samples=120,
         n_features=6,
@@ -211,6 +214,8 @@ def make_regression_fixture() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.nd
 
 def build_explainer(*, task: str, **kwargs: Any):
     from calibrated_explanations import CalibratedExplainer
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.linear_model import LogisticRegression
 
     if task == "classification":
         x_train, x_test, y_train, _ = make_classification_fixture()
@@ -230,6 +235,7 @@ def assert_non_empty_collection(collection: Any) -> None:
 
 
 def validate_calibration_runtime(package_path: Path) -> None:
+    import numpy as np
     from calibrated_explanations.plugins.registry import find_interval_descriptor
 
     meta = main_plugin_meta(package_path)
@@ -259,7 +265,7 @@ def _explanation_override_name(mode: str) -> str:
     raise RuntimeError(f"Unsupported explanation mode {mode!r}")
 
 
-def _invoke_explanation(explainer: Any, mode: str, x_test: np.ndarray):
+def _invoke_explanation(explainer: Any, mode: str, x_test: "np.ndarray"):
     if mode == "factual":
         return explainer.explain_factual(x_test)
     if mode == "alternative":

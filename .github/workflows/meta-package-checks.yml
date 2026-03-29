@@ -62,7 +62,8 @@ jobs:
       - name: Install metapackages against local wheelhouse
         shell: bash
         run: |
-          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-calibration
-          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-explanation
-          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-visualization
-          uv pip install --system --no-index --find-links .wheelhouse calibrated-explanations-plugins
+          uv pip install --system calibrated-explanations[viz]
+          uv pip install --system --find-links .wheelhouse calibrated-explanations-calibration
+          uv pip install --system --find-links .wheelhouse calibrated-explanations-explanation
+          uv pip install --system --find-links .wheelhouse calibrated-explanations-visualization
+          uv pip install --system --find-links .wheelhouse calibrated-explanations-plugins

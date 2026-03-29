@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 import tempfile
@@ -15,7 +14,6 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from runtime_harness import validate_runtime
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -26,6 +24,22 @@ def read_distribution_name(package_path: Path) -> str:
     if not isinstance(name, str) or not name:
         raise RuntimeError(f"{package_path} is missing project.name")
     return name
+
+
+def read_plugin_family(package_path: Path) -> str:
+    with (package_path / "pyproject.toml").open("rb") as handle:
+        data = tomllib.load(handle)
+    family = data.get("tool", {}).get("ce_plugin_repo", {}).get("family")
+    if family not in {"calibration", "explanation", "visualization"}:
+        raise RuntimeError(f"{package_path} is missing a supported tool.ce_plugin_repo.family")
+    return str(family)
+
+
+def calibrated_explanations_requirement(package_path: Path) -> str:
+    family = read_plugin_family(package_path)
+    if family == "visualization":
+        return "calibrated-explanations[viz]"
+    return "calibrated-explanations"
 
 
 def venv_python(venv_dir: Path) -> Path:
@@ -69,6 +83,16 @@ def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool)
         venv_dir = tmp_path / "venv"
         python_bin = create_virtualenv(venv_dir)
 
+        # Ensure runtime validation exercises the released calibrated-explanations package from pip.
+        run_checked(
+            [
+                str(python_bin),
+                "-m",
+                "pip",
+                "install",
+                calibrated_explanations_requirement(package_path),
+            ]
+        )
         run_checked([str(python_bin), "-m", "pip", "install", str(wheel_path)])
         if run_pytest:
             run_checked([str(python_bin), "-m", "pip", "install", "pytest"])
@@ -86,6 +110,17 @@ def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool)
 
 
 def installed_check(package_path: Path, run_pytest: bool) -> None:
+    # `--installed` is used by metapackage checks; ensure calibrated-explanations
+    # still comes from pip in that path as well.
+    run_checked(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            calibrated_explanations_requirement(package_path),
+        ]
+    )
     validate_runtime(package_path)
     if run_pytest:
         run_checked([sys.executable, "-m", "pytest", str(package_path / "tests")])
