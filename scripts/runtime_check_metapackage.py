@@ -88,7 +88,6 @@ def main() -> int:
                 "-m",
                 "pip",
                 "install",
-                "--no-index",
                 "--find-links",
                 str(wheelhouse),
                 str(package_wheel),
