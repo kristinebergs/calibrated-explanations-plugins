@@ -110,6 +110,17 @@ def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool)
 
 
 def installed_check(package_path: Path, run_pytest: bool) -> None:
+    # `--installed` is used by metapackage checks; ensure calibrated-explanations
+    # still comes from pip in that path as well.
+    run_checked(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            calibrated_explanations_requirement(package_path),
+        ]
+    )
     validate_runtime(package_path)
     if run_pytest:
         run_checked([sys.executable, "-m", "pytest", str(package_path / "tests")])
