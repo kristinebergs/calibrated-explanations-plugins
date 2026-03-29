@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 import tempfile
@@ -14,7 +13,6 @@ except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore
 
 from runtime_harness import validate_runtime
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -69,6 +67,8 @@ def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool)
         venv_dir = tmp_path / "venv"
         python_bin = create_virtualenv(venv_dir)
 
+        # Ensure runtime validation exercises the released calibrated-explanations package.
+        run_checked([str(python_bin), "-m", "pip", "install", "calibrated-explanations"])
         run_checked([str(python_bin), "-m", "pip", "install", str(wheel_path)])
         if run_pytest:
             run_checked([str(python_bin), "-m", "pip", "install", "pytest"])
