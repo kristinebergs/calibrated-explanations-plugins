@@ -68,7 +68,7 @@ def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool)
         python_bin = create_virtualenv(venv_dir)
 
         # Ensure runtime validation exercises the released calibrated-explanations package.
-        run_checked([str(python_bin), "-m", "pip", "install", "calibrated-explanations"])
+        run_checked([str(python_bin), "-m", "pip", "install", "calibrated-explanations[viz]"])
         run_checked([str(python_bin), "-m", "pip", "install", str(wheel_path)])
         if run_pytest:
             run_checked([str(python_bin), "-m", "pip", "install", "pytest"])
