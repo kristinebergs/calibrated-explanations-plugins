@@ -3,10 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from calibrated_explanations.plugins.builtins import (
-    LegacyFactualExplanationPlugin,
-    collection_to_batch,
-)
+from calibrated_explanations.plugins.builtins import collection_to_batch
 from calibrated_explanations.plugins.explanations import (
     ExplanationBatch,
     ExplanationContext,
@@ -22,35 +19,42 @@ from .shap_pipeline import ShapPipeline
 
 
 class FactualShapExplanationPlugin(ExplanationPlugin):
-    """Factual explanation plugin with SHAP artifact enrichment."""
+    """Factual explanation plugin producing SHAP-based feature attributions."""
 
     plugin_meta = {
         "schema_version": 1,
         "name": "official.explanation.factual.shap",
         "version": "0.1.0",
         "provider": "official",
-        "capabilities": ['explain', 'explanation:factual', 'task:classification', 'task:regression'],
+        "capabilities": [
+            "explain",
+            "explanation:factual",
+            "task:classification",
+            "task:regression",
+        ],
         "modes": ("factual",),
-        "tasks": ('classification', 'regression'),
+        "tasks": ("classification", "regression"),
         "dependencies": ("core.interval.legacy", "plot_spec.default"),
         "trusted": False,
         "trust": False,
     }
 
     def __init__(self) -> None:
-        self._delegate = LegacyFactualExplanationPlugin()
         self._context: ExplanationContext | None = None
         self._pipeline: ShapPipeline | None = None
 
     def supports(self, model: Any) -> bool:
-        return self._delegate.supports(model)
+        return (
+            hasattr(model, "prediction_orchestrator")
+            and hasattr(model, "explain_fast")
+            and hasattr(model, "predict")
+        )
 
     def supports_mode(self, mode: str, *, task: str) -> bool:
-        return self._delegate.supports_mode(mode, task=task)
+        return mode == "factual" and task in self.plugin_meta["tasks"]
 
     def initialize(self, context: ExplanationContext) -> None:
         self._context = context
-        self._delegate.initialize(context)
         explainer_handle = context.helper_handles.get("explainer")
         if explainer_handle is None:
             raise RuntimeError("Explanation context missing required 'explainer' handle.")
@@ -67,25 +71,53 @@ class FactualShapExplanationPlugin(ExplanationPlugin):
             bins=request.bins,
         )
 
-        collection = self._context.helper_handles["explainer"].explain_factual(
+        explainer = self._context.helper_handles["explainer"]
+        collection = explainer.explain_factual(
             x,
             threshold=request.threshold,
-            low_high_percentiles=request.low_high_percentiles,
+            low_high_percentiles=request.low_high_percentiles or (5, 95),
             bins=request.bins,
-            features_to_ignore=request.features_to_ignore,
             _use_plugin=False,
         )
-        batch = collection_to_batch(collection)
 
         extras = request.extras if isinstance(request.extras, Mapping) else {}
         shap_kwargs = extras.get("shap_kwargs", {})
         if not isinstance(shap_kwargs, Mapping):
             shap_kwargs = {}
 
-        shap_result = self._pipeline.explain(x, **dict(shap_kwargs))
+        contributions = self._pipeline.explain_bounds(
+            x_test=x,
+            bins=request.bins,
+            shap_kwargs=dict(shap_kwargs),
+        )
+
+        feature_names = list(self._context.feature_names)
+        for row_index, explanation in enumerate(collection.explanations):
+            rules = explanation.get_rules()
+            features = list(rules.get("feature", []))
+            labels = [feature_names[feature] for feature in features]
+            center_weights = [float(contributions["center"][row_index, feature]) for feature in features]
+            lower_weights = [float(contributions["lower"][row_index, feature]) for feature in features]
+            upper_weights = [float(contributions["upper"][row_index, feature]) for feature in features]
+
+            rules["rule"] = labels
+            rules["weight"] = center_weights
+            rules["weight_low"] = lower_weights
+            rules["weight_high"] = upper_weights
+
+            base_predict = float(rules["base_predict"][0]) if rules.get("base_predict") else 0.0
+            base_predict_low = float(rules["base_predict_low"][0]) if rules.get("base_predict_low") else 0.0
+            base_predict_high = float(rules["base_predict_high"][0]) if rules.get("base_predict_high") else 0.0
+            rules["predict"] = [base_predict + weight for weight in center_weights]
+            rules["predict_low"] = [base_predict_low + weight for weight in lower_weights]
+            rules["predict_high"] = [base_predict_high + weight for weight in upper_weights]
+
+            explanation.rules = rules
+
+        batch = collection_to_batch(collection)
         batch.collection_metadata["shap"] = {
-            "enabled": self._pipeline.is_shap_enabled(),
-            "result": shap_result,
+            "enabled": True,
+            "lower_upper_attributions": True,
         }
         return batch
 
@@ -93,7 +125,11 @@ class FactualShapExplanationPlugin(ExplanationPlugin):
 def register_scaffold_explanation_plugin() -> None:
     if find_explanation_descriptor("official.explanation.factual.shap") is not None:
         return
-    register_explanation_plugin("official.explanation.factual.shap", FactualShapExplanationPlugin(), source="entrypoint")
+    register_explanation_plugin(
+        "official.explanation.factual.shap",
+        FactualShapExplanationPlugin(),
+        source="entrypoint",
+    )
 
 
 register_scaffold_explanation_plugin()

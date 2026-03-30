@@ -1,9 +1,11 @@
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 pytest.importorskip("calibrated_explanations")
+pytest.importorskip("lime")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -14,6 +16,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 from ce_explanation_factual_lime import plugin as lime_plugin_mod
+from ce_explanation_factual_lime.lime_helper import LimeHelper
 
 
 def _reset_registry_state() -> None:
@@ -28,15 +31,48 @@ def _reset_registry_state() -> None:
         clear_warnings()
 
 
-def test_plugin_should_be_runtime_consumable(monkeypatch):
-    class _DummyLimePipeline:
-        def __init__(self, explainer):
-            self._explainer = explainer
+def test_plugin_should_emit_lime_backed_factual_explanations(monkeypatch):
+    def _preload_without_single_row_nan(self, x_cal=None):
+        """Use full calibration matrix in tests to avoid single-row LIME NaN failures."""
+        if self._enabled and self._explainer_instance is not None:
+            return self._explainer_instance, self._reference_explanation
 
-        def explain(self, **kwargs):
-            return self._explainer.explain_factual(kwargs["x_test"], _use_plugin=False)
+        from calibrated_explanations.utils import safe_import
 
-    monkeypatch.setattr(lime_plugin_mod, "LimePipeline", _DummyLimePipeline)
+        lime_cls = safe_import("lime.lime_tabular", "LimeTabularExplainer")
+        if not lime_cls:
+            self._enabled = False
+            return None, None
+
+        features = self.explainer.feature_names
+        x_cal_source = self.explainer.x_cal if x_cal is None else x_cal
+        if self.explainer.mode == "classification":
+            self._explainer_instance = lime_cls(
+                x_cal_source,
+                feature_names=features,
+                class_names=["0", "1"],
+                mode=self.explainer.mode,
+            )
+            self._reference_explanation = self._explainer_instance.explain_instance(
+                self.explainer.x_cal[0, :],
+                self.explainer.learner.predict_proba,
+                num_features=self.explainer.num_features,
+            )
+        elif "regression" in self.explainer.mode:
+            self._explainer_instance = lime_cls(
+                x_cal_source,
+                feature_names=features,
+                mode="regression",
+            )
+            self._reference_explanation = self._explainer_instance.explain_instance(
+                self.explainer.x_cal[0, :],
+                self.explainer.learner.predict,
+                num_features=self.explainer.num_features,
+            )
+        self._enabled = self._explainer_instance is not None
+        return self._explainer_instance, self._reference_explanation
+
+    monkeypatch.setattr(LimeHelper, "preload", _preload_without_single_row_nan)
 
     monkeypatch.setenv(
         "CE_TRUST_PLUGIN",
@@ -74,10 +110,42 @@ def test_plugin_should_be_runtime_consumable(monkeypatch):
         seed=0,
         factual_plugin="official.explanation.factual.lime",
     )
-    collection = explainer.explain_factual(x_test[:2])
+    x_payload = x_test[:2]
+
+    collection = explainer.explain_factual(x_payload)
+    baseline = explainer.explain_factual(x_payload, _use_plugin=False)
+
     assert collection.explanations
     assert len(collection.explanations) == 2
+    assert "lime" in collection.batch_metadata
+    assert collection.batch_metadata["lime"] == {"enabled": True}
     assert (
         explainer.plugin_manager.explanation_plugin_identifiers["factual"]
         == "official.explanation.factual.lime"
     )
+
+    weight_vectors_plugin = []
+    weight_vectors_baseline = []
+    for explanation, baseline_explanation in zip(
+        collection.explanations, baseline.explanations
+    ):
+        # Contract: LIME factual plugin should emit ordinary factual explanations with conditions.
+        assert explanation.__class__.__name__ == "FactualExplanation"
+        rules = explanation.get_rules()
+
+        assert "rule" in rules
+        assert rules["rule"], "Expected rule conditions in factual LIME output."
+        assert any(
+            ("<" in str(rule_text)) or (">" in str(rule_text)) or ("=" in str(rule_text))
+            for rule_text in rules["rule"]
+        )
+
+        baseline_rules = baseline_explanation.get_rules()
+        weight_vectors_plugin.append(np.asarray(rules["weight"], dtype=float))
+        weight_vectors_baseline.append(np.asarray(baseline_rules["weight"], dtype=float))
+
+    # Guardrail: if plugin silently falls back to plain factual output, these vectors are identical.
+    assert not all(
+        np.allclose(plugin_w, base_w, rtol=1e-6, atol=1e-8)
+        for plugin_w, base_w in zip(weight_vectors_plugin, weight_vectors_baseline)
+    ), "LIME plugin output is numerically identical to plain factual fallback."
