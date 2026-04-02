@@ -11,7 +11,7 @@ import shap
 
 @dataclass
 class ShapHelper:
-    """Build SHAP explainers for center/lower/upper calibrated predictions."""
+    """Build SHAP explainers for center/lower/upper/uncertainty predictions."""
 
     explainer: Any
 
@@ -55,6 +55,10 @@ class ShapHelper:
         _, _, upper = self._predict_triplet(x, bins=bins)
         return upper
 
+    def _predict_uncertainty(self, x: Any, *, bins: Any | None) -> np.ndarray:
+        _, lower, upper = self._predict_triplet(x, bins=bins)
+        return upper - lower
+
     def explain_bounds(
         self,
         x_test: Any,
@@ -79,10 +83,15 @@ class ShapHelper:
             background,
             feature_names=self.explainer.feature_names,
         )
+        uncertainty_explainer = shap.Explainer(
+            lambda x: self._predict_uncertainty(x, bins=bins),
+            background,
+            feature_names=self.explainer.feature_names,
+        )
 
         return {
             "center": center_explainer(x_test, **shap_kwargs),
             "lower": lower_explainer(x_test, **shap_kwargs),
             "upper": upper_explainer(x_test, **shap_kwargs),
+            "uncertainty": uncertainty_explainer(x_test, **shap_kwargs),
         }
-

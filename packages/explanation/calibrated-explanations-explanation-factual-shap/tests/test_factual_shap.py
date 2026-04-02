@@ -7,6 +7,7 @@ import sys
 from types import SimpleNamespace
 from pathlib import Path
 
+import numpy as np
 import calibrated_explanations.plugins.registry as registry
 import pytest
 from calibrated_explanations import CalibratedExplainer
@@ -39,7 +40,7 @@ def test_should_emit_feature_names_with_lower_upper_shap_weights(monkeypatch):
             pass
 
         def explain_bounds(self, x_test, *, bins=None, shap_kwargs=None):
-            """Return deterministic center/lower/upper attribution matrices."""
+            """Return deterministic center/lower/upper/uncertainty attribution matrices."""
 
             _ = bins
             _ = shap_kwargs
@@ -55,6 +56,10 @@ def test_should_emit_feature_names_with_lower_upper_shap_weights(monkeypatch):
                 "center": center,
                 "lower": lower,
                 "upper": upper,
+                "uncertainty": [
+                    [upper_value - lower_value for upper_value, lower_value in zip(upper_row, lower_row, strict=False)]
+                    for upper_row, lower_row in zip(upper, lower, strict=False)
+                ],
             }
 
     monkeypatch.setattr(shap_plugin_mod, "ShapPipeline", _DummyShapPipeline)
@@ -119,6 +124,20 @@ def test_should_emit_feature_names_with_lower_upper_shap_weights(monkeypatch):
         assert lower_weight == pytest.approx(0.5 + feature_index / 10.0)
         assert upper_weight == pytest.approx(1.5 + feature_index / 10.0)
 
+    shap_meta = collection.batch_metadata["shap"]
+    uq_meta = shap_meta["uncertainty_attributions"]
+    assert uq_meta["enabled"] is True
+    assert uq_meta["target"] == "interval_width"
+    assert uq_meta["formula"] == "upper - lower"
+    assert uq_meta["feature_names"] == feature_names
+    assert isinstance(uq_meta["values"], list)
+    assert len(uq_meta["values"]) == 2
+    for row in uq_meta["values"]:
+        assert isinstance(row, list)
+        assert len(row) == len(feature_names)
+    for feature_index, value in enumerate(uq_meta["values"][0]):
+        assert value == pytest.approx(1.0)
+
 
 def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain_batch_called(monkeypatch):
     """Verify explain_batch uses factual scaffold and SHAP lower/upper weights."""
@@ -138,6 +157,7 @@ def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain
                 "center": [[0.1 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
                 "lower": [[0.05 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
                 "upper": [[0.15 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                "uncertainty": [[0.10 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
             }
 
     monkeypatch.setattr(shap_plugin_mod, "ShapPipeline", _DummyShapPipeline)
@@ -204,10 +224,16 @@ def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain
         features_to_ignore=(),
         extras={},
     )
-    x_test = [[1.0, 2.0, 3.0]]
+    x_test = np.asarray([[1.0, 2.0, 3.0]], dtype=float)
     batch = plugin.explain_batch(x_test, request)
 
     assert batch.collection_metadata["shap"]["lower_upper_attributions"] is True
+    uq_meta = batch.collection_metadata["shap"]["uncertainty_attributions"]
+    assert uq_meta["enabled"] is True
+    assert uq_meta["target"] == "interval_width"
+    assert uq_meta["formula"] == "upper - lower"
+    assert uq_meta["feature_names"] == ["a", "b", "c"]
+    assert uq_meta["values"][0] == pytest.approx([0.1, 0.2, 0.3])
 
     rules = dummy_explanation.rules
     assert rules["rule"] == ["a", "b", "c"]

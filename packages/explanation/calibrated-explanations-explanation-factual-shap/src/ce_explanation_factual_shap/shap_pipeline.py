@@ -10,7 +10,7 @@ from .shap_helper import ShapHelper
 
 
 class ShapPipeline:
-    """Pipeline for center/lower/upper SHAP attributions."""
+    """Pipeline for center/lower/upper/uncertainty SHAP attributions."""
 
     def __init__(self, explainer: Any) -> None:
         self.explainer = explainer
@@ -49,5 +49,5 @@ class ShapPipeline:
             "center": self._extract_feature_values(raw["center"]),
             "lower": self._extract_feature_values(raw["lower"]),
             "upper": self._extract_feature_values(raw["upper"]),
+            "uncertainty": self._extract_feature_values(raw["uncertainty"]),
         }
-

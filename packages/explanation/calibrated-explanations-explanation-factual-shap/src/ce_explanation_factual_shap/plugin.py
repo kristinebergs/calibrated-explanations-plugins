@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import numpy as np
+
 from calibrated_explanations.plugins.builtins import collection_to_batch
 from calibrated_explanations.plugins.explanations import (
     ExplanationBatch,
@@ -16,6 +18,13 @@ from calibrated_explanations.plugins.registry import (
 )
 
 from .shap_pipeline import ShapPipeline
+
+
+def _to_float_matrix(values: Any) -> list[list[float]]:
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 2:
+        raise RuntimeError("Uncertainty SHAP metadata must be a 2D matrix.")
+    return [[float(value) for value in row] for row in array]
 
 
 class FactualShapExplanationPlugin(ExplanationPlugin):
@@ -90,15 +99,19 @@ class FactualShapExplanationPlugin(ExplanationPlugin):
             bins=request.bins,
             shap_kwargs=dict(shap_kwargs),
         )
+        center_matrix = np.asarray(contributions["center"], dtype=float)
+        lower_matrix = np.asarray(contributions["lower"], dtype=float)
+        upper_matrix = np.asarray(contributions["upper"], dtype=float)
+        uncertainty_matrix = np.asarray(contributions["uncertainty"], dtype=float)
 
         feature_names = list(self._context.feature_names)
         for row_index, explanation in enumerate(collection.explanations):
             rules = explanation.get_rules()
             features = list(rules.get("feature", []))
             labels = [feature_names[feature] for feature in features]
-            center_weights = [float(contributions["center"][row_index, feature]) for feature in features]
-            lower_weights = [float(contributions["lower"][row_index, feature]) for feature in features]
-            upper_weights = [float(contributions["upper"][row_index, feature]) for feature in features]
+            center_weights = [float(center_matrix[row_index, feature]) for feature in features]
+            lower_weights = [float(lower_matrix[row_index, feature]) for feature in features]
+            upper_weights = [float(upper_matrix[row_index, feature]) for feature in features]
 
             rules["rule"] = labels
             rules["weight"] = center_weights
@@ -118,6 +131,13 @@ class FactualShapExplanationPlugin(ExplanationPlugin):
         batch.collection_metadata["shap"] = {
             "enabled": True,
             "lower_upper_attributions": True,
+            "uncertainty_attributions": {
+                "enabled": True,
+                "target": "interval_width",
+                "formula": "upper - lower",
+                "feature_names": feature_names,
+                "values": _to_float_matrix(uncertainty_matrix),
+            },
         }
         return batch
 
