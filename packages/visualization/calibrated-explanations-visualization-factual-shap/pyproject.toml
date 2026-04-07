@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "calibrated-explanations-visualization-factual-shap"
+version = "0.1.0"
+description = "Official SHAP visualization plugin for calibrated-explanations"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "calibrated-explanations[viz]>=0.11",
+    "shap>=0.44",
+]
+
+[project.entry-points."calibrated_explanations.plugins"]
+factual_shap_visualization = "ce_visualization_factual_shap.plugin:FactualShapVisualizationBootstrap"
+
+[project.entry-points."calibrated_explanations.plugins.plot_builders"]
+factual_shap_visualization = "ce_visualization_factual_shap.plugin:FactualShapPlotBuilder"
+
+[project.entry-points."calibrated_explanations.plugins.plot_renderers"]
+factual_shap_visualization = "ce_visualization_factual_shap.plugin:FactualShapPlotRenderer"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ce_visualization_factual_shap"]
+
+[tool.ce_plugin_repo]
+family = "visualization"
+import_name = "ce_visualization_factual_shap"

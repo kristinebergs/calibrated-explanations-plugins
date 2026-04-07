@@ -4,7 +4,7 @@ from typing import Any
 
 from calibrated_explanations.plugins.builtins import LegacyIntervalCalibratorPlugin
 from calibrated_explanations.plugins.intervals import IntervalCalibratorContext, IntervalCalibratorPlugin
-from calibrated_explanations.plugins.registry import find_interval_descriptor, register_interval_plugin
+from calibrated_explanations.plugins.registry import find_interval_descriptor, register_interval_plugin, trust_plugin
 
 
 class ExampleIntervalCalibratorPlugin(IntervalCalibratorPlugin):
@@ -25,7 +25,7 @@ class ExampleIntervalCalibratorPlugin(IntervalCalibratorPlugin):
         "capabilities": ["interval:classification"],
         "modes": ("classification",),
         "dependencies": ("core.interval.legacy",),
-        "trusted": False,
+        "trusted": True,
         "trust": False,
         "confidence_source": "legacy-delegate",
         "requires_bins": False,
@@ -48,6 +48,11 @@ def register_example_interval_plugin() -> None:
         ExampleIntervalCalibratorPlugin(),
         source="entrypoint",
     )
+    # Explicitly trust the plugin after registration
+    try:
+        trust_plugin(identifier)
+    except Exception:
+        pass
 
 
 register_example_interval_plugin()

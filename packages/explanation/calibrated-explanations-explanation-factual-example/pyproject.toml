@@ -18,6 +18,9 @@ factual_example = "ce_explanation_factual_example.plugin:FactualExampleExplanati
 [tool.hatch.build.targets.wheel]
 packages = ["src/ce_explanation_factual_example"]
 
+[tool.calibrated_explanations.plugins]
+trusted = ["official.explanation.factual.example"]
+
 [tool.ce_plugin_repo]
 family = "explanation"
 import_name = "ce_explanation_factual_example"

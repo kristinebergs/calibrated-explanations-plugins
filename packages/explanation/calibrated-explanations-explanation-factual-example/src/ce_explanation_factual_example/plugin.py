@@ -12,6 +12,7 @@ from calibrated_explanations.plugins.explanations import (
 from calibrated_explanations.plugins.registry import (
     find_explanation_descriptor,
     register_explanation_plugin,
+    trust_plugin,
 )
 
 
@@ -35,7 +36,7 @@ class FactualExampleExplanationPlugin(ExplanationPlugin):
         "modes": ("factual",),
         "tasks": ("classification",),
         "dependencies": ("core.interval.legacy", "plot_spec.default"),
-        "trusted": False,
+        "trusted": True,
         "trust": False,
     }
 
@@ -67,6 +68,11 @@ def register_factual_example_plugin() -> None:
         FactualExampleExplanationPlugin(),
         source="entrypoint",
     )
+    # Explicitly trust the plugin after registration
+    try:
+        trust_plugin(identifier)
+    except Exception:
+        pass
 
 
 register_factual_example_plugin()

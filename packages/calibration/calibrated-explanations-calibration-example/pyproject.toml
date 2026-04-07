@@ -18,6 +18,9 @@ example = "ce_calibration_example.plugin:ExampleIntervalCalibratorPlugin"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ce_calibration_example"]
 
+[tool.calibrated_explanations.plugins]
+trusted = ["official.calibration.example"]
+
 [tool.ce_plugin_repo]
 family = "calibration"
 import_name = "ce_calibration_example"

@@ -27,6 +27,15 @@ def _to_float_matrix(values: Any) -> list[list[float]]:
     return [[float(value) for value in row] for row in array]
 
 
+def _to_float_vector(values: Any) -> list[float]:
+    array = np.asarray(values, dtype=float)
+    if array.ndim == 0:
+        return [float(array)]
+    if array.ndim != 1:
+        raise RuntimeError("SHAP base values metadata must be a 1D vector.")
+    return [float(value) for value in array]
+
+
 class FactualShapExplanationPlugin(ExplanationPlugin):
     """Factual explanation plugin producing SHAP-based feature attributions."""
 
@@ -99,12 +108,13 @@ class FactualShapExplanationPlugin(ExplanationPlugin):
             bins=request.bins,
             shap_kwargs=dict(shap_kwargs),
         )
-        center_matrix = np.asarray(contributions["center"], dtype=float)
-        lower_matrix = np.asarray(contributions["lower"], dtype=float)
-        upper_matrix = np.asarray(contributions["upper"], dtype=float)
-        uncertainty_matrix = np.asarray(contributions["uncertainty"], dtype=float)
+        center_matrix = np.asarray(contributions["center"]["values"], dtype=float)
+        lower_matrix = np.asarray(contributions["lower"]["values"], dtype=float)
+        upper_matrix = np.asarray(contributions["upper"]["values"], dtype=float)
+        uncertainty_matrix = np.asarray(contributions["uncertainty"]["values"], dtype=float)
 
         feature_names = list(self._context.feature_names)
+        data_matrix = np.asarray(x, dtype=float)
         for row_index, explanation in enumerate(collection.explanations):
             rules = explanation.get_rules()
             features = list(rules.get("feature", []))
@@ -131,12 +141,34 @@ class FactualShapExplanationPlugin(ExplanationPlugin):
         batch.collection_metadata["shap"] = {
             "enabled": True,
             "lower_upper_attributions": True,
+            "feature_names": feature_names,
+            "data": _to_float_matrix(data_matrix),
+            "values": {
+                "center": _to_float_matrix(center_matrix),
+                "lower": _to_float_matrix(lower_matrix),
+                "upper": _to_float_matrix(upper_matrix),
+                "uncertainty": _to_float_matrix(uncertainty_matrix),
+            },
+            "base_values": {
+                "center": _to_float_vector(contributions["center"]["base_values"]),
+                "lower": _to_float_vector(contributions["lower"]["base_values"]),
+                "upper": _to_float_vector(contributions["upper"]["base_values"]),
+                "uncertainty": _to_float_vector(contributions["uncertainty"]["base_values"]),
+            },
             "uncertainty_attributions": {
                 "enabled": True,
                 "target": "interval_width",
                 "formula": "upper - lower",
                 "feature_names": feature_names,
                 "values": _to_float_matrix(uncertainty_matrix),
+            },
+            "_runtime": {
+                "explanations": {
+                    "center": contributions["center"]["raw"],
+                    "lower": contributions["lower"]["raw"],
+                    "upper": contributions["upper"]["raw"],
+                    "uncertainty": contributions["uncertainty"]["raw"],
+                }
             },
         }
         return batch

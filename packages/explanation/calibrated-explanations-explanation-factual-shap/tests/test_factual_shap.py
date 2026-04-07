@@ -53,13 +53,32 @@ def test_should_emit_feature_names_with_lower_upper_shap_weights(monkeypatch):
                 lower.append([(row + 0.5) + feature / 10.0 for feature in range(n_features)])
                 upper.append([(row + 1.5) + feature / 10.0 for feature in range(n_features)])
             return {
-                "center": center,
-                "lower": lower,
-                "upper": upper,
-                "uncertainty": [
-                    [upper_value - lower_value for upper_value, lower_value in zip(upper_row, lower_row, strict=False)]
-                    for upper_row, lower_row in zip(upper, lower, strict=False)
-                ],
+                "center": {
+                    "values": center,
+                    "base_values": [0.1 for _ in range(n_rows)],
+                    "raw": "center-runtime",
+                },
+                "lower": {
+                    "values": lower,
+                    "base_values": [0.05 for _ in range(n_rows)],
+                    "raw": "lower-runtime",
+                },
+                "upper": {
+                    "values": upper,
+                    "base_values": [0.15 for _ in range(n_rows)],
+                    "raw": "upper-runtime",
+                },
+                "uncertainty": {
+                    "values": [
+                        [
+                            upper_value - lower_value
+                            for upper_value, lower_value in zip(upper_row, lower_row, strict=False)
+                        ]
+                        for upper_row, lower_row in zip(upper, lower, strict=False)
+                    ],
+                    "base_values": [0.10 for _ in range(n_rows)],
+                    "raw": "uncertainty-runtime",
+                },
             }
 
     monkeypatch.setattr(shap_plugin_mod, "ShapPipeline", _DummyShapPipeline)
@@ -125,6 +144,17 @@ def test_should_emit_feature_names_with_lower_upper_shap_weights(monkeypatch):
         assert upper_weight == pytest.approx(1.5 + feature_index / 10.0)
 
     shap_meta = collection.batch_metadata["shap"]
+    assert shap_meta["feature_names"] == feature_names
+    assert np.asarray(shap_meta["data"], dtype=float) == pytest.approx(x_test[:2])
+    assert shap_meta["values"]["center"][0][0] == pytest.approx(1.0)
+    assert shap_meta["values"]["lower"][0][0] == pytest.approx(0.5)
+    assert shap_meta["values"]["upper"][0][0] == pytest.approx(1.5)
+    assert shap_meta["base_values"]["center"] == pytest.approx([0.1, 0.1])
+    assert shap_meta["base_values"]["lower"] == pytest.approx([0.05, 0.05])
+    assert shap_meta["base_values"]["upper"] == pytest.approx([0.15, 0.15])
+    assert shap_meta["base_values"]["uncertainty"] == pytest.approx([0.1, 0.1])
+    assert shap_meta["_runtime"]["explanations"]["center"] == "center-runtime"
+    assert shap_meta["_runtime"]["explanations"]["uncertainty"] == "uncertainty-runtime"
     uq_meta = shap_meta["uncertainty_attributions"]
     assert uq_meta["enabled"] is True
     assert uq_meta["target"] == "interval_width"
@@ -154,10 +184,26 @@ def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain
             _ = shap_kwargs
             n_rows, n_features = x_test.shape
             return {
-                "center": [[0.1 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
-                "lower": [[0.05 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
-                "upper": [[0.15 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
-                "uncertainty": [[0.10 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                "center": {
+                    "values": [[0.1 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "base_values": [0.2 for _ in range(n_rows)],
+                    "raw": "center-runtime",
+                },
+                "lower": {
+                    "values": [[0.05 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "base_values": [0.1 for _ in range(n_rows)],
+                    "raw": "lower-runtime",
+                },
+                "upper": {
+                    "values": [[0.15 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "base_values": [0.3 for _ in range(n_rows)],
+                    "raw": "upper-runtime",
+                },
+                "uncertainty": {
+                    "values": [[0.10 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "base_values": [0.2 for _ in range(n_rows)],
+                    "raw": "uncertainty-runtime",
+                },
             }
 
     monkeypatch.setattr(shap_plugin_mod, "ShapPipeline", _DummyShapPipeline)
@@ -228,6 +274,13 @@ def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain
     batch = plugin.explain_batch(x_test, request)
 
     assert batch.collection_metadata["shap"]["lower_upper_attributions"] is True
+    assert np.allclose(np.asarray(batch.collection_metadata["shap"]["data"], dtype=float), [[1.0, 2.0, 3.0]])
+    assert np.allclose(
+        np.asarray(batch.collection_metadata["shap"]["values"]["center"], dtype=float),
+        [[0.1, 0.2, 0.3]],
+    )
+    assert batch.collection_metadata["shap"]["base_values"]["center"] == pytest.approx([0.2])
+    assert batch.collection_metadata["shap"]["_runtime"]["explanations"]["upper"] == "upper-runtime"
     uq_meta = batch.collection_metadata["shap"]["uncertainty_attributions"]
     assert uq_meta["enabled"] is True
     assert uq_meta["target"] == "interval_width"
