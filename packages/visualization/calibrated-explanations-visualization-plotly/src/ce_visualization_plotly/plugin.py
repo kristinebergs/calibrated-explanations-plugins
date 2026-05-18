@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-import statistics
 import warnings
+from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -23,17 +23,21 @@ from calibrated_explanations.plugins.registry import (
 )
 
 STYLE_ID = "plotly.local.uncertainty_quadrant"
-BUILDER_ID = "plotly.local.uncertainty_quadrant.builder"
-RENDERER_ID = "plotly.local.uncertainty_quadrant.renderer"
-BOOTSTRAP_ID = "plotly.local.uncertainty_quadrant.bootstrap"
+BUILDER_ID = "official.visualization.plotly.local.uncertainty_quadrant.builder"
+RENDERER_ID = "official.visualization.plotly.local.uncertainty_quadrant.renderer"
+BOOTSTRAP_ID = "official.visualization.plotly.bootstrap"
 
 _LOGGER = logging.getLogger(__name__)
-_STATUS_COLORS = {
+_QUADRANT_COLORS = {
     "robust_driver": "#1b9e77",
-    "large_uncertain": "#d95f02",
+    "uncertain_driver": "#d95f02",
     "stable_minor": "#7570b3",
     "weak_or_noisy": "#666666",
-    "sign_uncertain": "#e7298a",
+}
+_DIRECTION_SYMBOLS = {
+    "positive": "circle",
+    "negative": "diamond",
+    "crosses_zero": "x",
 }
 
 
@@ -45,7 +49,56 @@ def _as_float(value: Any) -> float | None:
 
 
 def _median(values: list[float]) -> float:
-    return float(statistics.median(values)) if values else 0.0
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    midpoint = len(sorted_values) // 2
+    if len(sorted_values) % 2:
+        return float(sorted_values[midpoint])
+    return float((sorted_values[midpoint - 1] + sorted_values[midpoint]) / 2.0)
+
+
+def _quantile_75(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    index = max(0, ceil(0.75 * len(sorted_values)) - 1)
+    return float(sorted_values[index])
+
+
+def _is_degenerate_threshold(threshold: float, values: list[float]) -> bool:
+    unique_values = {float(value) for value in values}
+    return threshold <= 0.0 or len(unique_values) <= 1
+
+
+def _resolve_threshold(
+    *,
+    name: str,
+    values: list[float],
+    explicit_value: Any,
+    strategy: str,
+) -> tuple[float, str]:
+    explicit = _as_float(explicit_value)
+    if strategy == "explicit":
+        if explicit is None:
+            raise ValueError(f"{name}_threshold is required when threshold_strategy='explicit'.")
+        threshold = explicit
+        source = "explicit"
+    elif strategy == "quantile_75":
+        threshold = _quantile_75(values)
+        source = "quantile_75"
+    elif strategy == "median":
+        threshold = explicit if explicit is not None else _median(values)
+        source = "option" if explicit is not None else "median"
+    else:
+        raise ValueError("threshold_strategy must be one of median, quantile_75, or explicit.")
+
+    if _is_degenerate_threshold(threshold, values):
+        fallback = _quantile_75(values)
+        if fallback != threshold:
+            return fallback, f"{source}:degenerate_fallback_quantile_75"
+        return fallback, f"{source}:degenerate"
+    return threshold, source
 
 
 def _sequence_get(values: Any, index: int, default: Any = None) -> Any:
@@ -85,24 +138,28 @@ def _feature_name(collection: Any, feature: Any) -> str | None:
     return str(feature)
 
 
-def _status_for(
+def _direction_for(contribution: float, crosses_zero: bool) -> str:
+    if crosses_zero:
+        return "crosses_zero"
+    if contribution >= 0.0:
+        return "positive"
+    return "negative"
+
+
+def _quadrant_for(
     *,
-    contribution: float,
-    low: float,
-    high: float,
-    width: float,
-    effect_threshold: float,
-    width_threshold: float,
+    absolute_impact: float,
+    interval_width: float,
+    impact_threshold: float,
+    uncertainty_threshold: float,
 ) -> str:
-    if low <= 0.0 <= high:
-        return "sign_uncertain"
-    large_effect = abs(contribution) >= effect_threshold
-    narrow = width <= width_threshold
-    if large_effect and narrow:
+    high_impact = absolute_impact >= impact_threshold
+    low_uncertainty = interval_width <= uncertainty_threshold
+    if high_impact and low_uncertainty:
         return "robust_driver"
-    if large_effect:
-        return "large_uncertain"
-    if narrow:
+    if high_impact:
+        return "uncertain_driver"
+    if low_uncertainty:
         return "stable_minor"
     return "weak_or_noisy"
 
@@ -169,11 +226,12 @@ def _extract_rule_items(local_explanation: Any) -> list[dict[str, Any]]:
         items.append(
             {
                 "index": index,
-                "rule_label": str(_sequence_get(labels, index, f"rule {index}")),
-                "feature": feature,
+                "feature_index": feature,
+                "rule": str(_sequence_get(labels, index, f"rule {index}")),
                 "feature_name": _feature_name(collection, feature),
                 "instance_value": feature_value,
                 "contribution": contribution,
+                "absolute_impact": abs(contribution),
                 "low": low,
                 "high": high,
                 "interval_width": width,
@@ -185,16 +243,17 @@ def _extract_rule_items(local_explanation: Any) -> list[dict[str, Any]]:
 def _apply_sort(items: list[dict[str, Any]], sort_by: str) -> list[dict[str, Any]]:
     if sort_by in {"input", "none", ""}:
         return list(items)
-    if sort_by in {"abs_contribution", "effect"}:
-        return sorted(items, key=lambda item: (-abs(item["contribution"]), item["index"]))
-    if sort_by == "width":
+    if sort_by in {"absolute_impact", "abs_contribution", "impact", "effect"}:
+        return sorted(items, key=lambda item: (-item["absolute_impact"], item["index"]))
+    if sort_by in {"uncertainty", "width"}:
         return sorted(items, key=lambda item: (-item["interval_width"], item["index"]))
     if sort_by == "contribution":
         return sorted(items, key=lambda item: (item["contribution"], item["index"]))
-    if sort_by == "status":
-        return sorted(items, key=lambda item: (item.get("status_label", ""), item["index"]))
+    if sort_by == "quadrant":
+        return sorted(items, key=lambda item: (item.get("quadrant", ""), item["index"]))
     raise ValueError(
-        "sort_by must be one of input, abs_contribution, effect, width, contribution, or status."
+        "sort_by must be one of input, absolute_impact, impact, uncertainty, "
+        "width, contribution, or quadrant."
     )
 
 
@@ -242,24 +301,35 @@ class UncertaintyQuadrantPlotBuilder(PlotBuilder):
         if not items:
             raise ValueError("No factual rule contributions were available for plotting.")
 
-        effect_threshold = _as_float(options.get("effect_threshold"))
-        if effect_threshold is None:
-            effect_threshold = _median([abs(item["contribution"]) for item in items])
-        width_threshold = _as_float(options.get("width_threshold"))
-        if width_threshold is None:
-            width_threshold = _median([item["interval_width"] for item in items])
+        threshold_strategy = str(options.get("threshold_strategy", "median"))
+        impact_values = [item["absolute_impact"] for item in items]
+        uncertainty_values = [item["interval_width"] for item in items]
+        impact_threshold, impact_source = _resolve_threshold(
+            name="impact",
+            values=impact_values,
+            explicit_value=options.get("impact_threshold"),
+            strategy=threshold_strategy,
+        )
+        uncertainty_threshold, uncertainty_source = _resolve_threshold(
+            name="uncertainty",
+            values=uncertainty_values,
+            explicit_value=options.get("uncertainty_threshold"),
+            strategy=threshold_strategy,
+        )
 
         for item in items:
-            item["status_label"] = _status_for(
-                contribution=item["contribution"],
-                low=item["low"],
-                high=item["high"],
-                width=item["interval_width"],
-                effect_threshold=effect_threshold,
-                width_threshold=width_threshold,
+            crosses_zero = item["low"] <= 0.0 <= item["high"]
+            item["crosses_zero"] = crosses_zero
+            item["direction"] = _direction_for(item["contribution"], crosses_zero)
+            item["quadrant"] = _quadrant_for(
+                absolute_impact=item["absolute_impact"],
+                interval_width=item["interval_width"],
+                impact_threshold=impact_threshold,
+                uncertainty_threshold=uncertainty_threshold,
             )
+            item["status_flags"] = ("sign_uncertain",) if crosses_zero else ()
 
-        sorted_items = _apply_sort(items, str(options.get("sort_by", "abs_contribution")))
+        sorted_items = _apply_sort(items, str(options.get("sort_by", "absolute_impact")))
         filter_top = options.get("filter_top")
         if filter_top is not None:
             sorted_items = sorted_items[: int(filter_top)]
@@ -271,21 +341,19 @@ class UncertaintyQuadrantPlotBuilder(PlotBuilder):
             "prediction": _prediction_header(local_explanation),
             "items": sorted_items,
             "thresholds": {
-                "effect": effect_threshold,
-                "width": width_threshold,
-                "effect_source": (
-                    "option" if "effect_threshold" in options else "median_abs_contribution"
-                ),
-                "width_source": (
-                    "option" if "width_threshold" in options else "median_interval_width"
-                ),
-                "show_width_reference": bool(options.get("show_width_reference", True)),
+                "impact": impact_threshold,
+                "uncertainty": uncertainty_threshold,
+                "impact_source": impact_source,
+                "uncertainty_source": uncertainty_source,
+                "strategy": threshold_strategy,
             },
+            "mode": mode_metadata.get("mode"),
+            "task": mode_metadata.get("task"),
             "metadata": {
                 "instance_index": getattr(local_explanation, "index", instance_index),
                 "mode": mode_metadata,
                 "task": mode_metadata.get("task"),
-                "sort_by": str(options.get("sort_by", "abs_contribution")),
+                "sort_by": str(options.get("sort_by", "absolute_impact")),
                 "filter_top": filter_top,
             },
         }
@@ -319,22 +387,29 @@ class UncertaintyQuadrantPlotRenderer(PlotRenderer):
             ) from exc
 
         items = list(artifact.get("items", ()))
-        x_values = [item["contribution"] for item in items]
+        x_values = [item["absolute_impact"] for item in items]
         y_values = [item["interval_width"] for item in items]
         customdata = [
             [
-                item.get("rule_label"),
+                item.get("rule"),
                 item.get("feature_name"),
                 item.get("instance_value"),
                 item.get("contribution"),
+                item.get("absolute_impact"),
                 item.get("low"),
                 item.get("high"),
                 item.get("interval_width"),
-                item.get("status_label"),
+                item.get("direction"),
+                item.get("quadrant"),
+                item.get("crosses_zero"),
             ]
             for item in items
         ]
-        colors = [_STATUS_COLORS.get(item.get("status_label"), "#666666") for item in items]
+        colors = [_QUADRANT_COLORS.get(item.get("quadrant"), "#666666") for item in items]
+        symbols = [_DIRECTION_SYMBOLS.get(item.get("direction"), "circle") for item in items]
+        thresholds = dict(artifact.get("thresholds", {}) or {})
+        impact_threshold = float(thresholds.get("impact", 0.0))
+        uncertainty_threshold = float(thresholds.get("uncertainty", 0.0))
 
         figure = go.Figure()
         figure.add_trace(
@@ -342,36 +417,69 @@ class UncertaintyQuadrantPlotRenderer(PlotRenderer):
                 x=x_values,
                 y=y_values,
                 mode="markers",
-                marker={"size": 11, "color": colors, "line": {"color": "white", "width": 1}},
+                marker={
+                    "size": 11,
+                    "color": colors,
+                    "symbol": symbols,
+                    "line": {"color": "white", "width": 1},
+                },
                 customdata=customdata,
                 hovertemplate=(
                     "rule: %{customdata[0]}<br>"
                     "feature: %{customdata[1]}<br>"
                     "value: %{customdata[2]}<br>"
-                    "contribution: %{customdata[3]:.6g}<br>"
-                    "low: %{customdata[4]:.6g}<br>"
-                    "high: %{customdata[5]:.6g}<br>"
-                    "interval width: %{customdata[6]:.6g}<br>"
-                    "status: %{customdata[7]}<extra></extra>"
+                    "signed contribution: %{customdata[3]:.6g}<br>"
+                    "absolute impact: %{customdata[4]:.6g}<br>"
+                    "low: %{customdata[5]:.6g}<br>"
+                    "high: %{customdata[6]:.6g}<br>"
+                    "interval width: %{customdata[7]:.6g}<br>"
+                    "direction: %{customdata[8]}<br>"
+                    "quadrant: %{customdata[9]}<br>"
+                    "crosses zero: %{customdata[10]}<extra></extra>"
                 ),
                 name="rules",
             )
         )
-        figure.add_vline(x=0, line_width=1, line_dash="dash", line_color="#444444")
-        thresholds = dict(artifact.get("thresholds", {}) or {})
-        if thresholds.get("show_width_reference", True):
-            figure.add_hline(
-                y=float(thresholds.get("width", 0.0)),
-                line_width=1,
-                line_dash="dot",
-                line_color="#888888",
+        figure.add_vline(
+            x=impact_threshold,
+            line_width=1,
+            line_dash="dash",
+            line_color="#444444",
+        )
+        figure.add_hline(
+            y=uncertainty_threshold,
+            line_width=1,
+            line_dash="dash",
+            line_color="#444444",
+        )
+        x_max = max([impact_threshold, *x_values, 1.0])
+        y_max = max([uncertainty_threshold, *y_values, 1.0])
+        low_x = impact_threshold / 2.0 if impact_threshold > 0 else x_max * 0.25
+        high_x = impact_threshold + max(x_max - impact_threshold, x_max * 0.25) / 2.0
+        low_y = uncertainty_threshold / 2.0 if uncertainty_threshold > 0 else y_max * 0.25
+        high_y = uncertainty_threshold + max(y_max - uncertainty_threshold, y_max * 0.25) / 2.0
+        for x_pos, y_pos, label in (
+            (high_x, low_y, "high impact / low uncertainty"),
+            (high_x, high_y, "high impact / high uncertainty"),
+            (low_x, low_y, "low impact / low uncertainty"),
+            (low_x, high_y, "low impact / high uncertainty"),
+        ):
+            figure.add_annotation(
+                x=x_pos,
+                y=y_pos,
+                text=label,
+                showarrow=False,
+                font={"size": 11, "color": "#555555"},
+                bgcolor="rgba(255,255,255,0.72)",
+                bordercolor="rgba(0,0,0,0.12)",
+                borderwidth=1,
             )
         figure.update_layout(
             template="plotly_white",
             title="Local uncertainty quadrant",
-            xaxis_title="Signed contribution",
-            yaxis_title="Contribution interval width",
-            legend_title_text="Status",
+            xaxis_title="Absolute local impact",
+            yaxis_title="Calibrated uncertainty width",
+            legend_title_text="Quadrant",
             margin={"l": 60, "r": 24, "t": 56, "b": 56},
         )
 

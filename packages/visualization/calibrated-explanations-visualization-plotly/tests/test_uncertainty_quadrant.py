@@ -16,8 +16,9 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.model_selection import train_test_split
 
 STYLE_ID = "plotly.local.uncertainty_quadrant"
-BUILDER_ID = "plotly.local.uncertainty_quadrant.builder"
-RENDERER_ID = "plotly.local.uncertainty_quadrant.renderer"
+BUILDER_ID = "official.visualization.plotly.local.uncertainty_quadrant.builder"
+RENDERER_ID = "official.visualization.plotly.local.uncertainty_quadrant.renderer"
+BOOTSTRAP_ID = "official.visualization.plotly.bootstrap"
 
 
 def _reset_registry_state() -> None:
@@ -32,21 +33,22 @@ def _reset_registry_state() -> None:
         clear_warnings()
 
 
+def _trust_env() -> str:
+    return ",".join(
+        [
+            "ce_visualization_plotly.plugin:PlotlyVisualizationBootstrap",
+            BOOTSTRAP_ID,
+            BUILDER_ID,
+            RENDERER_ID,
+        ]
+    )
+
+
 def _load_plugin(monkeypatch):
     src = Path(__file__).resolve().parents[1] / "src"
     monkeypatch.syspath_prepend(str(src))
+    monkeypatch.setenv("CE_TRUST_PLUGIN", _trust_env())
     module = importlib.import_module("ce_visualization_plotly.plugin")
-    monkeypatch.setenv(
-        "CE_TRUST_PLUGIN",
-        ",".join(
-            [
-                "ce_visualization_plotly.plugin:PlotlyVisualizationBootstrap",
-                STYLE_ID,
-                BUILDER_ID,
-                RENDERER_ID,
-            ]
-        ),
-    )
     _reset_registry_state()
     module.register_plotly_visualization_components()
     return module
@@ -75,6 +77,7 @@ def _install_fake_plotly(monkeypatch):
             self.traces = []
             self.vlines = []
             self.hlines = []
+            self.annotations = []
             self.layout = {}
             self.shown = False
             self.html_paths = []
@@ -87,6 +90,9 @@ def _install_fake_plotly(monkeypatch):
 
         def add_hline(self, **kwargs):
             self.hlines.append(kwargs)
+
+        def add_annotation(self, **kwargs):
+            self.annotations.append(kwargs)
 
         def update_layout(self, **kwargs):
             self.layout.update(kwargs)
@@ -106,21 +112,13 @@ def _install_fake_plotly(monkeypatch):
     return FakeFigure
 
 
-def _dummy_explanation():
-    collection = SimpleNamespace(feature_names=["age", "income", "score"])
+def _dummy_explanation(rules: dict) -> SimpleNamespace:
+    collection = SimpleNamespace(feature_names=["age", "income", "score", "risk", "margin"])
     local = SimpleNamespace(
         index=0,
         calibrated_explanations=collection,
         prediction={"predict": 0.7, "low": 0.6, "high": 0.8, "classes": 1},
-        rules={
-            "weight": [2.0, 0.1, -1.0],
-            "weight_low": [1.8, -0.2, -1.2],
-            "weight_high": [2.3, 0.3, -0.8],
-            "rule": ["age > 30", "income <= 40", "score > 0"],
-            "feature": [0, 1, 2],
-            "value": ["31", "39", "0.2"],
-            "feature_value": [31, 39, 0.2],
-        },
+        rules=rules,
         get_mode=lambda: "classification",
         is_regression=lambda: False,
         is_probabilistic=lambda: True,
@@ -131,56 +129,154 @@ def _dummy_explanation():
     return collection
 
 
-def test_registration_and_trust_resolution(monkeypatch):
+def _quadrant_rules() -> dict:
+    return {
+        "weight": [2.0, -1.5, 0.2, 0.1, 0.4],
+        "weight_low": [1.8, -2.3, 0.1, 0.05, -0.2],
+        "weight_high": [2.3, -1.1, 0.3, 0.85, 0.7],
+        "rule": [
+            "age > 30",
+            "income <= 40",
+            "score > 0",
+            "risk <= 1",
+            "margin > 0",
+        ],
+        "feature": [0, 1, 2, 3, 4],
+        "value": ["31", "39", "0.2", "0.7", "0.1"],
+        "feature_value": [31, 39, 0.2, 0.7, 0.1],
+    }
+
+
+def test_registration_and_trusted_style_resolution(monkeypatch):
     _load_plugin(monkeypatch)
     registry.mark_plot_builder_trusted(BUILDER_ID)
     registry.mark_plot_renderer_trusted(RENDERER_ID)
 
-    assert registry.find_plot_builder_descriptor(BUILDER_ID) is not None
-    assert registry.find_plot_renderer_descriptor(RENDERER_ID) is not None
-    assert registry.find_plot_style_descriptor(STYLE_ID) is not None
+    builder_descriptor = registry.find_plot_builder_descriptor(BUILDER_ID)
+    renderer_descriptor = registry.find_plot_renderer_descriptor(RENDERER_ID)
+    style_descriptor = registry.find_plot_style_descriptor(STYLE_ID)
+    assert builder_descriptor is not None
+    assert builder_descriptor.trusted is True
+    assert renderer_descriptor is not None
+    assert renderer_descriptor.trusted is True
+    assert style_descriptor is not None
+    assert style_descriptor.metadata["builder_id"] == BUILDER_ID
+    assert style_descriptor.metadata["renderer_id"] == RENDERER_ID
     assert registry.find_plot_plugin_trusted(STYLE_ID) is not None
 
 
-def test_artifact_thresholds_widths_and_zero_crossing_status(monkeypatch):
+def test_artifact_uses_absolute_impact_width_and_zero_crossing(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    artifact = plugin.build(_context(_dummy_explanation(), sort_by="input"))
+    artifact = plugin.build(
+        _context(
+            _dummy_explanation(_quadrant_rules()),
+            impact_threshold=1.0,
+            uncertainty_threshold=0.6,
+            threshold_strategy="explicit",
+            sort_by="input",
+        )
+    )
 
     assert artifact["artifact_type"] == STYLE_ID
-    assert len(artifact["items"]) == 3
-    assert artifact["thresholds"]["effect"] == pytest.approx(1.0)
-    assert artifact["thresholds"]["width"] == pytest.approx(0.5)
-    assert artifact["items"][0]["interval_width"] == pytest.approx(0.5)
-    assert artifact["items"][1]["status_label"] == "sign_uncertain"
-    assert artifact["items"][2]["status_label"] == "robust_driver"
+    assert artifact["thresholds"]["impact"] == pytest.approx(1.0)
+    assert artifact["thresholds"]["uncertainty"] == pytest.approx(0.6)
+    assert artifact["items"][1]["contribution"] == pytest.approx(-1.5)
+    assert artifact["items"][1]["absolute_impact"] == pytest.approx(1.5)
+    assert artifact["items"][1]["interval_width"] == pytest.approx(1.2)
+    assert artifact["items"][4]["crosses_zero"] is True
+    assert artifact["items"][4]["direction"] == "crosses_zero"
+    assert artifact["items"][4]["status_flags"] == ("sign_uncertain",)
 
 
-def test_filter_top_and_sort_by(monkeypatch):
+def test_quadrant_assignment_for_all_four_quadrants(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    artifact = plugin.build(_context(_dummy_explanation(), filter_top=2, sort_by="width"))
+    artifact = plugin.build(
+        _context(
+            _dummy_explanation(_quadrant_rules()),
+            impact_threshold=1.0,
+            uncertainty_threshold=0.6,
+            threshold_strategy="explicit",
+            sort_by="input",
+        )
+    )
 
-    assert [item["rule_label"] for item in artifact["items"]] == ["income <= 40", "age > 30"]
+    quadrants = {item["rule"]: item["quadrant"] for item in artifact["items"]}
+    assert quadrants["age > 30"] == "robust_driver"
+    assert quadrants["income <= 40"] == "uncertain_driver"
+    assert quadrants["score > 0"] == "stable_minor"
+    assert quadrants["risk <= 1"] == "weak_or_noisy"
+    assert quadrants["margin > 0"] == "weak_or_noisy"
 
 
-def test_renderer_returns_plotly_figure_without_fallback_warnings(monkeypatch):
+def test_filter_top_and_sort_by_absolute_impact(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(
+        _context(
+            _dummy_explanation(_quadrant_rules()),
+            filter_top=2,
+            sort_by="absolute_impact",
+        )
+    )
+
+    assert [item["rule"] for item in artifact["items"]] == ["age > 30", "income <= 40"]
+
+
+def test_degenerate_thresholds_use_deterministic_fallback(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = {
+        "weight": [0.0, 0.0, 0.0],
+        "weight_low": [0.0, 0.0, 0.0],
+        "weight_high": [0.0, 0.0, 0.0],
+        "rule": ["a", "b", "c"],
+        "feature": [0, 1, 2],
+        "value": [0, 0, 0],
+        "feature_value": [0, 0, 0],
+    }
+
+    artifact = plugin.build(
+        _context(_dummy_explanation(rules), threshold_strategy="median", sort_by="input")
+    )
+
+    assert artifact["thresholds"]["impact"] == 0.0
+    assert artifact["thresholds"]["uncertainty"] == 0.0
+    assert artifact["thresholds"]["impact_source"] == "median:degenerate"
+    assert artifact["thresholds"]["uncertainty_source"] == "median:degenerate"
+    assert all(item["crosses_zero"] for item in artifact["items"])
+
+
+def test_renderer_returns_plotly_figure_with_absolute_x_values(monkeypatch):
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
-    context = _context(_dummy_explanation(), sort_by="input")
+    context = _context(
+        _dummy_explanation(_quadrant_rules()),
+        impact_threshold=1.0,
+        uncertainty_threshold=0.6,
+        threshold_strategy="explicit",
+        sort_by="input",
+    )
     artifact = plugin.build(context)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = plugin.render(artifact, context=context)
 
+    trace_kwargs = result.figure.traces[0].kwargs
     assert result.figure is result.extras["figure"]
-    assert len(result.figure.traces) == 1
-    assert result.figure.vlines[0]["x"] == 0
-    assert result.figure.hlines[0]["y"] == pytest.approx(artifact["thresholds"]["width"])
+    assert trace_kwargs["x"] == [item["absolute_impact"] for item in artifact["items"]]
+    assert trace_kwargs["x"][1] == pytest.approx(1.5)
+    assert result.figure.vlines[0]["x"] == pytest.approx(1.0)
+    assert result.figure.hlines[0]["y"] == pytest.approx(0.6)
+    assert len(result.figure.annotations) == 4
+    assert result.figure.layout["xaxis_title"] == "Absolute local impact"
+    assert result.figure.layout["yaxis_title"] == "Calibrated uncertainty width"
     assert not [warning for warning in caught if issubclass(warning.category, UserWarning)]
 
 
@@ -237,5 +333,5 @@ def test_factual_regression_smoke_with_calibrated_explainer(monkeypatch):
     result = plugin.render(plugin.build(context), context=context)
 
     assert result is not None
-    assert result.artifact["metadata"]["task"] == "regression"
+    assert result.artifact["task"] == "regression"
     assert len(result.artifact["items"]) == 3

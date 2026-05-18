@@ -3,7 +3,9 @@
 Plotly visualization layouts for `calibrated-explanations`.
 
 The package registers `plotly.local.uncertainty_quadrant`, a local factual
-explanation view that plots signed contribution against interval width.
+explanation view that plots absolute local impact against calibrated
+uncertainty width. Signed contribution direction is encoded separately through
+marker semantics and hover text.
 
 Install Plotly support with:
 
@@ -11,5 +13,5 @@ Install Plotly support with:
 pip install calibrated-explanations-visualization-plotly[plotly]
 ```
 
-See `examples/uncertainty_quadrant_example.ipynb` for classification and
-regression walkthroughs.
+See `notebooks/local_uncertainty_quadrant.ipynb` for a `WrapCalibratedExplainer`
+classification walkthrough.

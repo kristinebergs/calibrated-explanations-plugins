@@ -9,7 +9,8 @@ description = "Official metapackage for calibrated-explanations plugins"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "calibrated-explanations-visualization-example>=0.1,<1"
+    "calibrated-explanations-visualization-example>=0.1,<1",
+    "calibrated-explanations-visualization-plotly>=0.1,<1"
 ]
 
 [tool.hatch.build.targets.wheel]
