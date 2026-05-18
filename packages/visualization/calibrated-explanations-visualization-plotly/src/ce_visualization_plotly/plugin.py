@@ -22,6 +22,14 @@ from calibrated_explanations.plugins.registry import (
     register_plot_style,
 )
 
+from .ensured_triangular import (
+    BUILDER_ID as ENSURED_TRIANGULAR_BUILDER_ID,
+    RENDERER_ID as ENSURED_TRIANGULAR_RENDERER_ID,
+    STYLE_ID as ENSURED_TRIANGULAR_STYLE_ID,
+    LocalEnsuredTriangularPlotBuilder,
+    LocalEnsuredTriangularPlotRenderer,
+)
+
 STYLE_ID = "plotly.local.uncertainty_quadrant"
 BUILDER_ID = "official.visualization.plotly.local.uncertainty_quadrant.builder"
 RENDERER_ID = "official.visualization.plotly.local.uncertainty_quadrant.renderer"
@@ -516,7 +524,7 @@ class PlotlyVisualizationBootstrap:
 
 
 def register_plotly_visualization_components() -> None:
-    """Register Plotly uncertainty-quadrant builder, renderer, and style."""
+    """Register Plotly visualization builders, renderers, and styles."""
     if find_plot_builder_descriptor(BUILDER_ID) is None:
         register_plot_builder(BUILDER_ID, UncertaintyQuadrantPlotBuilder(), source="entrypoint")
     if find_plot_renderer_descriptor(RENDERER_ID) is None:
@@ -528,6 +536,31 @@ def register_plotly_visualization_components() -> None:
                 "style": STYLE_ID,
                 "builder_id": BUILDER_ID,
                 "renderer_id": RENDERER_ID,
+                "fallbacks": (),
+                "legacy_compatible": False,
+                "is_default": False,
+                "default_for": (),
+            },
+        )
+    if find_plot_builder_descriptor(ENSURED_TRIANGULAR_BUILDER_ID) is None:
+        register_plot_builder(
+            ENSURED_TRIANGULAR_BUILDER_ID,
+            LocalEnsuredTriangularPlotBuilder(),
+            source="entrypoint",
+        )
+    if find_plot_renderer_descriptor(ENSURED_TRIANGULAR_RENDERER_ID) is None:
+        register_plot_renderer(
+            ENSURED_TRIANGULAR_RENDERER_ID,
+            LocalEnsuredTriangularPlotRenderer(),
+            source="entrypoint",
+        )
+    if find_plot_style_descriptor(ENSURED_TRIANGULAR_STYLE_ID) is None:
+        register_plot_style(
+            ENSURED_TRIANGULAR_STYLE_ID,
+            metadata={
+                "style": ENSURED_TRIANGULAR_STYLE_ID,
+                "builder_id": ENSURED_TRIANGULAR_BUILDER_ID,
+                "renderer_id": ENSURED_TRIANGULAR_RENDERER_ID,
                 "fallbacks": (),
                 "legacy_compatible": False,
                 "is_default": False,
