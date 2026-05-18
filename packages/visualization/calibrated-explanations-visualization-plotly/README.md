@@ -28,6 +28,13 @@ on the y-axis. Probabilistic postures, including classification and thresholded
 regression, include the same probability triangle reference shape used by CE's
 probabilistic triangular plots.
 
+This style is invoked through CE's global plotting API, for example
+`explainer.plot(X_test, style="plotly.global.instance_explorer")`
+or `explainer.plot(X_test, y_test, style="plotly.global.instance_explorer",
+...)`. When targets are supplied, classification and thresholded
+probabilistic regression use one marker symbol per target class. Non-probabilistic
+regression uses target values as the marker color scale.
+
 One marker represents one or more instances. By default, positions are
 aggregated deterministically by rounded x/y coordinates, so marker size reflects
 how many instances share the plotted prediction/uncertainty position after
@@ -135,31 +142,39 @@ alternatives.plot(
 Batch instance explorer examples:
 
 ```python
-explanations = explainer.explain_factual(X_query)
-
-explanations.plot(
+classification_result = explainer.plot(
+    X_query,
     style="plotly.global.instance_explorer",
     task="classification",
     position_precision=2,
     show=True,
 )
 
-threshold_explanations = explainer.explain_factual(X_query, threshold=threshold)
-threshold_explanations.plot(
+classification_result_with_targets = explainer.plot(
+    X_query,
+    y_query,
     style="plotly.global.instance_explorer",
-    task="probabilistic_regression",
-    threshold=threshold,
+    task="classification",
+    position_precision=2,
     show=True,
 )
 
-interval_explanations = explainer.explain_factual(
+threshold_result = regression_explainer.plot(
     X_query,
-    low_high_percentiles=(10, 90),
-)
-interval_explanations.plot(
+    y_query,
+    threshold=threshold,
     style="plotly.global.instance_explorer",
-    task="conformal_regression",
-    low_high_percentiles=(10, 90),
+    task="probabilistic_regression",
+    position_precision=2,
+    show=True,
+)
+
+regression_result = regression_explainer.plot(
+    X_query,
+    y_query,
+    style="plotly.global.instance_explorer",
+    task="regression",
+    position_precision=2,
     show=True,
 )
 ```

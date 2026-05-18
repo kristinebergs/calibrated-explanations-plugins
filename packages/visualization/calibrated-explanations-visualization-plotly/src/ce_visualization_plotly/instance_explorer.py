@@ -27,6 +27,7 @@ _VALID_TASKS = {
     "classification",
     "probabilistic_regression",
     "conformal_regression",
+    "regression",
 }
 
 
@@ -64,6 +65,49 @@ def _sequence_len(values: Any) -> int | None:
         return None
 
 
+def _to_list(values: Any) -> list[Any] | None:
+    if values is None:
+        return None
+    tolist = getattr(values, "tolist", None)
+    if callable(tolist):
+        values = tolist()
+    if isinstance(values, (str, bytes)):
+        return [values]
+    try:
+        return list(values)
+    except TypeError:
+        return [values]
+
+
+def _matrix_shape(values: Any) -> tuple[int, int | None]:
+    seq = _to_list(values) or []
+    if not seq:
+        return 0, None
+    first = seq[0]
+    if isinstance(first, (str, bytes)):
+        return len(seq), None
+    try:
+        return len(seq), len(first)
+    except TypeError:
+        return len(seq), None
+
+
+def _matrix_value(values: Any, row: int, column: int | None = None, default: Any = None) -> Any:
+    row_value = _sequence_get(values, row, default)
+    if column is None:
+        return row_value
+    return _sequence_get(row_value, column, default)
+
+
+def _matrix_or_vector_value(
+    values: Any, row: int, column: int | None = None, default: Any = None
+) -> Any:
+    value = _matrix_value(values, row, column, default)
+    if value is default and column is not None:
+        return _matrix_value(values, row, None, default)
+    return value
+
+
 def _option_tuple(options: dict[str, Any], name: str) -> tuple[Any, Any] | None:
     value = options.get(name)
     if value is None:
@@ -80,6 +124,11 @@ def _prediction_dict(item: Any) -> dict[str, Any]:
     if prediction is None and isinstance(item, dict):
         prediction = item.get("prediction", item)
     return dict(prediction or {}) if isinstance(prediction, dict) else {}
+
+
+def _payload_from_options(options: dict[str, Any]) -> dict[str, Any] | None:
+    payload = options.get("payload")
+    return dict(payload) if isinstance(payload, dict) else None
 
 
 def _collection_for(payload: Any) -> Any:
@@ -110,7 +159,7 @@ def _resolve_task(payload: Any, item: Any, options: dict[str, Any]) -> str:
     if explicit_task not in _VALID_TASKS:
         raise ValueError(
             "task must be one of classification, probabilistic_regression, "
-            "conformal_regression, or auto."
+            "conformal_regression, regression, or auto."
         )
     if explicit_task != "auto":
         return explicit_task
@@ -210,12 +259,18 @@ def _axis_metadata(payload: Any, records: list[dict[str, Any]], options: dict[st
         threshold = records[0]["metadata"].get("threshold", threshold)
         percentiles = records[0]["metadata"].get("percentiles", percentiles)
         confidence = records[0]["metadata"].get("confidence", confidence)
-    if task in {"classification", "probabilistic_regression"}:
+    if records and records[0]["metadata"].get("x_label"):
+        x_label = records[0]["metadata"]["x_label"]
+    elif task in {"classification", "probabilistic_regression"}:
         x_label = "Predicted probability"
-        y_label = "Calibrated probability interval width"
+    elif task == "regression":
+        x_label = "Predictions"
     else:
         x_label = "Point prediction / median"
-        y_label = "Calibrated prediction interval width"
+    if task in {"classification", "probabilistic_regression"}:
+        y_label = "Calibrated probability interval width"
+    else:
+        y_label = "Uncertainty"
     return {
         "x_label": x_label,
         "y_label": y_label,
@@ -242,8 +297,175 @@ def _triangle_reference_metadata(task: str) -> dict[str, Any]:
     }
 
 
+def _class_labels(class_labels: Any, unique_targets: list[Any]) -> list[str]:
+    if isinstance(class_labels, dict):
+        return [f"Y = {class_labels.get(target, target)}" for target in unique_targets]
+    if class_labels is not None:
+        labels = _to_list(class_labels) or []
+        if labels:
+            return [f"Y = {label}" for label in labels]
+    return [f"Y = {target}" for target in unique_targets]
+
+
+def _threshold_xlabel(threshold: Any) -> str:
+    if isinstance(threshold, (tuple, list)) and len(threshold) >= 2:
+        return f"Probability of {threshold[0]} <= Y < {threshold[1]}"
+    return f"Probability of Y < {threshold}"
+
+
+def _threshold_target_class(target: Any, threshold: Any) -> tuple[int | None, str | None]:
+    value = _as_float(target)
+    threshold_value = _as_float(threshold)
+    if value is None or threshold_value is None:
+        return None, None
+    if value < threshold_value:
+        return 1, f"Y < {threshold}"
+    return 0, f"Y >= {threshold}"
+
+
+def _records_from_global_payload(payload: dict[str, Any], options: dict[str, Any]) -> list[dict[str, Any]]:
+    proba = payload.get("proba")
+    predict = payload.get("predict")
+    low = payload.get("low")
+    high = payload.get("high")
+    uncertainty = payload.get("uncertainty")
+    y_values = payload.get("y_test", payload.get("y"))
+    threshold = options.get("threshold", payload.get("threshold"))
+    is_regularized = bool(payload.get("is_regularized", proba is not None))
+    class_labels = payload.get("class_labels")
+    target_values = _to_list(y_values)
+    proba_rows, proba_cols = _matrix_shape(proba)
+    predict_values = _to_list(predict)
+    rows = proba_rows or _sequence_len(predict_values) or _sequence_len(_to_list(low)) or 0
+    if rows == 0:
+        raise ValueError("plotly.global.instance_explorer requires global plot predictions.")
+
+    task_option = str(options.get("task", "auto"))
+    if task_option != "auto":
+        task = task_option
+    elif is_regularized and threshold is not None:
+        task = "probabilistic_regression"
+    elif is_regularized:
+        task = "classification"
+    else:
+        task = "regression"
+    if task == "regression":
+        is_regularized = False
+
+    unique_targets = sorted(set(target_values), key=lambda item: str(item)) if target_values else []
+    target_labels = _class_labels(class_labels, unique_targets)
+    target_label_lookup = {
+        str(target): target_labels[index] if index < len(target_labels) else f"Y = {target}"
+        for index, target in enumerate(unique_targets)
+    }
+
+    records: list[dict[str, Any]] = []
+    for index in range(rows):
+        target = _sequence_get(target_values, index) if target_values is not None else None
+        selected_column: int | None = None
+        predicted_class = None
+        x_label = "Predictions"
+        if is_regularized:
+            if threshold is not None:
+                selected_column = 1 if proba_cols and proba_cols > 1 else 0 if proba_cols else None
+                x_label = _threshold_xlabel(threshold)
+            elif proba_cols and proba_cols > 1:
+                if target is None:
+                    if proba_cols == 2:
+                        selected_column = 1
+                        x_label = "Probability of Y = 1"
+                    else:
+                        row_values = [
+                            _as_float(_matrix_value(proba, index, column))
+                            for column in range(proba_cols)
+                        ]
+                        selected_column = max(
+                            range(proba_cols),
+                            key=lambda column: row_values[column]
+                            if row_values[column] is not None
+                            else float("-inf"),
+                        )
+                        predicted_class = selected_column
+                        x_label = "Probability of Y = predicted class"
+                elif proba_cols == 2 or len(unique_targets) == 2:
+                    selected_column = 1
+                    x_label = "Probability of Y = 1"
+                else:
+                    selected_column = int(target)
+                    x_label = "Probability of Y = actual class"
+            prediction_value = _as_float(_matrix_value(proba, index, selected_column))
+            low_value = _as_float(_matrix_or_vector_value(low, index, selected_column))
+            high_value = _as_float(_matrix_or_vector_value(high, index, selected_column))
+            uncertainty_value = _as_float(
+                _matrix_or_vector_value(uncertainty, index, selected_column)
+            )
+        else:
+            prediction_value = _as_float(_sequence_get(predict_values, index))
+            low_value = _as_float(_matrix_value(low, index))
+            high_value = _as_float(_matrix_value(high, index))
+            uncertainty_value = _as_float(_matrix_value(uncertainty, index))
+        if prediction_value is None:
+            continue
+        if uncertainty_value is None and low_value is not None and high_value is not None:
+            uncertainty_value = high_value - low_value
+        if low_value is None and high_value is None and uncertainty_value is not None:
+            low_value = prediction_value - uncertainty_value / 2.0
+            high_value = prediction_value + uncertainty_value / 2.0
+        if low_value is None or high_value is None or uncertainty_value is None:
+            raise ValueError("plotly.global.instance_explorer requires low/high or uncertainty values.")
+        target_metadata_value = target
+        target_label = (
+            target_label_lookup.get(str(target), f"Y = {target}") if target is not None else None
+        )
+        if task == "probabilistic_regression" and target is not None:
+            threshold_class, threshold_label = _threshold_target_class(target, threshold)
+            if threshold_class is not None:
+                target_metadata_value = threshold_class
+                target_label = threshold_label
+        true_label = (
+            target_metadata_value if task in {"classification", "probabilistic_regression"} else None
+        )
+        target_value = target if task == "regression" else None
+        records.append(
+            {
+                "instance_index": index,
+                "x": float(prediction_value),
+                "y": float(uncertainty_value),
+                "prediction": float(prediction_value),
+                "probability": float(prediction_value) if is_regularized else None,
+                "low": float(low_value),
+                "high": float(high_value),
+                "interval_width": float(uncertainty_value),
+                "predicted_class": predicted_class,
+                "true_label": true_label,
+                "target_value": target_value,
+                "metadata": {
+                    "task": task,
+                    "posture": task,
+                    "class_id": selected_column,
+                    "threshold": threshold,
+                    "percentiles": options.get("low_high_percentiles"),
+                    "confidence": options.get("confidence"),
+                    "x_label": x_label,
+                    "target": target_metadata_value,
+                    "raw_target": target,
+                    "target_label": target_label,
+                    "target_kind": "continuous" if task == "regression" and target is not None else "class",
+                    "is_aggregated_marker": False,
+                },
+            }
+        )
+    if not records:
+        raise ValueError("No global prediction records were available for plotly.global.instance_explorer.")
+    return records
+
+
 def build_instance_records(payload: Any, options: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract one record per instance before deterministic position aggregation."""
+    global_payload = _payload_from_options(options)
+    if global_payload is not None:
+        return _records_from_global_payload(global_payload, options)
+
     records: list[dict[str, Any]] = []
     for index, item in enumerate(_local_explanations(payload)):
         prediction = _prediction_dict(item)
@@ -321,6 +543,15 @@ def _aggregation_key(record: dict[str, Any], options: dict[str, Any]) -> tuple[f
     raise ValueError("aggregation_strategy must be 'round' or 'bin'.")
 
 
+def _aggregation_group_key(record: dict[str, Any], options: dict[str, Any]) -> tuple[Any, ...]:
+    key = _aggregation_key(record, options)
+    task = record.get("metadata", {}).get("task")
+    target = record.get("metadata", {}).get("target")
+    if target is not None and task in {"classification", "probabilistic_regression"}:
+        return (key[0], key[1], "target", str(target))
+    return (key[0], key[1])
+
+
 def _marker_size(count: int, max_count: int, options: dict[str, Any]) -> float:
     minimum = float(options.get("marker_size_min", 6))
     maximum = float(options.get("marker_size_max", 32))
@@ -381,6 +612,14 @@ def _summarize_group(records: list[dict[str, Any]], task: str) -> dict[str, Any]
                 "observed_event_count": observed,
                 "observed_non_event_count": len(target_values) - observed,
             }
+    if task == "regression" and target_values:
+        numeric_targets = [_as_float(value) for value in target_values]
+        numeric_targets = [value for value in numeric_targets if value is not None]
+        summary["target_summary"] = {
+            "target_mean": _mean(numeric_targets),
+            "target_min": min(numeric_targets) if numeric_targets else None,
+            "target_max": max(numeric_targets) if numeric_targets else None,
+        }
     if task == "conformal_regression" and target_values:
         inside = sum(
             1
@@ -436,7 +675,7 @@ def build_hover_text(marker_record: dict[str, Any], task: str, options: dict[str
         observed = marker_record.get("target_summary", {}).get("observed_event_count")
         if observed is not None:
             lines.append(f"Observed event count: {observed} / {count}")
-    else:
+    elif task == "conformal_regression":
         percentiles = metadata.get("percentiles")
         confidence = metadata.get("confidence")
         lines.extend(
@@ -451,18 +690,29 @@ def build_hover_text(marker_record: dict[str, Any], task: str, options: dict[str
         inside = marker_record.get("target_summary", {}).get("observed_inside_interval")
         if inside is not None:
             lines.append(f"Observed inside interval: {inside} / {count}")
+    else:
+        lines.extend(
+            [
+                f"Prediction: {prediction['mean']:.6g}",
+                f"Prediction interval: [{interval['low_mean']:.6g}, {interval['high_mean']:.6g}]",
+                f"Uncertainty: {interval['width_mean']:.6g}",
+            ]
+        )
+        target_mean = marker_record.get("target_summary", {}).get("target_mean")
+        if target_mean is not None:
+            lines.append(f"Mean target: {target_mean:.6g}")
     return "<br>".join(lines)
 
 
 def aggregate_instance_records(records: list[dict[str, Any]], options: dict[str, Any]) -> list[dict[str, Any]]:
     groups: dict[tuple[Any, Any], list[dict[str, Any]]] = defaultdict(list)
     for record in records:
-        key = _aggregation_key(record, options)
+        key = _aggregation_group_key(record, options)
         groups[key].append(record)
 
     max_count = max(len(group) for group in groups.values())
     markers: list[dict[str, Any]] = []
-    for marker_index, key in enumerate(sorted(groups, key=lambda item: (float(item[0]), float(item[1])))):
+    for marker_index, key in enumerate(sorted(groups, key=lambda item: (float(item[0]), float(item[1]), str(item[2:])))):
         group = groups[key]
         task = group[0]["metadata"]["task"]
         count = len(group)
@@ -515,6 +765,8 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         yaxis_title=axis_metadata["y_label"],
         margin={"l": 64, "r": 24, "t": 56, "b": 56},
     )
+    if axis_metadata.get("is_probabilistic"):
+        figure.update_layout(xaxis={"range": [0.0, 1.0]}, yaxis={"range": [0.0, 1.0]})
     return figure
 
 
@@ -570,18 +822,57 @@ def add_triangle_reference(fig: Any, artifact: PlotArtifact, options: dict[str, 
 
 def add_marker_trace(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> None:
     del options
+    import plotly.graph_objects as go
+
     markers = list(artifact.get("marker_records", ()))
+    target_metadata = dict(artifact.get("target_metadata", {}) or {})
+    target_kind = target_metadata.get("target_kind")
+    if target_kind == "class":
+        symbols = ["circle", "x", "square", "triangle-up", "triangle-down", "diamond", "cross", "star", "hexagon"]
+        colors = ["#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b", "#17becf", "#7f7f7f"]
+        targets = list(target_metadata.get("targets", ()))
+        for index, target in enumerate(targets):
+            selected = [marker for marker in markers if str(marker.get("metadata", {}).get("target")) == str(target)]
+            if not selected:
+                continue
+            fig.add_trace(
+                go.Scatter(
+                    x=[marker["x"] for marker in selected],
+                    y=[marker["y"] for marker in selected],
+                    mode="markers",
+                    marker={
+                        "size": [marker["marker_size"] for marker in selected],
+                        "color": colors[index % len(colors)],
+                        "symbol": symbols[index % len(symbols)],
+                        "line": {"color": "white", "width": 1},
+                    },
+                    text=[marker["hover"] for marker in selected],
+                    hovertemplate="%{text}<extra></extra>",
+                    name=target_metadata.get("target_labels", {}).get(str(target), f"Y = {target}"),
+                )
+            )
+        return
+
+    marker_color: Any = [marker["count"] for marker in markers]
+    colorbar_title = "Instances"
+    showscale = True
+    if target_kind == "continuous":
+        marker_color = [
+            marker.get("target_summary", {}).get("target_mean")
+            for marker in markers
+        ]
+        colorbar_title = "Target"
     fig.add_trace(
-        __import__("plotly.graph_objects", fromlist=["Scatter"]).Scatter(
+        go.Scatter(
             x=[marker["x"] for marker in markers],
             y=[marker["y"] for marker in markers],
             mode="markers",
             marker={
                 "size": [marker["marker_size"] for marker in markers],
-                "color": [marker["count"] for marker in markers],
+                "color": marker_color,
                 "colorscale": "Viridis",
-                "showscale": True,
-                "colorbar": {"title": "Instances"},
+                "showscale": showscale,
+                "colorbar": {"title": colorbar_title},
                 "line": {"color": "white", "width": 1},
             },
             text=[marker["hover"] for marker in markers],
@@ -589,6 +880,34 @@ def add_marker_trace(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) 
             name="instances",
         )
     )
+
+
+def _target_metadata(records: list[dict[str, Any]]) -> dict[str, Any]:
+    targets = [record.get("metadata", {}).get("target") for record in records]
+    targets = [target for target in targets if target is not None]
+    if not targets:
+        return {"provided": False, "target_kind": None, "targets": (), "target_labels": {}}
+    task = records[0]["metadata"]["task"]
+    if task == "regression":
+        return {"provided": True, "target_kind": "continuous", "targets": (), "target_labels": {}}
+    unique_targets = sorted(set(targets), key=lambda item: str(item))
+    labels = {
+        str(target): next(
+            (
+                record.get("metadata", {}).get("target_label")
+                for record in records
+                if str(record.get("metadata", {}).get("target")) == str(target)
+            ),
+            f"Y = {target}",
+        )
+        for target in unique_targets
+    }
+    return {
+        "provided": True,
+        "target_kind": "class",
+        "targets": tuple(unique_targets),
+        "target_labels": labels,
+    }
 
 
 def export_html(fig: Any, path: str | Path) -> str:
@@ -632,6 +951,7 @@ class GlobalInstanceExplorerPlotBuilder(PlotBuilder):
             "triangle_reference_metadata": _triangle_reference_metadata(
                 records[0]["metadata"]["task"]
             ),
+            "target_metadata": _target_metadata(records),
             "marker_records": markers,
             "aggregation_metadata": {
                 "aggregate_positions": bool(options.get("aggregate_positions", True)),

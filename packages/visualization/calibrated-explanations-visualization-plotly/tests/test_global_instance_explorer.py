@@ -9,7 +9,11 @@ from types import MappingProxyType, SimpleNamespace
 
 import calibrated_explanations.plugins.registry as registry
 import pytest
+from calibrated_explanations import WrapCalibratedExplainer
 from calibrated_explanations.plugins.plots import PlotRenderContext
+from sklearn.datasets import make_classification
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 STYLE_ID = "plotly.global.instance_explorer"
 BUILDER_ID = "official.visualization.plotly.global.instance_explorer.builder"
@@ -152,6 +156,45 @@ def _conformal_regression_payload():
         ],
         percentiles=(10, 90),
     )
+
+
+def _global_classification_payload():
+    return {
+        "proba": [[0.2, 0.8], [0.7, 0.3], [0.1, 0.9], [0.65, 0.35]],
+        "low": [[0.1, 0.72], [0.62, 0.22], [0.03, 0.82], [0.55, 0.25]],
+        "high": [[0.3, 0.88], [0.78, 0.39], [0.18, 0.94], [0.74, 0.45]],
+        "uncertainty": [[0.2, 0.16], [0.16, 0.17], [0.15, 0.12], [0.19, 0.20]],
+        "y": [1, 0, 1, 0],
+        "is_regularized": True,
+        "threshold": None,
+        "class_labels": {0: 0, 1: 1},
+    }
+
+
+def _global_regression_payload():
+    return {
+        "proba": None,
+        "predict": [10.0, 12.0, 12.01],
+        "low": [8.0, 9.0, 9.01],
+        "high": [13.0, 15.0, 15.01],
+        "uncertainty": [5.0, 6.0, 6.0],
+        "y": [9.5, 11.8, 18.0],
+        "is_regularized": False,
+        "threshold": None,
+    }
+
+
+def _global_thresholded_regression_payload():
+    return {
+        "proba": [[0.25, 0.75], [0.8, 0.2], [0.45, 0.55], [0.7, 0.3]],
+        "predict": None,
+        "low": [[0.15, 0.65], [0.72, 0.11], [0.35, 0.44], [0.62, 0.21]],
+        "high": [[0.36, 0.84], [0.90, 0.31], [0.56, 0.67], [0.81, 0.41]],
+        "uncertainty": [[0.21, 0.19], [0.18, 0.20], [0.21, 0.23], [0.19, 0.20]],
+        "y": [19.0, 25.0, 10.0, 30.0],
+        "is_regularized": True,
+        "threshold": 20.0,
+    }
 
 
 def test_registration_and_trusted_style_resolution(monkeypatch):
@@ -329,6 +372,127 @@ def test_html_export_and_no_fallback_warnings(monkeypatch, tmp_path):
         "triangle-reference",
     ]
     assert not [warning for warning in caught if issubclass(warning.category, UserWarning)]
+
+
+def test_global_payload_with_targets_uses_target_symbols(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(
+        None,
+        payload=_global_classification_payload(),
+        position_precision=2,
+    )
+
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    assert artifact["axis_metadata"]["task"] == "classification"
+    assert artifact["axis_metadata"]["x_label"] == "Probability of Y = 1"
+    assert artifact["target_metadata"]["target_kind"] == "class"
+    assert artifact["target_metadata"]["targets"] == (0, 1)
+    target_traces = result.figure.traces[4:]
+    assert [trace.kwargs["name"] for trace in target_traces] == ["Y = 0", "Y = 1"]
+    assert target_traces[0].kwargs["marker"]["symbol"] != target_traces[1].kwargs["marker"]["symbol"]
+
+
+def test_global_regression_payload_with_targets_uses_target_color(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(
+        None,
+        payload=_global_regression_payload(),
+        task="auto",
+        position_precision=2,
+    )
+
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    assert artifact["axis_metadata"]["task"] == "regression"
+    assert artifact["axis_metadata"]["is_probabilistic"] is False
+    assert artifact["triangle_reference_metadata"]["enabled"] is False
+    assert artifact["target_metadata"]["target_kind"] == "continuous"
+    assert len(result.figure.traces) == 1
+    assert result.figure.traces[0].kwargs["marker"]["colorbar"]["title"] == "Target"
+
+
+def test_thresholded_regression_targets_become_event_classes(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(
+        None,
+        payload=_global_thresholded_regression_payload(),
+        task="auto",
+        position_precision=2,
+    )
+
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    assert artifact["axis_metadata"]["task"] == "probabilistic_regression"
+    assert artifact["target_metadata"]["target_kind"] == "class"
+    assert artifact["target_metadata"]["targets"] == (0, 1)
+    assert artifact["target_metadata"]["target_labels"] == {
+        "0": "Y >= 20.0",
+        "1": "Y < 20.0",
+    }
+    assert [trace.kwargs["name"] for trace in result.figure.traces[4:]] == [
+        "Y >= 20.0",
+        "Y < 20.0",
+    ]
+
+
+def test_wrap_explainer_plot_invokes_global_instance_explorer_with_targets(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    import calibrated_explanations.plotting as ce_plotting
+
+    monkeypatch.setattr(ce_plotting, "plt", None, raising=False)
+    features, labels = make_classification(
+        n_samples=120,
+        n_features=5,
+        n_informative=3,
+        n_redundant=0,
+        random_state=23,
+    )
+    x_proper, x_tmp, y_proper, y_tmp = train_test_split(
+        features, labels, test_size=0.4, random_state=23, stratify=labels
+    )
+    x_cal, x_query, y_cal, y_query = train_test_split(
+        x_tmp, y_tmp, test_size=0.5, random_state=23, stratify=y_tmp
+    )
+    explainer = WrapCalibratedExplainer(
+        RandomForestClassifier(n_estimators=20, random_state=23)
+    )
+    explainer.fit(x_proper, y_proper)
+    explainer.calibrate(x_cal, y_cal)
+
+    result_without_targets = explainer.plot(
+        x_query[:8],
+        style=STYLE_ID,
+        task="classification",
+        show=True,
+        position_precision=2,
+    )
+    result = explainer.plot(
+        x_query[:8],
+        y_query[:8],
+        style=STYLE_ID,
+        task="classification",
+        show=True,
+        position_precision=2,
+    )
+
+    assert result_without_targets.artifact["artifact_type"] == STYLE_ID
+    assert result_without_targets.artifact["target_metadata"]["provided"] is False
+    assert result.artifact["artifact_type"] == STYLE_ID
+    assert result.artifact["target_metadata"]["target_kind"] == "class"
+    assert result.figure.traces[-1].kwargs["name"].startswith("Y = ")
+    assert result_without_targets.figure.shown is True
+    assert result.figure.shown is True
 
 
 def test_triangle_reference_can_be_disabled_for_probabilistic_render(monkeypatch):

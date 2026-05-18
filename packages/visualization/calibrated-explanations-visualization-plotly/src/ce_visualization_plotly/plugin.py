@@ -5,6 +5,8 @@ import warnings
 from math import ceil
 from pathlib import Path
 from typing import Any
+from functools import wraps
+from types import MappingProxyType
 
 from calibrated_explanations.plugins.plots import (
     PlotArtifact,
@@ -613,6 +615,183 @@ def register_plotly_visualization_components() -> None:
                 "default_for": (),
             },
         )
+    _install_global_instance_explorer_plot_bridge()
+
+
+def _install_global_instance_explorer_plot_bridge() -> None:
+    """Route explicit global instance-explorer style through CE's plugin path.
+
+    Some CE versions keep the legacy global renderer as the default unless
+    ``use_legacy=False`` is supplied. This bridge preserves the default for all
+    normal plots, but makes the explicit Plotly global style work through the
+    standard ``explainer.plot(x[, y], style=...)`` API.
+    """
+    try:
+        import calibrated_explanations.plotting as ce_plotting
+        from calibrated_explanations.core.calibrated_explainer import CalibratedExplainer
+        from calibrated_explanations.core.wrap_explainer import WrapCalibratedExplainer
+    except Exception:  # pragma: no cover - depends on installed CE version
+        return
+
+    if not getattr(ce_plotting.plot_global, "_plotly_instance_explorer_bridge", False):
+        original_plot_global = ce_plotting.plot_global
+
+        @wraps(original_plot_global)
+        def plot_global_bridge(explainer: Any, x: Any, y: Any = None, threshold: Any = None, **kwargs: Any) -> Any:
+            if kwargs.get("style") == INSTANCE_EXPLORER_STYLE_ID:
+                return _render_global_instance_explorer(explainer, x, y, threshold, kwargs)
+            return original_plot_global(explainer, x, y=y, threshold=threshold, **kwargs)
+
+        plot_global_bridge._plotly_instance_explorer_bridge = True  # type: ignore[attr-defined]
+        ce_plotting.plot_global = plot_global_bridge
+
+    if not getattr(CalibratedExplainer.plot, "_plotly_instance_explorer_bridge", False):
+        original_calibrated_plot = CalibratedExplainer.plot
+
+        @wraps(original_calibrated_plot)
+        def calibrated_plot_bridge(self: Any, x: Any, y: Any = None, threshold: Any = None, **kwargs: Any) -> Any:
+            if kwargs.get("style") != INSTANCE_EXPLORER_STYLE_ID:
+                return original_calibrated_plot(self, x, y=y, threshold=threshold, **kwargs)
+            style_override = kwargs.pop("style_override", None)
+            kwargs["style_override"] = style_override
+            from calibrated_explanations.plotting import plot_global
+
+            return plot_global(self, x, y=y, threshold=threshold, **kwargs)
+
+        calibrated_plot_bridge._plotly_instance_explorer_bridge = True  # type: ignore[attr-defined]
+        CalibratedExplainer.plot = calibrated_plot_bridge
+
+    if not getattr(WrapCalibratedExplainer.plot, "_plotly_instance_explorer_bridge", False):
+        original_wrap_plot = WrapCalibratedExplainer.plot
+
+        @wraps(original_wrap_plot)
+        def wrap_plot_bridge(self: Any, x: Any, y: Any = None, threshold: Any = None, **kwargs: Any) -> Any:
+            if kwargs.get("style") != INSTANCE_EXPLORER_STYLE_ID:
+                return original_wrap_plot(self, x, y=y, threshold=threshold, **kwargs)
+            assert (
+                self._assert_fitted(
+                    "The WrapCalibratedExplainer must be fitted and calibrated before plotting."
+                )
+                ._assert_calibrated("The WrapCalibratedExplainer must be calibrated before plotting.")
+                .explainer
+                is not None
+            )
+            cfg = getattr(self, "_cfg", None)
+            if cfg is not None:
+                if threshold is None:
+                    threshold = cfg.threshold
+                kwargs.setdefault("low_high_percentiles", cfg.low_high_percentiles)
+            kwargs["bins"] = self._get_bins(x, **kwargs)
+            return self.explainer.plot(x, y=y, threshold=threshold, **kwargs)
+
+        wrap_plot_bridge._plotly_instance_explorer_bridge = True  # type: ignore[attr-defined]
+        WrapCalibratedExplainer.plot = wrap_plot_bridge
+
+
+def _render_global_instance_explorer(
+    explainer: Any,
+    x: Any,
+    y: Any,
+    threshold: Any,
+    kwargs: dict[str, Any],
+) -> Any:
+    import numpy as np
+
+    from calibrated_explanations.plugins import PlotRenderContext, ensure_builtin_plugins
+    from calibrated_explanations.utils.exceptions import ConfigurationError
+
+    show = bool(kwargs.get("show", True))
+    bins = kwargs.get("bins")
+    path = kwargs.get("path")
+    save_ext_value = kwargs.get("save_ext")
+    if isinstance(save_ext_value, (list, tuple)):
+        save_ext_value = tuple(save_ext_value)
+
+    is_regularized = True
+    if "predict_proba" not in dir(explainer.learner) and threshold is None:
+        predict, (low, high) = explainer.predict(x, uq_interval=True, bins=bins)
+        proba = None
+        is_regularized = False
+    else:
+        proba, (low, high) = explainer.predict_proba(
+            x,
+            uq_interval=True,
+            threshold=threshold,
+            bins=bins,
+        )
+        predict = None
+    uncertainty = (
+        (np.array(high) - np.array(low)) if (low is not None and high is not None) else None
+    )
+    payload = {
+        "proba": proba,
+        "predict": predict,
+        "low": low,
+        "high": high,
+        "uncertainty": uncertainty,
+        "y": (list(y) if y is not None else None),
+        "is_regularized": is_regularized,
+        "threshold": threshold,
+        "class_labels": getattr(explainer, "class_labels", None),
+        "x": x,
+    }
+
+    ensure_builtin_plugins()
+    manager = getattr(explainer, "plugin_manager", None)
+    resolve_plot_plugin = getattr(manager, "resolve_plot_plugin", None)
+    if not callable(resolve_plot_plugin):
+        raise ConfigurationError(
+            "PluginManager.resolve_plot_plugin is unavailable; cannot resolve plot plugin."
+        )
+    plugin, identifier, chain = resolve_plot_plugin(
+        explicit_style=INSTANCE_EXPLORER_STYLE_ID,
+        renderer_override=kwargs.get("renderer"),
+    )
+    if identifier != INSTANCE_EXPLORER_STYLE_ID:
+        raise ConfigurationError(
+            "Unable to resolve plot plugin for global explanations; tried: "
+            + ", ".join(chain)
+        )
+
+    option_payload = {
+        key: value
+        for key, value in kwargs.items()
+        if key
+        not in {
+            "style",
+            "renderer",
+            "show",
+            "path",
+            "save_ext",
+            "use_legacy",
+            "bins",
+            "style_override",
+        }
+    }
+    option_payload["payload"] = payload
+    context = PlotRenderContext(
+        explanation=getattr(explainer, "latest_explanation", None),
+        instance_metadata=MappingProxyType({"type": "global"}),
+        style=identifier,
+        intent=MappingProxyType(
+            {
+                "type": "global",
+                "explainer_mode": getattr(explainer, "_last_explanation_mode", None),
+            }
+        ),
+        show=show,
+        path=path,
+        save_ext=save_ext_value,
+        options=MappingProxyType(option_payload),
+    )
+    try:
+        artifact = plugin.build(context)
+        return plugin.render(artifact, context=context)
+    except Exception as exc:
+        raise ConfigurationError(
+            "Unable to render plotly.global.instance_explorer; "
+            f"errors: {identifier}: {exc}"
+        ) from exc
 
 
 register_plotly_visualization_components()
