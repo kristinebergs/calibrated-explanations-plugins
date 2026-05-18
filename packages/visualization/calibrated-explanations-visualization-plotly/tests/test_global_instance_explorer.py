@@ -1,0 +1,360 @@
+from __future__ import annotations
+
+import importlib
+import sys
+import types
+import warnings
+from pathlib import Path
+from types import MappingProxyType, SimpleNamespace
+
+import calibrated_explanations.plugins.registry as registry
+import pytest
+from calibrated_explanations.plugins.plots import PlotRenderContext
+
+STYLE_ID = "plotly.global.instance_explorer"
+BUILDER_ID = "official.visualization.plotly.global.instance_explorer.builder"
+RENDERER_ID = "official.visualization.plotly.global.instance_explorer.renderer"
+BOOTSTRAP_ID = "official.visualization.plotly.bootstrap"
+
+
+def _reset_registry_state() -> None:
+    reset_catalog = getattr(registry, "reset_plugin_catalog", None)
+    if callable(reset_catalog):
+        reset_catalog(kind="all")
+    clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
+    if callable(clear_env_cache):
+        clear_env_cache()
+    clear_warnings = getattr(registry, "clear_trust_warnings", None)
+    if callable(clear_warnings):
+        clear_warnings()
+
+
+def _trust_env() -> str:
+    return ",".join(
+        [
+            "ce_visualization_plotly.plugin:PlotlyVisualizationBootstrap",
+            BOOTSTRAP_ID,
+            BUILDER_ID,
+            RENDERER_ID,
+        ]
+    )
+
+
+def _load_plugin(monkeypatch):
+    src = Path(__file__).resolve().parents[1] / "src"
+    monkeypatch.syspath_prepend(str(src))
+    monkeypatch.setenv("CE_TRUST_PLUGIN", _trust_env())
+    module = importlib.import_module("ce_visualization_plotly.plugin")
+    _reset_registry_state()
+    module.register_plotly_visualization_components()
+    return module
+
+
+def _context(explanation, *, path=None, show=False, **options) -> PlotRenderContext:
+    return PlotRenderContext(
+        explanation=explanation,
+        instance_metadata=MappingProxyType({"type": "batch"}),
+        style=STYLE_ID,
+        intent=MappingProxyType({"type": "global"}),
+        show=show,
+        path=path,
+        save_ext=None,
+        options=MappingProxyType(options),
+    )
+
+
+def _install_fake_plotly(monkeypatch):
+    class FakeScatter:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeFigure:
+        def __init__(self):
+            self.traces = []
+            self.layout = {}
+            self.shown = False
+            self.html_paths = []
+
+        def add_trace(self, trace):
+            self.traces.append(trace)
+
+        def update_layout(self, **kwargs):
+            self.layout.update(kwargs)
+
+        def write_html(self, path):
+            self.html_paths.append(path)
+
+        def show(self):
+            self.shown = True
+
+    plotly_mod = types.ModuleType("plotly")
+    graph_objects_mod = types.ModuleType("plotly.graph_objects")
+    graph_objects_mod.Figure = FakeFigure
+    graph_objects_mod.Scatter = FakeScatter
+    monkeypatch.setitem(sys.modules, "plotly", plotly_mod)
+    monkeypatch.setitem(sys.modules, "plotly.graph_objects", graph_objects_mod)
+    return FakeFigure
+
+
+def _collection(task: str, predictions: list[dict], *, threshold=None, percentiles=None):
+    collection = SimpleNamespace(
+        batch_metadata={
+            "task": "regression" if task != "classification" else "classification",
+            "mode": "regression" if task != "classification" else "classification",
+            "y_threshold": threshold,
+            "low_high_percentiles": percentiles,
+        }
+    )
+    locals_ = []
+    for index, prediction in enumerate(predictions):
+        local = SimpleNamespace(
+            index=index,
+            calibrated_explanations=collection,
+            prediction=prediction,
+            y_threshold=threshold,
+            low_high_percentiles=percentiles,
+            get_mode=lambda task=task: "classification" if task == "classification" else "regression",
+            is_thresholded=lambda task=task: task == "probabilistic_regression",
+        )
+        locals_.append(local)
+    collection.explanations = locals_
+    return collection
+
+
+def _classification_payload():
+    return _collection(
+        "classification",
+        [
+            {"predict": 0.821, "low": 0.74, "high": 0.89, "classes": 1},
+            {"predict": 0.824, "low": 0.75, "high": 0.90, "classes": 1},
+            {"predict": 0.41, "low": 0.33, "high": 0.53, "classes": 0},
+        ],
+    )
+
+
+def _probabilistic_regression_payload():
+    return _collection(
+        "probabilistic_regression",
+        [
+            {"predict": 0.67, "low": 0.55, "high": 0.78, "classes": 1},
+            {"predict": 0.671, "low": 0.551, "high": 0.781, "classes": 1},
+        ],
+        threshold=25.0,
+    )
+
+
+def _conformal_regression_payload():
+    return _collection(
+        "conformal_regression",
+        [
+            {"predict": 12.4, "low": 9.8, "high": 15.7, "classes": 1},
+            {"predict": 16.2, "low": 11.2, "high": 21.0, "classes": 1},
+        ],
+        percentiles=(10, 90),
+    )
+
+
+def test_registration_and_trusted_style_resolution(monkeypatch):
+    _load_plugin(monkeypatch)
+    registry.mark_plot_builder_trusted(BUILDER_ID)
+    registry.mark_plot_renderer_trusted(RENDERER_ID)
+
+    style_descriptor = registry.find_plot_style_descriptor(STYLE_ID)
+    assert style_descriptor is not None
+    assert style_descriptor.metadata["builder_id"] == BUILDER_ID
+    assert style_descriptor.metadata["renderer_id"] == RENDERER_ID
+    assert registry.find_plot_plugin_trusted(STYLE_ID) is not None
+
+
+def test_classification_payload_builds_marker_records(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(
+        _context(
+            _classification_payload(),
+            task="classification",
+            position_precision=2,
+            true_labels=[1, 1, 1],
+        )
+    )
+
+    assert artifact["artifact_type"] == STYLE_ID
+    assert artifact["artifact_version"] == "0.1.0"
+    assert artifact["axis_metadata"]["task"] == "classification"
+    assert artifact["axis_metadata"]["is_probabilistic"] is True
+    assert artifact["triangle_reference_metadata"]["enabled"] is True
+    assert artifact["aggregation_metadata"]["num_instances"] == 3
+    assert artifact["aggregation_metadata"]["num_markers"] == 2
+    marker = max(artifact["marker_records"], key=lambda item: item["count"])
+    assert marker["count"] == 2
+    assert "Instances: 2" in marker["hover"]
+    assert "Predicted class:" in marker["hover"]
+    assert "Probability interval:" in marker["hover"]
+
+
+def test_probabilistic_regression_payload_builds_marker_records(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(
+        _context(
+            _probabilistic_regression_payload(),
+            task="probabilistic_regression",
+            position_precision=2,
+            target_values=[23.0, 31.0],
+        )
+    )
+
+    hover = artifact["marker_records"][0]["hover"]
+    assert artifact["axis_metadata"]["task"] == "probabilistic_regression"
+    assert artifact["triangle_reference_metadata"]["enabled"] is True
+    assert "Target event: y <= 25.0" in hover
+    assert "Probability interval:" in hover
+    assert "Observed event count: 1 / 2" in hover
+
+
+def test_conformal_regression_payload_builds_marker_records(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(
+        _context(
+            _conformal_regression_payload(),
+            task="conformal_regression",
+            target_values=[12.0, 30.0],
+        )
+    )
+
+    hover = artifact["marker_records"][0]["hover"]
+    assert artifact["axis_metadata"]["task"] == "conformal_regression"
+    assert artifact["axis_metadata"]["is_probabilistic"] is False
+    assert artifact["triangle_reference_metadata"]["enabled"] is False
+    assert "Point prediction / median:" in hover
+    assert "Percentiles: 10 / 90" in hover
+    assert "Confidence: 80%" in hover
+    assert "Prediction interval:" in hover
+
+
+def test_aggregation_by_rounded_position_and_precision(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    coarse = plugin.build(_context(_classification_payload(), task="classification", position_precision=2))
+    fine = plugin.build(_context(_classification_payload(), task="classification", position_precision=3))
+
+    assert coarse["aggregation_metadata"]["num_markers"] == 2
+    assert fine["aggregation_metadata"]["num_markers"] == 3
+
+
+def test_marker_size_increases_monotonically_with_count(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    payload = _collection(
+        "classification",
+        [
+            {"predict": 0.821, "low": 0.74, "high": 0.89, "classes": 1},
+            {"predict": 0.824, "low": 0.75, "high": 0.90, "classes": 1},
+            {"predict": 0.822, "low": 0.76, "high": 0.91, "classes": 1},
+            {"predict": 0.51, "low": 0.45, "high": 0.59, "classes": 1},
+        ],
+    )
+
+    artifact = plugin.build(_context(payload, task="classification", position_precision=2))
+    sizes = {marker["count"]: marker["marker_size"] for marker in artifact["marker_records"]}
+    assert sizes[3] > sizes[1]
+
+
+def test_aggregate_positions_false_produces_one_marker_per_instance(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(
+        _context(_classification_payload(), task="classification", aggregate_positions=False)
+    )
+
+    assert artifact["aggregation_metadata"]["num_markers"] == 3
+    assert all(marker["count"] == 1 for marker in artifact["marker_records"])
+
+
+def test_bin_aggregation_is_deterministic(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    first = plugin.build(
+        _context(
+            _classification_payload(),
+            task="classification",
+            aggregation_strategy="bin",
+            position_precision=1,
+        )
+    )
+    second = plugin.build(
+        _context(
+            _classification_payload(),
+            task="classification",
+            aggregation_strategy="bin",
+            position_precision=1,
+        )
+    )
+
+    assert first["marker_records"] == second["marker_records"]
+
+
+def test_html_export_and_no_fallback_warnings(monkeypatch, tmp_path):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(
+        _classification_payload(),
+        task="classification",
+        position_precision=2,
+        path=tmp_path / "instance_explorer.html",
+    )
+    artifact = plugin.build(context)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = plugin.render(artifact, context=context)
+
+    assert result.figure is result.extras["figure"]
+    assert result.saved_paths == (str(tmp_path / "instance_explorer.html"),)
+    assert result.figure.html_paths == [str(tmp_path / "instance_explorer.html")]
+    marker_trace = result.figure.traces[-1]
+    assert marker_trace.kwargs["hovertemplate"] == "%{text}<extra></extra>"
+    assert [trace.kwargs["meta"]["trace_kind"] for trace in result.figure.traces[:4]] == [
+        "triangle-reference",
+        "triangle-reference",
+        "triangle-reference",
+        "triangle-reference",
+    ]
+    assert not [warning for warning in caught if issubclass(warning.category, UserWarning)]
+
+
+def test_triangle_reference_can_be_disabled_for_probabilistic_render(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(
+        _classification_payload(),
+        task="classification",
+        position_precision=2,
+        show_triangle_reference=False,
+    )
+
+    result = plugin.render(plugin.build(context), context=context)
+
+    assert len(result.figure.traces) == 1
+    assert result.figure.traces[0].kwargs["name"] == "instances"
+
+
+def test_triangle_reference_is_not_added_for_conformal_regression(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_conformal_regression_payload(), task="conformal_regression")
+
+    result = plugin.render(plugin.build(context), context=context)
+
+    assert len(result.figure.traces) == 1
+    assert result.figure.traces[0].kwargs["name"] == "instances"

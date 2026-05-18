@@ -30,6 +30,13 @@ from .ensured import (
     LocalEnsuredPlotBuilder,
     LocalEnsuredPlotRenderer,
 )
+from .instance_explorer import (
+    BUILDER_ID as INSTANCE_EXPLORER_BUILDER_ID,
+    RENDERER_ID as INSTANCE_EXPLORER_RENDERER_ID,
+    STYLE_ID as INSTANCE_EXPLORER_STYLE_ID,
+    GlobalInstanceExplorerPlotBuilder,
+    GlobalInstanceExplorerPlotRenderer,
+)
 
 STYLE_ID = "plotly.local.uncertainty_quadrant"
 BUILDER_ID = "official.visualization.plotly.local.uncertainty_quadrant.builder"
@@ -575,6 +582,31 @@ def register_plotly_visualization_components() -> None:
                 "style": ENSURED_ALIAS_STYLE_ID,
                 "builder_id": ENSURED_BUILDER_ID,
                 "renderer_id": ENSURED_RENDERER_ID,
+                "fallbacks": (),
+                "legacy_compatible": False,
+                "is_default": False,
+                "default_for": (),
+            },
+        )
+    if find_plot_builder_descriptor(INSTANCE_EXPLORER_BUILDER_ID) is None:
+        register_plot_builder(
+            INSTANCE_EXPLORER_BUILDER_ID,
+            GlobalInstanceExplorerPlotBuilder(),
+            source="entrypoint",
+        )
+    if find_plot_renderer_descriptor(INSTANCE_EXPLORER_RENDERER_ID) is None:
+        register_plot_renderer(
+            INSTANCE_EXPLORER_RENDERER_ID,
+            GlobalInstanceExplorerPlotRenderer(),
+            source="entrypoint",
+        )
+    if find_plot_style_descriptor(INSTANCE_EXPLORER_STYLE_ID) is None:
+        register_plot_style(
+            INSTANCE_EXPLORER_STYLE_ID,
+            metadata={
+                "style": INSTANCE_EXPLORER_STYLE_ID,
+                "builder_id": INSTANCE_EXPLORER_BUILDER_ID,
+                "renderer_id": INSTANCE_EXPLORER_RENDERER_ID,
                 "fallbacks": (),
                 "legacy_compatible": False,
                 "is_default": False,

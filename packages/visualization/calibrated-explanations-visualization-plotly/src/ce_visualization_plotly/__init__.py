@@ -4,6 +4,10 @@ from .ensured import (
     LocalEnsuredPlotBuilder,
     LocalEnsuredPlotRenderer,
 )
+from .instance_explorer import (
+    GlobalInstanceExplorerPlotBuilder,
+    GlobalInstanceExplorerPlotRenderer,
+)
 from .plugin import (
     PlotlyVisualizationBootstrap,
     UncertaintyQuadrantPlotBuilder,
@@ -14,6 +18,8 @@ from .plugin import (
 __all__ = [
     "LocalEnsuredPlotBuilder",
     "LocalEnsuredPlotRenderer",
+    "GlobalInstanceExplorerPlotBuilder",
+    "GlobalInstanceExplorerPlotRenderer",
     "PlotlyVisualizationBootstrap",
     "UncertaintyQuadrantPlotBuilder",
     "UncertaintyQuadrantPlotRenderer",

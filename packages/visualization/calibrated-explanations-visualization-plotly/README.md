@@ -20,6 +20,49 @@ The Plotly ensured plugin adds hover inspection, HTML export, `filter_top`, an
 optional searchable feature-control panel, and an optional right-side rule
 detail panel without changing CE's default `.plot()` behavior.
 
+The package also registers `plotly.global.instance_explorer`, a hover-only
+batch/global overview for many CE instances. This is an instance explorer and
+prediction/uncertainty overview, not a global CE explanation method. It plots
+the central prediction quantity on the x-axis and calibrated uncertainty width
+on the y-axis. Probabilistic postures, including classification and thresholded
+regression, include the same probability triangle reference shape used by CE's
+probabilistic triangular plots.
+
+One marker represents one or more instances. By default, positions are
+aggregated deterministically by rounded x/y coordinates, so marker size reflects
+how many instances share the plotted prediction/uncertainty position after
+aggregation. Hover text is task-specific:
+
+- classification: predicted class, probability, calibrated probability
+  interval, interval width, and true-label summaries when supplied
+- probabilistic or thresholded regression: target event, predicted event
+  probability, calibrated probability interval, interval width, and observed
+  event count when target values are supplied
+- conformal or percentile regression: point prediction / median, percentile or
+  confidence metadata, prediction interval, interval width, and observed
+  interval coverage when target values are supplied
+
+`plotly.global.instance_explorer` v1 intentionally implements hover-only
+interaction. Click panels, narrative panels, and embedded local drill-down plots
+are not implemented. The artifact keeps marker records, interaction capability
+metadata, and optional instance records so local drill-down can be added in a
+future version without changing the v1 rendering contract.
+
+Supported instance-explorer options:
+
+- `aggregate_positions` (default `True`)
+- `position_precision` (default `3`)
+- `aggregation_strategy` (`"round"` or `"bin"`, default `"round"`)
+- `marker_size_min` (default `6`)
+- `marker_size_max` (default `32`)
+- `task` (`"classification"`, `"probabilistic_regression"`,
+  `"conformal_regression"`, or `"auto"`)
+- `class_id`
+- `threshold`
+- `low_high_percentiles`
+- `include_instance_records`
+- `show_triangle_reference` (default `True` for probabilistic postures)
+
 Compact hover is the default for `plotly.local.ensured`; blue rule points show
 only rule, prediction, uncertainty, and interval unless
 `hover_detail="full"` is requested.
@@ -89,6 +132,38 @@ alternatives.plot(
 )
 ```
 
+Batch instance explorer examples:
+
+```python
+explanations = explainer.explain_factual(X_query)
+
+explanations.plot(
+    style="plotly.global.instance_explorer",
+    task="classification",
+    position_precision=2,
+    show=True,
+)
+
+threshold_explanations = explainer.explain_factual(X_query, threshold=threshold)
+threshold_explanations.plot(
+    style="plotly.global.instance_explorer",
+    task="probabilistic_regression",
+    threshold=threshold,
+    show=True,
+)
+
+interval_explanations = explainer.explain_factual(
+    X_query,
+    low_high_percentiles=(10, 90),
+)
+interval_explanations.plot(
+    style="plotly.global.instance_explorer",
+    task="conformal_regression",
+    low_high_percentiles=(10, 90),
+    show=True,
+)
+```
+
 Install Plotly support with:
 
 ```bash
@@ -98,4 +173,5 @@ pip install calibrated-explanations-visualization-plotly[plotly]
 See `examples/local_ensured_plotly.ipynb` for a
 `WrapCalibratedExplainer` classification and regression ensured walkthrough and
 `examples/local_uncertainty_quadrant.ipynb` for the local uncertainty quadrant
-example.
+example. See `examples/visualization/plotly/global_instance_explorer.ipynb` for
+a three-section batch instance explorer walkthrough.
