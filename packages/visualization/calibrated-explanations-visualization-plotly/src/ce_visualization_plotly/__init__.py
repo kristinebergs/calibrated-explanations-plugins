@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from .ensured_triangular import (
-    LocalEnsuredTriangularPlotBuilder,
-    LocalEnsuredTriangularPlotRenderer,
+from .ensured import (
+    LocalEnsuredPlotBuilder,
+    LocalEnsuredPlotRenderer,
 )
 from .plugin import (
     PlotlyVisualizationBootstrap,
@@ -12,8 +12,8 @@ from .plugin import (
 )
 
 __all__ = [
-    "LocalEnsuredTriangularPlotBuilder",
-    "LocalEnsuredTriangularPlotRenderer",
+    "LocalEnsuredPlotBuilder",
+    "LocalEnsuredPlotRenderer",
     "PlotlyVisualizationBootstrap",
     "UncertaintyQuadrantPlotBuilder",
     "UncertaintyQuadrantPlotRenderer",
