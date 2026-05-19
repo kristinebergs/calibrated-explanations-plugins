@@ -21,12 +21,14 @@ plotly = [
 plotly_visualization = "ce_visualization_plotly.plugin:PlotlyVisualizationBootstrap"
 
 [project.entry-points."calibrated_explanations.plugins.plot_builders"]
-uncertainty_quadrant = "ce_visualization_plotly.plugin:UncertaintyQuadrantPlotBuilder"
+uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotBuilder"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotBuilder"
+alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotBuilder"
 
 [project.entry-points."calibrated_explanations.plugins.plot_renderers"]
-uncertainty_quadrant = "ce_visualization_plotly.plugin:UncertaintyQuadrantPlotRenderer"
+uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotRenderer"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotRenderer"
+alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotRenderer"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ce_visualization_plotly"]

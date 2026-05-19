@@ -20,6 +20,67 @@ The Plotly ensured plugin adds hover inspection, HTML export, `filter_top`, an
 optional searchable feature-control panel, and an optional right-side rule
 detail panel without changing CE's default `.plot()` behavior.
 
+The package also registers `plotly.local.alternative_feature_summary`, a local
+summary for one alternative explanation. It answers which features are most
+involved in the emitted local alternatives, and in what primary role plus
+quality-flag combinations they appear. This is not global feature importance.
+
+The default view is a compact horizontal stacked bar chart:
+
+- y-axis = feature names
+- x-axis = rule count, or share when `normalize="share"`
+- stacked segments = role-quality combinations such as `counter`,
+  `counter + ensured`, `counter + pareto`, and
+  `counter + ensured + pareto`
+
+`ensured` and `pareto` are quality flags represented inside the primary role
+bars. They are not rendered as a separate default quality/status panel.
+Unknown roles mean CE metadata was unavailable or unmapped; they do not mean
+that a rule has no semantic role.
+
+Role-quality keys are encoded deterministically as:
+
+```text
+primary_role[__ensured][__pareto]
+```
+
+Examples include `counter`, `counter__ensured`, `counter__pareto`,
+`counter__ensured__pareto`, `semi__ensured`, and `unknown__pareto`. Primary
+roles are `counter`, `super`, `semi`, and `unknown`. Longer CE labels are
+normalised as `counterfactual -> counter`, `superfactual -> super`, and
+`semifactual -> semi`. `counterpotential` is not silently collapsed into
+`counter`; provide `role_mapping={"counterpotential": "counter"}` only when
+the current CE metadata treats those labels as equivalent.
+
+The optional conjunction panel is disabled by default. When
+`include_conjunctions=True`, it counts how often each feature participates in
+multi-feature rules, bucketed as `size_2`, `size_3`, or `size_4_plus`. A feature
+is counted once per conjunction rule it appears in. Single-feature alternatives
+are not counted as conjunctions, and conjunction counts are not merged into the
+role-quality bar.
+
+Supported alternative-feature-summary options:
+
+- `filter_top_features`: maximum number of displayed features after sorting
+- `include_conjunctions` (default `False`)
+- `normalize`: `"count"` or `"share"` (default `"count"`)
+- `infer_roles` (default `False`): enables conservative heuristics; inferred
+  roles are marked with `role_source="heuristic"`
+- `unknown_policy`: `"show"` or `"hide"` (default `"show"`)
+- `sort_by`: `"total"`, `"counter"`, `"super"`, `"semi"`, `"ensured"`,
+  `"pareto"`, `"conjunctions"`, or `"feature_name"`
+- `orientation`: `"horizontal"`; only horizontal bars are supported in v1
+- `hover_detail`: `"compact"` or `"full"`; both preserve counts and role source
+  summaries in hover
+- `role_mapping`: optional mapping for explicit project-specific role aliases
+
+Role metadata is metadata-dependent. When role metadata is unavailable, the
+builder records `primary_role="unknown"` and `role_source="unavailable"`.
+Heuristics are never used unless `infer_roles=True`; the implemented heuristic
+uses explicit role words in rule text or a probabilistic 0.5 decision-boundary
+crossing for counter-like rules. The artifact preserves raw role metadata in
+rule-level records where available.
+
 The package also registers `plotly.global.instance_explorer`, a hover-only
 batch/global overview for many CE instances. This is an instance explorer and
 prediction/uncertainty overview, not a global CE explanation method. It plots
@@ -140,6 +201,30 @@ alternatives.plot(
 )
 ```
 
+Alternative feature summary example:
+
+```python
+alternatives = explainer.explore_alternatives(X_query)
+
+alternatives[0].plot(
+    style="plotly.local.alternative_feature_summary",
+    show=True,
+)
+
+alternatives[0].plot(
+    style="plotly.local.alternative_feature_summary",
+    filter_top_features=10,
+    normalize="share",
+    show=True,
+)
+
+alternatives[0].plot(
+    style="plotly.local.alternative_feature_summary",
+    include_conjunctions=True,
+    show=True,
+)
+```
+
 Batch instance explorer examples:
 
 ```python
@@ -189,5 +274,7 @@ pip install calibrated-explanations-visualization-plotly[plotly]
 See `examples/local_ensured_plotly.ipynb` for a
 `WrapCalibratedExplainer` classification and regression ensured walkthrough and
 `examples/local_uncertainty_quadrant.ipynb` for the local uncertainty quadrant
-example. See `examples/visualization/plotly/global_instance_explorer.ipynb` for
-a three-section batch instance explorer walkthrough.
+example. See `examples/visualization/plotly/local_alternative_feature_summary.ipynb`
+for the local alternative feature summary example and
+`examples/visualization/plotly/global_instance_explorer.ipynb` for a
+three-section batch instance explorer walkthrough.
