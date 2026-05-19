@@ -271,10 +271,24 @@ Install Plotly support with:
 pip install calibrated-explanations-visualization-plotly[plotly]
 ```
 
+Install live dashboard support with:
+
+```bash
+pip install calibrated-explanations-visualization-plotly[live]
+```
+
 See `examples/local_ensured_plotly.ipynb` for a
 `WrapCalibratedExplainer` classification and regression ensured walkthrough and
 `examples/local_uncertainty_quadrant.ipynb` for the local uncertainty quadrant
-example. See `examples/visualization/plotly/local_alternative_feature_summary.ipynb`
-for the local alternative feature summary example and
-`examples/visualization/plotly/global_instance_explorer.ipynb` for a
-three-section batch instance explorer walkthrough.
+example. See `examples/local_alternative_feature_summary.ipynb` for the local
+alternative feature summary example and `examples/global_instance_explorer.ipynb`
+for a three-section batch instance explorer walkthrough.
+
+Dashboard examples live in the package-local `examples/` directory:
+
+- `examples/dashboard_instance_workspace_standalone.ipynb` demonstrates
+  `plotly.dashboard.instance_workspace` standalone HTML mode with precomputed
+  local cards.
+- `examples/dashboard_instance_workspace_live.ipynb` demonstrates
+  `ce_visualization_plotly.dashboard.launch_instance_workspace(...)` live Python
+  dashboard mode.

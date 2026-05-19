@@ -57,10 +57,10 @@ _ROLE_QUALITY_COLORS = {
     "unknown__ensured__pareto": "#cbd5e1",
 }
 _CONJUNCTION_COLORS = {
-    "size 1": "#94d2bd",
-    "size 2": "#0f766e",
-    "size 3": "#14b8a6",
-    "size 4+": "#99f6e4",
+    "size_1": "#94d2bd",
+    "size_2": "#0f766e",
+    "size_3": "#14b8a6",
+    "size_4_plus": "#99f6e4",
 }
 
 
@@ -207,12 +207,12 @@ def _conjunction_size(feature_indices: list[Any], rule: str, is_conjunctive: boo
 
 def _conjunction_bucket(rule_size: int) -> str:
     if rule_size <= 1:
-        return "size 1"
+        return "size_1"
     if rule_size == 2:
-        return "size 2"
+        return "size_2"
     if rule_size == 3:
-        return "size 3"
-    return "size 4+"
+        return "size_3"
+    return "size_4_plus"
 
 
 def _role_quality_key(primary_role: str, quality_flags: list[str]) -> str:
@@ -406,9 +406,9 @@ def _empty_feature_summary(
         "role_quality_counts": {key: 0 for key in ROLE_QUALITY_KEYS},
         "primary_role_counts": {role: 0 for role in _PRIMARY_ROLES},
         "quality_flag_counts": {flag: 0 for flag in _QUALITY_FLAGS},
-        "conjunction_counts": {"size 1": 0, "size 2": 0, "size 3": 0, "size 4+": 0, "total": 0},
+        "conjunction_counts": {"size_1": 0, "size_2": 0, "size_3": 0, "size_4_plus": 0, "total": 0},
         "rule_ids_by_role_quality": {key: [] for key in ROLE_QUALITY_KEYS},
-        "rule_ids_by_conjunction_size": {"size 1": [], "size 2": [], "size 3": [], "size 4+": []},
+        "rule_ids_by_conjunction_size": {"size_1": [], "size_2": [], "size_3": [], "size_4_plus": []},
         "role_source_counts": {
             "ce_metadata": 0,
             "rule_metadata": 0,
@@ -822,7 +822,7 @@ class AlternativeFeatureSummaryPlotRenderer(PlotRenderer):
                     y=0.5,
                     showarrow=False,
                 )
-            for bucket in ("size 1", "size 2", "size 3", "size 4+"):
+            for bucket in ("size_1", "size_2", "size_3", "size_4_plus"):
                 raw_counts = [
                     int(summary["conjunction_counts"].get(bucket, 0)) for summary in summaries
                 ]

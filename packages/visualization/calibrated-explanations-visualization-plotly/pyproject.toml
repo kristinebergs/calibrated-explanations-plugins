@@ -16,6 +16,10 @@ dependencies = [
 plotly = [
     "plotly>=5.18",
 ]
+live = [
+    "plotly>=5.18",
+    "dash>=2.14",
+]
 
 [project.entry-points."calibrated_explanations.plugins"]
 plotly_visualization = "ce_visualization_plotly.plugin:PlotlyVisualizationBootstrap"
@@ -24,11 +28,13 @@ plotly_visualization = "ce_visualization_plotly.plugin:PlotlyVisualizationBootst
 uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotBuilder"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotBuilder"
 alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotBuilder"
+instance_workspace = "ce_visualization_plotly.instance_workspace:InstanceWorkspaceDashboardBuilder"
 
 [project.entry-points."calibrated_explanations.plugins.plot_renderers"]
 uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotRenderer"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotRenderer"
 alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotRenderer"
+instance_workspace = "ce_visualization_plotly.instance_workspace:InstanceWorkspaceDashboardRenderer"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ce_visualization_plotly"]
