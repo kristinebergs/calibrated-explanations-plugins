@@ -828,29 +828,80 @@ def add_marker_trace(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) 
     target_metadata = dict(artifact.get("target_metadata", {}) or {})
     target_kind = target_metadata.get("target_kind")
     if target_kind == "class":
-        symbols = ["circle", "x", "square", "triangle-up", "triangle-down", "diamond", "cross", "star", "hexagon"]
+        symbols = [
+            "circle",
+            "x",
+            "square",
+            "triangle-up",
+            "triangle-down",
+            "diamond",
+            "cross",
+            "star",
+            "hexagon",
+        ]
         colors = ["#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b", "#17becf", "#7f7f7f"]
         targets = list(target_metadata.get("targets", ()))
+        target_styles = {
+            str(target): {
+                "color": colors[index % len(colors)],
+                "symbol": symbols[index % len(symbols)],
+                "label": target_metadata.get("target_labels", {}).get(str(target), f"Y = {target}"),
+            }
+            for index, target in enumerate(targets)
+        }
         for index, target in enumerate(targets):
-            selected = [marker for marker in markers if str(marker.get("metadata", {}).get("target")) == str(target)]
-            if not selected:
-                continue
+            style = target_styles[str(target)]
             fig.add_trace(
                 go.Scatter(
-                    x=[marker["x"] for marker in selected],
-                    y=[marker["y"] for marker in selected],
+                    x=[None],
+                    y=[None],
                     mode="markers",
                     marker={
-                        "size": [marker["marker_size"] for marker in selected],
-                        "color": colors[index % len(colors)],
-                        "symbol": symbols[index % len(symbols)],
+                        "size": 10,
+                        "color": style["color"],
+                        "symbol": style["symbol"],
                         "line": {"color": "white", "width": 1},
                     },
-                    text=[marker["hover"] for marker in selected],
-                    hovertemplate="%{text}<extra></extra>",
-                    name=target_metadata.get("target_labels", {}).get(str(target), f"Y = {target}"),
+                    hoverinfo="skip",
+                    name=style["label"],
+                    meta={"trace_kind": "target-legend", "target": target},
                 )
             )
+        sorted_markers = sorted(
+            markers,
+            key=lambda marker: (
+                -float(marker.get("marker_size", 0.0)),
+                -int(marker.get("count", 0)),
+                str(marker.get("metadata", {}).get("target")),
+                int(marker.get("instance_indices", [0])[0]),
+            ),
+        )
+        marker_symbols = [
+            target_styles[str(marker.get("metadata", {}).get("target"))]["symbol"]
+            for marker in sorted_markers
+        ]
+        marker_colors = [
+            target_styles[str(marker.get("metadata", {}).get("target"))]["color"]
+            for marker in sorted_markers
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=[marker["x"] for marker in sorted_markers],
+                y=[marker["y"] for marker in sorted_markers],
+                mode="markers",
+                marker={
+                    "size": [marker["marker_size"] for marker in sorted_markers],
+                    "color": marker_colors,
+                    "symbol": marker_symbols,
+                    "line": {"color": "white", "width": 1},
+                },
+                text=[marker["hover"] for marker in sorted_markers],
+                hovertemplate="%{text}<extra></extra>",
+                showlegend=False,
+                name="instances",
+                meta={"trace_kind": "instances", "draw_order": "marker_size_desc"},
+            )
+        )
         return
 
     marker_color: Any = [marker["count"] for marker in markers]

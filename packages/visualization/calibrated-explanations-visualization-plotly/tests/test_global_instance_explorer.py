@@ -197,6 +197,19 @@ def _global_thresholded_regression_payload():
     }
 
 
+def _overlapping_class_payload():
+    return {
+        "proba": [[0.2, 0.8], [0.2, 0.8], [0.2, 0.8], [0.2, 0.8]],
+        "low": [[0.1, 0.7], [0.1, 0.7], [0.1, 0.7], [0.1, 0.7]],
+        "high": [[0.3, 0.9], [0.3, 0.9], [0.3, 0.9], [0.3, 0.9]],
+        "uncertainty": [[0.2, 0.2], [0.2, 0.2], [0.2, 0.2], [0.2, 0.2]],
+        "y": [0, 0, 0, 1],
+        "is_regularized": True,
+        "threshold": None,
+        "class_labels": {0: 0, 1: 1},
+    }
+
+
 def test_registration_and_trusted_style_resolution(monkeypatch):
     _load_plugin(monkeypatch)
     registry.mark_plot_builder_trusted(BUILDER_ID)
@@ -391,9 +404,12 @@ def test_global_payload_with_targets_uses_target_symbols(monkeypatch):
     assert artifact["axis_metadata"]["x_label"] == "Probability of Y = 1"
     assert artifact["target_metadata"]["target_kind"] == "class"
     assert artifact["target_metadata"]["targets"] == (0, 1)
-    target_traces = result.figure.traces[4:]
-    assert [trace.kwargs["name"] for trace in target_traces] == ["Y = 0", "Y = 1"]
-    assert target_traces[0].kwargs["marker"]["symbol"] != target_traces[1].kwargs["marker"]["symbol"]
+    legend_traces = result.figure.traces[4:6]
+    instance_trace = result.figure.traces[6]
+    assert [trace.kwargs["name"] for trace in legend_traces] == ["Y = 0", "Y = 1"]
+    assert legend_traces[0].kwargs["marker"]["symbol"] != legend_traces[1].kwargs["marker"]["symbol"]
+    assert instance_trace.kwargs["name"] == "instances"
+    assert instance_trace.kwargs["showlegend"] is False
 
 
 def test_global_regression_payload_with_targets_uses_target_color(monkeypatch):
@@ -439,10 +455,31 @@ def test_thresholded_regression_targets_become_event_classes(monkeypatch):
         "0": "Y >= 20.0",
         "1": "Y < 20.0",
     }
-    assert [trace.kwargs["name"] for trace in result.figure.traces[4:]] == [
+    assert [trace.kwargs["name"] for trace in result.figure.traces[4:6]] == [
         "Y >= 20.0",
         "Y < 20.0",
     ]
+
+
+def test_overlapping_class_markers_draw_largest_symbol_first(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(
+        None,
+        payload=_overlapping_class_payload(),
+        position_precision=2,
+    )
+
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    assert sorted(marker["count"] for marker in artifact["marker_records"]) == [1, 3]
+    instance_trace = result.figure.traces[-1]
+    assert instance_trace.kwargs["meta"]["draw_order"] == "marker_size_desc"
+    assert instance_trace.kwargs["marker"]["size"][0] > instance_trace.kwargs["marker"]["size"][1]
+    assert "Instances: 3" in instance_trace.kwargs["text"][0]
+    assert "Instances: 1" in instance_trace.kwargs["text"][1]
 
 
 def test_wrap_explainer_plot_invokes_global_instance_explorer_with_targets(monkeypatch):
@@ -490,7 +527,7 @@ def test_wrap_explainer_plot_invokes_global_instance_explorer_with_targets(monke
     assert result_without_targets.artifact["target_metadata"]["provided"] is False
     assert result.artifact["artifact_type"] == STYLE_ID
     assert result.artifact["target_metadata"]["target_kind"] == "class"
-    assert result.figure.traces[-1].kwargs["name"].startswith("Y = ")
+    assert result.figure.traces[-1].kwargs["name"] == "instances"
     assert result_without_targets.figure.shown is True
     assert result.figure.shown is True
 
