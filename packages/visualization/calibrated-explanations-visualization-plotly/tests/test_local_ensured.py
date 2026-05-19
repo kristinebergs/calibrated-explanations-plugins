@@ -223,6 +223,30 @@ def _dummy_alternative_explanation(*, rules: dict | None = None, regression: boo
     return collection
 
 
+def _subset_rules(rules: dict, indexes: list[int]) -> dict:
+    subset = {}
+    for key, values in rules.items():
+        if isinstance(values, list) and len(values) == len(rules["rule"]):
+            subset[key] = [values[index] for index in indexes]
+        else:
+            subset[key] = values
+    return subset
+
+
+def _dummy_conjunctive_alternative_explanation() -> SimpleNamespace:
+    rules = _base_alternative_rules()
+    conjunctive_rules = _subset_rules(rules, [0, 1, 2, 3])
+    conjunctive_rules["feature"][3] = [0, 3]
+    conjunctive_rules["rule"][3] = "age <= 40 AND risk <= 0.5"
+    conjunctive_rules["is_conjunctive"][3] = True
+    explanation = _dummy_alternative_explanation(rules=rules)
+    local = explanation.explanations[0]
+    local.conjunctive_rules = conjunctive_rules
+    local.has_conjunctive_rules = True
+    local.get_rules = lambda: conjunctive_rules
+    return explanation
+
+
 def test_canonical_registration_alias_and_trusted_resolution(monkeypatch):
     _load_plugin(monkeypatch)
     registry.mark_plot_builder_trusted(BUILDER_ID)
@@ -306,6 +330,7 @@ def test_compact_rule_hover_shows_only_requested_fields(monkeypatch):
     assert "Prediction:" in hover_text
     assert "Uncertainty:" in hover_text
     assert "Interval:" in hover_text
+    assert "Conjunction size:" in hover_text
     assert "Feature:" not in hover_text
     assert "Delta prediction:" not in hover_text
     assert "Rank:" not in hover_text
@@ -343,6 +368,96 @@ def test_role_priority_prefers_ensured_then_pareto(monkeypatch):
     assert ensured_point["explanation_role"] == "ensured"
     assert ensured_point["role_source"] == "rule_metadata"
     assert pareto_only_point["explanation_role"] == "pareto"
+
+
+def test_role_membership_uses_alternative_explanation_filters(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _base_alternative_rules()
+    rules["is_ensured"] = [False, False, False, False]
+    rules["is_pareto"] = [False, False, False, False]
+    rules["is_counterfactual"] = [False, False, False, False]
+    rules["is_semifactual"] = [False, False, False, False]
+    rules["is_counterpotential"] = [False, False, False, False]
+    explanation = _dummy_alternative_explanation(rules=rules)
+    local = explanation.explanations[0]
+    calls = []
+
+    def filtered(indexes):
+        return SimpleNamespace(get_rules=lambda: _subset_rules(rules, indexes))
+
+    def pareto(*, include_potential=True, copy=True, pareto_cost="uncertainty_width"):
+        calls.append(("pareto", include_potential, copy, pareto_cost))
+        return filtered([1])
+
+    def semi(*, only_ensured=False, include_potential=True, copy=True):
+        calls.append(("semi", only_ensured, include_potential, copy))
+        return filtered([0])
+
+    def super_(*, only_ensured=False, include_potential=True, copy=True):
+        calls.append(("super", only_ensured, include_potential, copy))
+        return filtered([3])
+
+    def counter(*, only_ensured=False, include_potential=True, copy=True):
+        calls.append(("counter", only_ensured, include_potential, copy))
+        return filtered([2])
+
+    local.pareto = pareto
+    local.semi = semi
+    local.super = super_
+    local.counter = counter
+
+    artifact = plugin.build(_context(explanation, filter_top=4, pareto_cost="rule_size"))
+    points = {point["index"]: point for point in artifact["rule_points"]}
+
+    assert points[1]["is_pareto"] is True
+    assert points[0]["is_semifactual"] is True
+    assert points[3]["is_counterpotential"] is True
+    assert points[2]["is_counterfactual"] is True
+    assert points[1]["role_source"] == "ce_metadata"
+    assert ("pareto", True, True, "rule_size") in calls
+    assert ("semi", False, True, True) in calls
+    assert ("super", False, True, True) in calls
+    assert ("counter", False, True, True) in calls
+
+
+def test_role_membership_maps_conjunctive_filtered_rules(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    explanation = _dummy_conjunctive_alternative_explanation()
+    local = explanation.explanations[0]
+    rules = local.conjunctive_rules
+
+    def filtered(indexes):
+        filtered_rules = _subset_rules(rules, indexes)
+        filtered_rules["feature"] = [
+            list(reversed(feature)) if isinstance(feature, list) else feature
+            for feature in filtered_rules["feature"]
+        ]
+        filtered_rules["rule"] = [
+            str(rule).replace(" AND ", " & ") for rule in filtered_rules["rule"]
+        ]
+        return SimpleNamespace(
+            has_conjunctive_rules=True,
+            conjunctive_rules=MappingProxyType(filtered_rules),
+            get_rules=lambda: filtered_rules,
+        )
+
+    local.pareto = lambda **_kwargs: filtered([3])
+    local.semi = lambda **_kwargs: filtered([0])
+    local.super = lambda **_kwargs: filtered([1])
+    local.counter = lambda **_kwargs: filtered([2])
+
+    artifact = plugin.build(_context(explanation, filter_top=4))
+    points = {point["index"]: point for point in artifact["rule_points"]}
+
+    assert points[3]["is_conjunctive"] is True
+    assert points[3]["conjunction_size"] == 2
+    assert points[3]["is_pareto"] is True
+    assert points[0]["is_semifactual"] is True
+    assert points[1]["is_counterpotential"] is True
+    assert points[2]["is_counterfactual"] is True
+    assert points[3]["role_source"] == "ce_metadata"
 
 
 def test_renderer_returns_plotly_figure_and_default_arrows(monkeypatch):
@@ -449,13 +564,88 @@ def test_feature_checklist_true_renders_searchable_shell_and_trace_registry(monk
 
     feature_registry = result.figure.layout["meta"]["feature_control_registry"]
     assert feature_registry
-    assert "Search features" in result.extras["html"]
+    assert "Filter by searched feature (regex)" in result.extras["html"]
+    assert "new RegExp(rawValue, 'i')" in result.extras["html"]
+    assert "Invalid regex" in result.extras["html"]
+    assert "applySelection();" in result.extras["html"]
     assert 'data-feature-action="all"' in result.extras["html"]
-    assert 'data-feature-action="topk"' in result.extras["html"]
+    assert 'data-feature-action="ensured"' in result.extras["html"]
+    assert 'data-feature-action="pareto"' in result.extras["html"]
+    assert 'data-role-filter="counter" checked' in result.extras["html"]
+    assert 'data-role-filter="semi" checked' in result.extras["html"]
+    assert 'data-role-filter="super" checked' in result.extras["html"]
+    assert "rolePreset = action" in result.extras["html"]
+    assert "rolePreset === 'pareto'" in result.extras["html"]
+    assert "return true;" in result.extras["html"]
+    assert 'data-feature-action="topk"' not in result.extras["html"]
     assert all(item["default_selected"] for item in feature_registry)
 
 
-def test_feature_checklist_defaults_to_top_k_for_large_feature_sets(monkeypatch):
+def test_feature_checklist_rule_traces_expose_role_filter_metadata(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _base_alternative_rules()
+    rules["is_ensured"] = [True, False, False, False]
+    rules["is_pareto"] = [False, True, False, False]
+    rules["is_counterfactual"] = [True, False, False, False]
+    rules["is_semifactual"] = [False, False, True, False]
+    rules["is_counterpotential"] = [False, False, False, True]
+    context = _context(
+        _dummy_alternative_explanation(rules=rules),
+        filter_top=4,
+        feature_checklist=True,
+    )
+
+    result = plugin.render(plugin.build(context), context=context)
+
+    role_metadata = [
+        trace.kwargs.get("meta", {}).get("roles", {})
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
+    ]
+    assert any(roles.get("ensured") and roles.get("counter") for roles in role_metadata)
+    assert any(roles.get("pareto") for roles in role_metadata)
+    assert any(roles.get("semi") for roles in role_metadata)
+    assert any(roles.get("super") for roles in role_metadata)
+
+
+def test_feature_checklist_arrow_traces_expose_role_filter_metadata(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _base_alternative_rules()
+    rules["feature"] = [0, 0, 0, 0]
+    rules["is_ensured"] = [False, False, False, False]
+    rules["is_pareto"] = [True, False, False, False]
+    rules["is_counterfactual"] = [False, True, False, False]
+    rules["is_semifactual"] = [False, False, True, False]
+    rules["is_counterpotential"] = [False, False, False, True]
+    context = _context(
+        _dummy_alternative_explanation(rules=rules),
+        filter_top=4,
+        feature_checklist=True,
+        side_panel=True,
+    )
+
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    arrow_traces = [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "arrows"
+    ]
+    assert len(arrow_traces) >= 4
+    arrow_roles = [trace.kwargs.get("meta", {}).get("roles", {}) for trace in arrow_traces]
+    assert any(roles.get("pareto") for roles in arrow_roles)
+    assert any(roles.get("counter") for roles in arrow_roles)
+    assert any(roles.get("semi") for roles in arrow_roles)
+    assert any(roles.get("super") for roles in arrow_roles)
+    assert "meta.trace_kind === 'arrows' && !rolesAllowed" in result.extras["html"]
+
+
+def test_feature_checklist_defaults_to_all_for_large_feature_sets(monkeypatch):
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
@@ -469,14 +659,69 @@ def test_feature_checklist_defaults_to_top_k_for_large_feature_sets(monkeypatch)
 
     feature_registry = result.figure.layout["meta"]["feature_control_registry"]
     assert len(feature_registry) == 10
-    assert sum(1 for item in feature_registry if item["default_selected"]) == 8
+    assert all(item["default_selected"] for item in feature_registry)
     hidden_rule_traces = [
         trace
         for trace in result.figure.traces
         if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
         and trace.kwargs.get("visible") is False
     ]
-    assert hidden_rule_traces
+    assert not hidden_rule_traces
+
+
+def test_rule_marker_size_corresponds_to_conjunction_size(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_alternative_explanation(), filter_top=4)
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    conjunctive_point = next(point for point in artifact["rule_points"] if point["is_conjunctive"])
+    single_point = next(point for point in artifact["rule_points"] if not point["is_conjunctive"])
+    assert conjunctive_point["conjunction_size"] == 2
+    assert single_point["conjunction_size"] == 1
+
+    rule_traces = [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
+    ]
+    rendered_sizes = [
+        size
+        for trace in rule_traces
+        for size in trace.kwargs["marker"]["size"]
+    ]
+    assert 9 in rendered_sizes
+    assert 14 in rendered_sizes
+
+
+def test_rule_marker_size_scales_to_capped_max_conjunction_size(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _base_alternative_rules()
+    rules["feature"][3] = [0, 1, 2]
+    rules["rule"][3] = "age <= 40 AND income <= 39000 AND segment = A"
+    context = _context(_dummy_alternative_explanation(rules=rules), filter_top=4)
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    three_part = next(point for point in artifact["rule_points"] if point["conjunction_size"] == 3)
+    assert three_part["is_conjunctive"] is True
+
+    rule_traces = [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
+    ]
+    rendered_sizes = [
+        size
+        for trace in rule_traces
+        for size in trace.kwargs["marker"]["size"]
+    ]
+    assert max(rendered_sizes) == 14
+    assert min(rendered_sizes) == 9
 
 
 def test_side_panel_false_has_no_table(monkeypatch):
@@ -534,7 +779,7 @@ def test_side_panel_roles_include_all_active_flags(monkeypatch):
 
     first_rule = artifact["rule_points"][0]
     detail_rows = result.figure.layout["meta"]["side_panel_registry"][first_rule["id"]]
-    assert "Ensured, Pareto, Counterfactual" in detail_rows["body_html"]
+    assert "Ensured, Pareto, Counter" in detail_rows["body_html"]
 
 
 def test_sort_by_is_deterministic(monkeypatch):
@@ -564,7 +809,7 @@ def test_html_export_when_context_path_is_supplied(monkeypatch, tmp_path):
 
     assert result.saved_paths[0].endswith("ensured_export.html")
     saved_html = Path(result.saved_paths[0]).read_text(encoding="utf-8")
-    assert "Search features" in saved_html
+    assert "Filter by searched feature (regex)" in saved_html
     assert "Rule details" in saved_html
     assert "plotly-graph-div" in saved_html
 

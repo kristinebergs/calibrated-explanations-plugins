@@ -91,8 +91,9 @@ Supported ensured-specific options:
 
 When `feature_checklist=True`, the renderer wraps the Plotly figure in a small
 HTML control shell with a search box, scrollable feature toggles, and All,
-None, Top-k, and Reset actions. Feature visibility defaults to the top 8 shown
-feature groups so larger ensured plots remain usable.
+None, and Reset actions. Feature visibility defaults to all shown feature
+groups. The search box filters the plot by searched feature and accepts regular
+expressions.
 
 When `side_panel=True`, a right-side text detail panel starts empty and updates
 when a rule point is clicked. The panel shows the selected rule, feature,

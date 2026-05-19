@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
+from collections.abc import Mapping
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,6 @@ _RULE_FALLBACK = "Rule condition unavailable"
 _ORIGINAL_COLOR = "#d62728"
 _RULE_COLOR = "#1f77b4"
 _ARROW_COLOR = "rgba(110, 110, 110, 0.75)"
-_DEFAULT_FEATURE_CONTROL_LIMIT = 8
 _EMPTY_PANEL_TITLE = "Rule details"
 _EMPTY_PANEL_BODY = "Click a rule point to inspect the selected rule and feature details."
 
@@ -128,6 +128,35 @@ def _feature_name(collection: Any, feature: Any) -> str | None:
     return str(feature)
 
 
+def _conjunction_size(feature: Any, rule: str, is_conjunctive: bool) -> int:
+    if isinstance(feature, np.ndarray):
+        return max(1, int(feature.size))
+    if isinstance(feature, (list, tuple, set)):
+        return max(1, len(feature))
+    if not is_conjunctive:
+        return 1
+    normalised_rule = str(rule or "").replace("& \n", " AND ").replace("\n", " ")
+    if " AND " in normalised_rule:
+        return max(1, len([part for part in normalised_rule.split(" AND ") if part.strip()]))
+    if " & " in normalised_rule:
+        return max(1, len([part for part in normalised_rule.split(" & ") if part.strip()]))
+    return 2
+
+
+def _marker_size_for_conjunction(
+    point: dict[str, Any],
+    options: dict[str, Any],
+    max_conjunction_size: int,
+) -> float:
+    minimum = float(options.get("conjunction_marker_size_min", 9))
+    maximum = float(options.get("conjunction_marker_size_max", 14))
+    size = int(point.get("conjunction_size", point.get("metadata", {}).get("conjunction_size", 1)))
+    if maximum <= minimum or max_conjunction_size <= 1 or size <= 1:
+        return minimum
+    scale = (min(size, max_conjunction_size) - 1) / (max_conjunction_size - 1)
+    return minimum + scale * (maximum - minimum)
+
+
 def _mode_metadata(explanation: Any, local_explanation: Any) -> dict[str, Any]:
     batch_metadata = dict(getattr(explanation, "batch_metadata", {}) or {})
     get_mode = getattr(local_explanation, "get_mode", None)
@@ -154,9 +183,9 @@ def _resolve_alternative_rules(local_explanation: Any) -> dict[str, Any]:
     else:
         get_rules = getattr(local_explanation, "get_rules", None)
         rules = get_rules() if callable(get_rules) else getattr(local_explanation, "rules", None)
-    if not isinstance(rules, dict):
+    if not isinstance(rules, Mapping):
         raise ValueError("The explanation does not expose alternative-rule data.")
-    return rules
+    return dict(rules)
 
 
 def _finite_interval(
@@ -273,6 +302,134 @@ def _resolve_role_priority(flags: dict[str, bool]) -> str:
     return "unknown"
 
 
+def _rule_identity_value(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return tuple(_rule_identity_value(item) for item in value.ravel().tolist())
+    if isinstance(value, (list, tuple)):
+        return tuple(_rule_identity_value(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), _rule_identity_value(item)) for key, item in value.items()))
+    if isinstance(value, (np.integer, np.floating, np.bool_)):
+        return value.item()
+    return value
+
+
+def _rule_numeric_identity_value(value: Any) -> Any:
+    if isinstance(value, (np.integer, np.floating)):
+        value = value.item()
+    if isinstance(value, float):
+        return round(value, 12)
+    return _rule_identity_value(value)
+
+
+def _rule_feature_identity_value(value: Any) -> Any:
+    normalised = _rule_identity_value(value)
+    if isinstance(normalised, tuple):
+        return tuple(sorted(normalised, key=repr))
+    return normalised
+
+
+def _rule_identity(rules: dict[str, Any], rule_index: int) -> tuple[Any, ...]:
+    return tuple(
+        _rule_identity_value(_sequence_get(rules.get(key, ()), rule_index))
+        for key in ("rule", "feature", "predict", "predict_low", "predict_high")
+    )
+
+
+def _rule_relaxed_identity(rules: dict[str, Any], rule_index: int) -> tuple[Any, ...]:
+    return (
+        _rule_feature_identity_value(_sequence_get(rules.get("feature", ()), rule_index)),
+        _rule_numeric_identity_value(_sequence_get(rules.get("predict", ()), rule_index)),
+        _rule_numeric_identity_value(_sequence_get(rules.get("predict_low", ()), rule_index)),
+        _rule_numeric_identity_value(_sequence_get(rules.get("predict_high", ()), rule_index)),
+        _rule_identity_value(_sequence_get(rules.get("is_conjunctive", ()), rule_index)),
+    )
+
+
+def _rule_indexes_matching_filtered_rules(
+    original_rules: dict[str, Any],
+    filtered_rules: dict[str, Any],
+) -> set[int]:
+    filtered_strict_identities = {
+        _rule_identity(filtered_rules, index)
+        for index in range(len(filtered_rules.get("rule", ())))
+    }
+    filtered_relaxed_identities = {
+        _rule_relaxed_identity(filtered_rules, index)
+        for index in range(len(filtered_rules.get("rule", ())))
+    }
+    return {
+        index
+        for index in range(len(original_rules.get("rule", ())))
+        if _rule_identity(original_rules, index) in filtered_strict_identities
+        or _rule_relaxed_identity(original_rules, index) in filtered_relaxed_identities
+    }
+
+
+def _filtered_rules_from_role_method(
+    local_explanation: Any,
+    role_name: str,
+    options: dict[str, Any],
+) -> dict[str, Any] | None:
+    method_names = {
+        "ensured": ("ensured", "ensured_explanations"),
+        "pareto": ("pareto", "pareto_explanations"),
+        "counterfactual": ("counter", "counter_explanations"),
+        "counterpotential": ("super", "super_explanations"),
+        "semifactual": ("semi", "semi_explanations"),
+    }
+    for method_name in method_names[role_name]:
+        method = getattr(local_explanation, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            if role_name == "pareto":
+                filtered = method(
+                    include_potential=True,
+                    copy=True,
+                    pareto_cost=str(options.get("pareto_cost", "uncertainty_width")),
+                )
+            elif role_name == "ensured":
+                filtered = method(include_potential=True, copy=True)
+            else:
+                filtered = method(
+                    only_ensured=False,
+                    include_potential=True,
+                    copy=True,
+                )
+        except TypeError:
+            continue
+        try:
+            filtered_rules = _resolve_alternative_rules(filtered)
+        except ValueError:
+            continue
+        if filtered_rules:
+            return filtered_rules
+    return None
+
+
+def _resolve_role_memberships(
+    local_explanation: Any,
+    rules: dict[str, Any],
+    options: dict[str, Any],
+) -> tuple[dict[str, set[int]], set[str]]:
+    memberships: dict[str, set[int]] = {}
+    available_roles: set[str] = set()
+    for role_name in (
+        "ensured",
+        "pareto",
+        "counterfactual",
+        "counterpotential",
+        "semifactual",
+    ):
+        filtered_rules = _filtered_rules_from_role_method(local_explanation, role_name, options)
+        if filtered_rules is None:
+            continue
+        memberships[role_name] = _rule_indexes_matching_filtered_rules(rules, filtered_rules)
+        available_roles.add(role_name)
+    return memberships, available_roles
+
+
 def _role_source_from_flags(source_hits: dict[str, bool], heuristic_used: bool) -> str:
     if source_hits.get("ce_metadata"):
         return "ce_metadata"
@@ -292,6 +449,8 @@ def _resolve_rule_role(
     point_prediction: float,
     point_uncertainty: float,
     mode_metadata: dict[str, Any],
+    role_memberships: dict[str, set[int]] | None = None,
+    role_membership_sources: set[str] | None = None,
 ) -> dict[str, Any]:
     flags = {
         "counterfactual": False,
@@ -306,6 +465,13 @@ def _resolve_rule_role(
     }
     heuristic_used = False
 
+    membership_sources = set(role_membership_sources or ())
+    if membership_sources:
+        for role_name in flags:
+            if role_name in membership_sources:
+                flags[role_name] = rule_index in (role_memberships or {}).get(role_name, set())
+        source_hits["ce_metadata"] = True
+
     rule_key_map = {
         "counterfactual": ("is_counterfactual", "counterfactual"),
         "counterpotential": ("is_counterpotential", "counterpotential"),
@@ -314,6 +480,8 @@ def _resolve_rule_role(
         "pareto": ("is_pareto", "pareto"),
     }
     for role_name, candidate_keys in rule_key_map.items():
+        if role_name in membership_sources:
+            continue
         for candidate_key in candidate_keys:
             values = rules.get(candidate_key)
             if values is None:
@@ -324,7 +492,7 @@ def _resolve_rule_role(
                 source_hits["rule_metadata"] = True
                 break
 
-    if not any(flags.values()):
+    if not any(flags.values()) and not membership_sources:
         if point_uncertainty <= original["uncertainty"] + 1e-12:
             flags["ensured"] = True
             heuristic_used = True
@@ -378,6 +546,7 @@ def build_hover_text(item: dict[str, Any], options: dict[str, Any]) -> str:
         return "<br>".join(lines)
 
     lines = [f"Rule: {item['rule']}"]
+    lines.append(f"Conjunction size: {int(item.get('conjunction_size', 1))}")
     lines.append(f"Prediction: {item['prediction']:.6g}")
     lines.append(f"Uncertainty: {item['uncertainty']:.6g}")
     if item.get("low") is not None and item.get("high") is not None:
@@ -501,6 +670,11 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
 
         default_rank_order = _ranked_rule_indices(local_explanation, rules, prediction)
         rank_by_index = {rule_index: rank + 1 for rank, rule_index in enumerate(default_rank_order)}
+        role_memberships, role_membership_sources = _resolve_role_memberships(
+            local_explanation,
+            rules,
+            options,
+        )
 
         collection = _collection_for(local_explanation)
         rule_points: list[dict[str, Any]] = []
@@ -551,10 +725,14 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
                 point_prediction=float(point_prediction),
                 point_uncertainty=uncertainty,
                 mode_metadata=mode_metadata,
+                role_memberships=role_memberships,
+                role_membership_sources=role_membership_sources,
             )
             if role_metadata["role_source"] == "unavailable":
                 missing_role_metadata_count += 1
 
+            is_conjunctive = bool(_sequence_get(conjunctive_values, rule_index, False))
+            conjunction_size = _conjunction_size(feature_index, rule_condition, is_conjunctive)
             point = {
                 "id": f"rule-point-{rule_index}",
                 "kind": "rule",
@@ -572,12 +750,15 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
                 "delta_prediction": float(point_prediction - original["prediction"]),
                 "delta_uncertainty": float(uncertainty - original["uncertainty"]),
                 "rank": rank_by_index[rule_index],
+                "is_conjunctive": is_conjunctive,
+                "conjunction_size": conjunction_size,
                 "metadata": {
                     "group_key": feature_name or str(feature_index) if feature_index is not None else "unknown",
                     "group_label": feature_name or f"Feature {feature_index}"
                     if feature_index is not None
                     else "Unknown feature",
-                    "is_conjunctive": bool(_sequence_get(conjunctive_values, rule_index, False)),
+                    "is_conjunctive": is_conjunctive,
+                    "conjunction_size": conjunction_size,
                     "rule_metadata_missing": not has_rule_metadata,
                 },
                 **role_metadata,
@@ -619,6 +800,7 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
                 "y1": point["uncertainty"],
                 "delta_prediction": point["delta_prediction"],
                 "delta_uncertainty": point["delta_uncertainty"],
+                "roles": _rule_point_roles(point),
                 "metadata": {
                     "feature_name": point.get("feature_name"),
                     "feature_index": point.get("feature_index"),
@@ -770,6 +952,27 @@ def add_original_point(fig: Any, artifact: PlotArtifact, options: dict[str, Any]
     return _trace_count(fig) - 1
 
 
+def _rule_point_roles(point: dict[str, Any]) -> dict[str, bool]:
+    return {
+        "ensured": bool(point.get("is_ensured", False)),
+        "pareto": bool(point.get("is_pareto", False)),
+        "counter": bool(point.get("is_counterfactual", False)),
+        "semi": bool(point.get("is_semifactual", False)),
+        "super": bool(point.get("is_counterpotential", False)),
+    }
+
+
+def _role_signature(point: dict[str, Any]) -> tuple[bool, bool, bool, bool, bool]:
+    roles = _rule_point_roles(point)
+    return (
+        roles["ensured"],
+        roles["pareto"],
+        roles["counter"],
+        roles["semi"],
+        roles["super"],
+    )
+
+
 def add_rule_points(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> dict[str, list[int]]:
     import plotly.graph_objects as go
 
@@ -786,24 +989,44 @@ def add_rule_points(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -
         if not points:
             continue
         feature_label = points[0].get("feature_name") or f"Feature {points[0].get('feature_index')}"
-        _add_trace(
-            fig,
-            go.Scatter(
-                x=[point.get("prediction") for point in points],
-                y=[point.get("uncertainty") for point in points],
-                mode="markers",
-                marker={"size": 10, "color": _RULE_COLOR},
-                text=[point.get("hover") for point in points],
-                customdata=[point.get("id") for point in points],
-                hovertemplate="%{text}<extra></extra>",
-                meta={"trace_kind": "rule-points", "feature_key": feature_key},
-                legendgroup=feature_key,
-                name=feature_label if show_feature_legend else "alternatives",
-                showlegend=show_feature_legend,
-            ),
-            side_panel=side_panel,
+        max_conjunction_size = max(
+            int(point.get("conjunction_size", point.get("metadata", {}).get("conjunction_size", 1)))
+            for point in artifact.get("rule_points", ())
         )
-        trace_indexes[feature_key] = [_trace_count(fig) - 1]
+        grouped_points: dict[tuple[bool, bool, bool, bool, bool], list[dict[str, Any]]] = {}
+        for point in points:
+            grouped_points.setdefault(_role_signature(point), []).append(point)
+
+        trace_indexes[feature_key] = []
+        for role_index, role_points in enumerate(grouped_points.values()):
+            _add_trace(
+                fig,
+                go.Scatter(
+                    x=[point.get("prediction") for point in role_points],
+                    y=[point.get("uncertainty") for point in role_points],
+                    mode="markers",
+                    marker={
+                        "size": [
+                            _marker_size_for_conjunction(point, options, max_conjunction_size)
+                            for point in role_points
+                        ],
+                        "color": _RULE_COLOR,
+                    },
+                    text=[point.get("hover") for point in role_points],
+                    customdata=[point.get("id") for point in role_points],
+                    hovertemplate="%{text}<extra></extra>",
+                    meta={
+                        "trace_kind": "rule-points",
+                        "feature_key": feature_key,
+                        "roles": _rule_point_roles(role_points[0]),
+                    },
+                    legendgroup=feature_key,
+                    name=feature_label if show_feature_legend else "alternatives",
+                    showlegend=show_feature_legend and role_index == 0,
+                ),
+                side_panel=side_panel,
+            )
+            trace_indexes[feature_key].append(_trace_count(fig) - 1)
     return trace_indexes
 
 
@@ -815,18 +1038,27 @@ def add_arrows(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> dic
 
     side_panel = bool(options.get("side_panel", False))
     feature_checklist = bool(options.get("feature_checklist", False))
-    grouped_arrows: dict[str, list[dict[str, Any]]] = {}
+    grouped_arrows: dict[tuple[str, tuple[bool, bool, bool, bool, bool]], list[dict[str, Any]]] = {}
     for arrow in artifact.get("arrows", ()): 
-        grouped_arrows.setdefault(str(arrow.get("feature_key", "unknown")), []).append(arrow)
+        roles = dict(arrow.get("roles", {}) or {})
+        signature = (
+            bool(roles.get("ensured", False)),
+            bool(roles.get("pareto", False)),
+            bool(roles.get("counter", False)),
+            bool(roles.get("semi", False)),
+            bool(roles.get("super", False)),
+        )
+        grouped_arrows.setdefault((str(arrow.get("feature_key", "unknown")), signature), []).append(arrow)
 
     trace_indexes: dict[str, list[int]] = {}
     if feature_checklist:
-        for feature_key, arrows in grouped_arrows.items():
+        for (feature_key, _signature), arrows in grouped_arrows.items():
             x_values: list[float | None] = []
             y_values: list[float | None] = []
             for arrow in arrows:
                 x_values.extend([arrow["x0"], arrow["x1"], None])
                 y_values.extend([arrow["y0"], arrow["y1"], None])
+            roles = dict(arrows[0].get("roles", {}) or {})
             _add_trace(
                 fig,
                 go.Scatter(
@@ -835,14 +1067,14 @@ def add_arrows(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> dic
                     mode="lines",
                     line={"color": _ARROW_COLOR, "width": 1},
                     hoverinfo="skip",
-                    meta={"trace_kind": "arrows", "feature_key": feature_key},
+                    meta={"trace_kind": "arrows", "feature_key": feature_key, "roles": roles},
                     legendgroup=feature_key,
                     name=f"{feature_key} arrows",
                     showlegend=False,
                 ),
                 side_panel=side_panel,
             )
-            trace_indexes[feature_key] = [_trace_count(fig) - 1]
+            trace_indexes.setdefault(feature_key, []).append(_trace_count(fig) - 1)
         return trace_indexes
 
     for arrow in artifact.get("arrows", ()): 
@@ -887,9 +1119,9 @@ def _active_role_labels(point: dict[str, Any]) -> list[str]:
     role_map = (
         ("is_ensured", "Ensured"),
         ("is_pareto", "Pareto"),
-        ("is_counterfactual", "Counterfactual"),
-        ("is_counterpotential", "Counterpotential"),
-        ("is_semifactual", "Semifactual"),
+        ("is_counterfactual", "Counter"),
+        ("is_counterpotential", "Super"),
+        ("is_semifactual", "Semi"),
     )
     for flag_name, label in role_map:
         if bool(point.get(flag_name, False)):
@@ -962,14 +1194,6 @@ def _set_trace_visible(fig: Any, index: int, visible: bool) -> None:
                 return
 
 
-def _feature_control_limit(options: dict[str, Any]) -> int:
-        raw_limit = options.get("feature_checklist_limit", _DEFAULT_FEATURE_CONTROL_LIMIT)
-        try:
-                return max(1, int(raw_limit))
-        except (TypeError, ValueError):
-                return _DEFAULT_FEATURE_CONTROL_LIMIT
-
-
 def _build_feature_control_registry(
         artifact: PlotArtifact,
         trace_registry: dict[str, Any],
@@ -981,8 +1205,6 @@ def _build_feature_control_registry(
         feature_groups = list(artifact.get("metadata", {}).get("feature_groups", ()))
         rule_trace_indexes = dict(trace_registry.get("rule_trace_indexes", {}) or {})
         arrow_trace_indexes = dict(trace_registry.get("arrow_trace_indexes", {}) or {})
-        limit = _feature_control_limit(options)
-
         registry: list[dict[str, Any]] = []
         for index, group in enumerate(feature_groups):
                 group_key = str(group.get("group_key"))
@@ -998,7 +1220,7 @@ def _build_feature_control_registry(
                                 "point_count": int(group.get("point_count", len(group.get("point_ids", ())))),
                                 "group_rank": int(group.get("group_rank", index)),
                                 "trace_indexes": trace_indexes,
-                                "default_selected": index < limit,
+                                "default_selected": True,
                         }
                 )
         return registry
@@ -1057,7 +1279,6 @@ def build_render_shell_html(
         show_panel = bool(options.get("side_panel", False))
         show_controls = bool(options.get("feature_checklist", False))
         empty_panel = build_side_panel_rows(artifact, options)
-        control_limit = _feature_control_limit(options)
 
         panel_markup = ""
         if show_panel:
@@ -1074,12 +1295,23 @@ def build_render_shell_html(
                         '<section class="ce-ensured-shell__controls">'
                         '<div class="ce-ensured-controls__header">Feature controls</div>'
                         '<input type="search" class="ce-ensured-controls__search" data-feature-search '
-                        'placeholder="Search features" />'
+                        'placeholder="Filter by searched feature (regex)" '
+                        'aria-label="Filter by searched feature using regex" />'
                         '<div class="ce-ensured-controls__actions">'
                         '<button type="button" data-feature-action="all">All</button>'
                         '<button type="button" data-feature-action="none">None</button>'
-                        f'<button type="button" data-feature-action="topk">Top {control_limit}</button>'
                         '<button type="button" data-feature-action="reset">Reset</button>'
+                        '<button type="button" data-feature-action="ensured">Ensured</button>'
+                        '<button type="button" data-feature-action="pareto">Pareto</button>'
+                        '<label class="ce-ensured-controls__role">'
+                        '<input type="checkbox" data-role-filter="counter" checked /> Counter'
+                        '</label>'
+                        '<label class="ce-ensured-controls__role">'
+                        '<input type="checkbox" data-role-filter="semi" checked /> Semi'
+                        '</label>'
+                        '<label class="ce-ensured-controls__role">'
+                        '<input type="checkbox" data-role-filter="super" checked /> Super'
+                        '</label>'
                         '</div>'
                         '<div class="ce-ensured-controls__summary" data-feature-summary></div>'
                         '<div class="ce-ensured-controls__list" data-feature-list></div>'
@@ -1100,6 +1332,7 @@ def build_render_shell_html(
     const summaryNode = shell.querySelector('[data-feature-summary]');
     const listNode = shell.querySelector('[data-feature-list]');
     const actionNodes = shell.querySelectorAll('[data-feature-action]');
+    const roleFilterNodes = shell.querySelectorAll('[data-role-filter]');
 
     function boot() {{
         if (!graphDiv || !graphDiv.data || !graphDiv.layout) {{
@@ -1116,6 +1349,9 @@ def build_render_shell_html(
             defaultSelected[item.group_key] = !!item.default_selected;
         }});
         let selected = Object.assign({{}}, defaultSelected);
+        const defaultRoleFilters = {{counter: true, semi: true, super: true}};
+        let roleFilters = Object.assign({{}}, defaultRoleFilters);
+        let rolePreset = null;
 
         function renderDetailPayload(payload) {{
             if (!detailTitle || !detailBody || !payload) {{
@@ -1145,13 +1381,77 @@ def build_render_shell_html(
             }});
         }}
 
+        function searchMatcher() {{
+            const rawValue = ((searchInput && searchInput.value) || '').trim();
+            if (!rawValue) {{
+                return {{
+                    active: false,
+                    valid: true,
+                    matches: function() {{ return true; }},
+                }};
+            }}
+            try {{
+                const regex = new RegExp(rawValue, 'i');
+                return {{
+                    active: true,
+                    valid: true,
+                    matches: function(label) {{ return regex.test(String(label || '')); }},
+                }};
+            }} catch (error) {{
+                return {{
+                    active: true,
+                    valid: false,
+                    matches: function() {{ return false; }},
+                }};
+            }}
+        }}
+
         function updateSummary() {{
             if (!summaryNode) {{
                 return;
             }}
             const total = featureRegistry.length;
+            const roleSuffix = rolePreset ? `; ${{rolePreset}} points` : '';
+            const matcher = searchMatcher();
+            if (matcher.active) {{
+                const matched = featureRegistry.filter((item) => matcher.matches(item.group_label || item.group_key)).length;
+                if (!matcher.valid) {{
+                    summaryNode.textContent = `Invalid regex; 0 of ${{total}} features visible`;
+                }} else {{
+                    summaryNode.textContent = `${{matched}} of ${{total}} features matched by search${{roleSuffix}}`;
+                }}
+                return;
+            }}
             const active = featureRegistry.filter((item) => selected[item.group_key]).length;
-            summaryNode.textContent = `${{active}} of ${{total}} features visible`;
+            summaryNode.textContent = `${{active}} of ${{total}} features visible${{roleSuffix}}`;
+        }}
+
+        function traceMeta(traceIndex) {{
+            const trace = graphDiv.data && graphDiv.data[traceIndex];
+            return (trace && trace.meta) || {{}};
+        }}
+
+        function rolesAllowed(roles) {{
+            const safeRoles = roles || {{}};
+            if (rolePreset === 'ensured' && !safeRoles.ensured) {{
+                return false;
+            }}
+            if (rolePreset === 'pareto' && !safeRoles.pareto) {{
+                return false;
+            }}
+            if (rolePreset === 'ensured' || rolePreset === 'pareto') {{
+                return true;
+            }}
+            if (safeRoles.counter && !roleFilters.counter) {{
+                return false;
+            }}
+            if (safeRoles.semi && !roleFilters.semi) {{
+                return false;
+            }}
+            if (safeRoles.super && !roleFilters.super) {{
+                return false;
+            }}
+            return true;
         }}
 
         function applySelection() {{
@@ -1165,12 +1465,36 @@ def build_render_shell_html(
                     nextVisible[index] = true;
                 }}
             }});
+            const matcher = searchMatcher();
             featureRegistry.forEach((item) => {{
-                if (!selected[item.group_key]) {{
+                const label = item.group_label || item.group_key;
+                const visibleBySearch = matcher.active ? matcher.matches(label) : !!selected[item.group_key];
+                if (!visibleBySearch) {{
                     return;
                 }}
-                (item.trace_indexes || []).forEach((traceIndex) => {{
+                const ruleTraceIndexes = (item.trace_indexes || []).filter((traceIndex) => {{
+                    const meta = traceMeta(traceIndex);
+                    return meta.trace_kind === 'rule-points';
+                }});
+                const visibleRuleTraceIndexes = ruleTraceIndexes.filter((traceIndex) => {{
+                    const meta = traceMeta(traceIndex);
+                    return rolesAllowed(meta.roles || {{}});
+                }});
+                visibleRuleTraceIndexes.forEach((traceIndex) => {{
                     if (traceIndex >= 0 && traceIndex < nextVisible.length) {{
+                        nextVisible[traceIndex] = true;
+                    }}
+                }});
+                const hasVisibleRules = visibleRuleTraceIndexes.length > 0;
+                (item.trace_indexes || []).forEach((traceIndex) => {{
+                    const meta = traceMeta(traceIndex);
+                    if (meta.trace_kind === 'rule-points') {{
+                        return;
+                    }}
+                    if (meta.trace_kind === 'arrows' && !rolesAllowed(meta.roles || {{}})) {{
+                        return;
+                    }}
+                    if (hasVisibleRules && traceIndex >= 0 && traceIndex < nextVisible.length) {{
                         nextVisible[traceIndex] = true;
                     }}
                 }});
@@ -1191,11 +1515,11 @@ def build_render_shell_html(
             if (!listNode) {{
                 return;
             }}
-            const filterValue = ((searchInput && searchInput.value) || '').trim().toLowerCase();
+            const matcher = searchMatcher();
             listNode.replaceChildren();
             featureRegistry.forEach((item) => {{
                 const label = String(item.group_label || item.group_key || 'Feature');
-                if (filterValue && !label.toLowerCase().includes(filterValue)) {{
+                if (matcher.active && !matcher.matches(label)) {{
                     return;
                 }}
                 const row = document.createElement('label');
@@ -1219,23 +1543,47 @@ def build_render_shell_html(
         }}
 
         if (searchInput) {{
-            searchInput.addEventListener('input', renderFeatureList);
+            searchInput.addEventListener('input', () => {{
+                renderFeatureList();
+                applySelection();
+            }});
         }}
         actionNodes.forEach((node) => {{
             node.addEventListener('click', () => {{
                 const action = node.getAttribute('data-feature-action');
                 if (action === 'all') {{
+                    rolePreset = null;
+                    roleFilters = Object.assign({{}}, defaultRoleFilters);
                     featureRegistry.forEach((item) => {{
                         selected[item.group_key] = true;
                     }});
                 }} else if (action === 'none') {{
+                    rolePreset = null;
                     featureRegistry.forEach((item) => {{
                         selected[item.group_key] = false;
                     }});
-                }} else if (action === 'topk' || action === 'reset') {{
+                }} else if (action === 'reset') {{
+                    rolePreset = null;
+                    roleFilters = Object.assign({{}}, defaultRoleFilters);
                     selected = Object.assign({{}}, defaultSelected);
+                }} else if (action === 'ensured' || action === 'pareto') {{
+                    rolePreset = action;
+                    featureRegistry.forEach((item) => {{
+                        selected[item.group_key] = true;
+                    }});
                 }}
+                roleFilterNodes.forEach((roleNode) => {{
+                    const filterName = roleNode.getAttribute('data-role-filter');
+                    roleNode.checked = !!roleFilters[filterName];
+                }});
                 renderFeatureList();
+                applySelection();
+            }});
+        }});
+        roleFilterNodes.forEach((node) => {{
+            node.addEventListener('change', () => {{
+                const filterName = node.getAttribute('data-role-filter');
+                roleFilters[filterName] = !!node.checked;
                 applySelection();
             }});
         }});
@@ -1302,6 +1650,15 @@ def build_render_shell_html(
             border-radius: 999px;
             padding: 6px 10px;
             cursor: pointer;
+        }}
+        #{shell_id} .ce-ensured-controls__role {{
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            min-height: 30px;
+            font-size: 13px;
+            color: #333;
+            white-space: nowrap;
         }}
         #{shell_id} .ce-ensured-controls__summary {{
             font-size: 12px;
