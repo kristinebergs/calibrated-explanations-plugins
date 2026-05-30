@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy this file to .mcp.json and add your tokens. .mcp.json is gitignored. For the workspace-level canonical template (includes Notion) see ../.mcp.example.json.",
+  "servers": {
+    "github": {
+      "command": "github-mcp-server",
+      "args": ["stdio"],
+      "env": {
+        "GITHUB_TOKEN": "<your-github-personal-access-token>"
+      }
+    }
+  }
+}

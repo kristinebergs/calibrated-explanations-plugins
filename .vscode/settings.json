@@ -1,0 +1,21 @@
+{
+  "github.copilot.chat.codeGeneration.useReferencesFromEditor": true,
+  "github.copilot.chat.codeGeneration.instructions": [
+    { "file": "AGENTS.md" }
+  ],
+  "github.copilot.chat.testGeneration.instructions": [
+    { "file": "AGENTS.md" }
+  ],
+  "github.copilot.chat.reviewSelection.instructions": [
+    { "file": "AGENTS.md" }
+  ],
+  "github.copilot.chat.commitMessageGeneration.instructions": [
+    {
+      "text": "Use conventional commits format: <type>(<scope>): <subject>. Types: feat, fix, refactor, test, docs, chore. Scope should be the plugin family or plugin name. Keep subject under 72 characters."
+    }
+  ],
+  "chat.promptFilesLocations": {
+    ".github/prompts": true
+  },
+  "python-envs.defaultPackageManager": "ms-python.python:pip"
+}
