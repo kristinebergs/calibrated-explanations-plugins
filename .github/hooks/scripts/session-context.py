@@ -4,6 +4,7 @@ SessionStart context injection hook for calibrated-explanations-plugins.
 Injects plugin repo context and CE version into every agent session.
 Non-blocking — exits 0 regardless.
 """
+
 import json
 import re
 import sys

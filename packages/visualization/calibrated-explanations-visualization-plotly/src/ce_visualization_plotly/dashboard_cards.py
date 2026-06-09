@@ -89,7 +89,7 @@ _DASHBOARD_CARDS: tuple[DashboardCardDescriptor, ...] = (
         card_id="ensured",
         style=ENSURED_STYLE_ID,
         label="Ensured Alternatives",
-        description="Local alternative-rule plot showing prediction, uncertainty, and ensured roles.",
+        description="Local alternative-rule plot showing prediction, uncertainty, and ensured roles.",  # noqa: E501
         scope="local",
         requires=("alternative_explanation", "prediction_interval"),
         supports_tasks=_ALL_TASKS,
@@ -109,9 +109,7 @@ _DASHBOARD_CARDS: tuple[DashboardCardDescriptor, ...] = (
         card_id="alternative_feature_summary",
         style=ALTERNATIVE_FEATURE_SUMMARY_STYLE_ID,
         label="Alternative Feature Summary",
-        description=(
-            "Local alternative-rule summary grouped by feature, role, and quality flags."
-        ),
+        description=("Local alternative-rule summary grouped by feature, role, and quality flags."),
         scope="local",
         requires=("alternative_explanation",),
         supports_tasks=_ALL_TASKS,

@@ -3,18 +3,16 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
-from types import SimpleNamespace
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import calibrated_explanations.plugins.registry as registry
 import numpy as np
 import pytest
-from calibrated_explanations.plugins.plots import PlotRenderContext
 from calibrated_explanations import CalibratedExplainer
+from calibrated_explanations.plugins.plots import PlotRenderContext
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-
 
 STYLE_ID = "official.visualization.factual.shap"
 BUILDER_ID = "official.visualization.factual.shap.builder"
@@ -51,9 +49,7 @@ def _dummy_collection() -> SimpleNamespace:
                     "upper": [0.3, 0.3],
                     "uncertainty": [0.2, 0.2],
                 },
-                "_runtime": {
-                    "explanations": {}
-                },
+                "_runtime": {"explanations": {}},
             }
         },
         explanations=[],
@@ -171,7 +167,9 @@ def test_visualization_plugin_should_register_style_and_render(monkeypatch):
 
     sentinel_figure = object()
 
-    def _fake_plot_shap(explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs):
+    def _fake_plot_shap(
+        explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs
+    ):
         _ = explanation
         _ = show
         assert kind == "waterfall"
@@ -212,7 +210,15 @@ def test_visualization_plugin_should_register_style_and_render(monkeypatch):
 
 
 def test_collection_plot_should_return_plugin_result_for_custom_style(monkeypatch):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "explanation" / "calibrated-explanations-explanation-factual-shap" / "src"))
+    sys.path.insert(
+        0,
+        str(
+            Path(__file__).resolve().parents[3]
+            / "explanation"
+            / "calibrated-explanations-explanation-factual-shap"
+            / "src"
+        ),
+    )
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
     shap_plugin_mod = importlib.import_module("ce_explanation_factual_shap.plugin")
     viz_plugin_mod = importlib.import_module("ce_visualization_factual_shap.plugin")
@@ -251,7 +257,9 @@ def test_collection_plot_should_return_plugin_result_for_custom_style(monkeypatc
 
     sentinel_figure = object()
 
-    def _fake_plot_shap(explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs):
+    def _fake_plot_shap(
+        explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs
+    ):
         _ = explanation
         _ = show
         assert kind == "waterfall"
@@ -320,7 +328,15 @@ def test_collection_plot_should_return_plugin_result_for_custom_style(monkeypatc
 
 
 def test_collection_plot_should_treat_instance_index_as_selector_for_custom_style(monkeypatch):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "explanation" / "calibrated-explanations-explanation-factual-shap" / "src"))
+    sys.path.insert(
+        0,
+        str(
+            Path(__file__).resolve().parents[3]
+            / "explanation"
+            / "calibrated-explanations-explanation-factual-shap"
+            / "src"
+        ),
+    )
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
     shap_plugin_mod = importlib.import_module("ce_explanation_factual_shap.plugin")
     viz_plugin_mod = importlib.import_module("ce_visualization_factual_shap.plugin")
@@ -334,8 +350,7 @@ def test_collection_plot_should_treat_instance_index_as_selector_for_custom_styl
             _ = shap_kwargs
             n_rows, n_features = x_test.shape
             rows = [
-                [float(row + feature + 1) for feature in range(n_features)]
-                for row in range(n_rows)
+                [float(row + feature + 1) for feature in range(n_features)] for row in range(n_rows)
             ]
             return {
                 "center": {
@@ -362,7 +377,9 @@ def test_collection_plot_should_treat_instance_index_as_selector_for_custom_styl
 
     sentinel_figure = object()
 
-    def _fake_plot_shap(explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs):
+    def _fake_plot_shap(
+        explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs
+    ):
         _ = explanation
         _ = show
         _ = kwargs
@@ -429,7 +446,15 @@ def test_collection_plot_should_treat_instance_index_as_selector_for_custom_styl
 
 
 def test_collection_beeswarm_should_return_single_plot_result(monkeypatch):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "explanation" / "calibrated-explanations-explanation-factual-shap" / "src"))
+    sys.path.insert(
+        0,
+        str(
+            Path(__file__).resolve().parents[3]
+            / "explanation"
+            / "calibrated-explanations-explanation-factual-shap"
+            / "src"
+        ),
+    )
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
     shap_plugin_mod = importlib.import_module("ce_explanation_factual_shap.plugin")
     viz_plugin_mod = importlib.import_module("ce_visualization_factual_shap.plugin")
@@ -471,7 +496,9 @@ def test_collection_beeswarm_should_return_single_plot_result(monkeypatch):
 
     sentinel_figure = object()
 
-    def _fake_plot_shap(explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs):
+    def _fake_plot_shap(
+        explanation, *, kind, bound, instance_index, prefer_runtime, show, **kwargs
+    ):
         _ = show
         assert kind == "beeswarm"
         assert bound == "center"

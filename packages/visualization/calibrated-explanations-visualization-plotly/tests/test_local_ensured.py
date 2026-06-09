@@ -8,7 +8,6 @@ from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
 import calibrated_explanations.plugins.registry as registry
-import pytest
 from calibrated_explanations import WrapCalibratedExplainer
 from calibrated_explanations.plugins.plots import PlotRenderContext
 from sklearn.datasets import make_classification, make_regression
@@ -193,20 +192,32 @@ def _rules_with_feature_count(feature_count: int) -> dict:
     }
 
 
-def _dummy_alternative_explanation(*, rules: dict | None = None, regression: bool = False) -> SimpleNamespace:
+def _dummy_alternative_explanation(
+    *, rules: dict | None = None, regression: bool = False
+) -> SimpleNamespace:
     collection = SimpleNamespace(
         feature_names=["age", "income", "segment", "risk"],
-        batch_metadata={"task": "regression" if regression else "classification", "mode": "regression" if regression else "classification"},
+        batch_metadata={
+            "task": "regression" if regression else "classification",
+            "mode": "regression" if regression else "classification",
+        },
     )
 
     def rank_features(*, width, num_to_show, **_kwargs):
-        return sorted(range(len(width)), key=lambda index: (float(width[index]), index))[:num_to_show]
+        return sorted(range(len(width)), key=lambda index: (float(width[index]), index))[
+            :num_to_show
+        ]
 
     payload = rules or _base_alternative_rules()
     local = SimpleNamespace(
         index=0,
         calibrated_explanations=collection,
-        prediction={"predict": 0.72 if not regression else 12.0, "low": 0.64 if not regression else 10.0, "high": 0.80 if not regression else 13.0, "classes": 1.0},
+        prediction={
+            "predict": 0.72 if not regression else 12.0,
+            "low": 0.64 if not regression else 10.0,
+            "high": 0.80 if not regression else 13.0,
+            "classes": 1.0,
+        },
         rules=payload,
         conjunctive_rules=None,
         has_conjunctive_rules=False,
@@ -275,7 +286,9 @@ def test_deprecated_alias_emits_warning(monkeypatch):
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        artifact = plugin.build(_context(_dummy_alternative_explanation(), style=ALIAS_STYLE_ID, filter_top=2))
+        artifact = plugin.build(
+            _context(_dummy_alternative_explanation(), style=ALIAS_STYLE_ID, filter_top=2)
+        )
 
     assert artifact["artifact_type"] == STYLE_ID
     assert artifact["metadata"]["deprecated_alias_used"] is True
@@ -471,11 +484,22 @@ def test_renderer_returns_plotly_figure_and_default_arrows(monkeypatch):
         warnings.simplefilter("always")
         result = plugin.render(artifact, context=context)
 
-    original_traces = [trace for trace in result.figure.traces if trace.kwargs.get("meta", {}).get("trace_kind") == "original"]
-    rule_traces = [trace for trace in result.figure.traces if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"]
+    original_traces = [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "original"
+    ]
+    rule_traces = [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
+    ]
     assert result.figure is result.extras["figure"]
     assert len(original_traces) == 1
-    assert sum(len(trace.kwargs["x"]) for trace in rule_traces) == artifact["metadata"]["shown_rule_count"]
+    assert (
+        sum(len(trace.kwargs["x"]) for trace in rule_traces)
+        == artifact["metadata"]["shown_rule_count"]
+    )
     assert len(result.figure.annotations) == artifact["metadata"]["shown_rule_count"]
     assert not [warning for warning in caught if issubclass(warning.category, UserWarning)]
 
@@ -520,7 +544,11 @@ def test_show_arrows_false_suppresses_arrows(monkeypatch):
     artifact = plugin.build(context)
     result = plugin.render(artifact, context=context)
 
-    arrow_traces = [trace for trace in result.figure.traces if trace.kwargs.get("meta", {}).get("trace_kind") == "arrows"]
+    arrow_traces = [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "arrows"
+    ]
     assert result.figure.annotations == []
     assert arrow_traces == []
 
@@ -532,7 +560,11 @@ def test_filter_top_limits_rendered_rule_points_and_arrows(monkeypatch):
     context = _context(_dummy_alternative_explanation(), max_points=2, sort_by="delta_prediction")
     artifact = plugin.build(context)
     result = plugin.render(artifact, context=context)
-    rule_traces = [trace for trace in result.figure.traces if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"]
+    rule_traces = [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
+    ]
 
     assert artifact["options_used"]["filter_top"] == 2
     assert artifact["metadata"]["shown_rule_count"] == 2
@@ -687,11 +719,7 @@ def test_rule_marker_size_corresponds_to_conjunction_size(monkeypatch):
         for trace in result.figure.traces
         if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
     ]
-    rendered_sizes = [
-        size
-        for trace in rule_traces
-        for size in trace.kwargs["marker"]["size"]
-    ]
+    rendered_sizes = [size for trace in rule_traces for size in trace.kwargs["marker"]["size"]]
     assert 9 in rendered_sizes
     assert 14 in rendered_sizes
 
@@ -715,11 +743,7 @@ def test_rule_marker_size_scales_to_capped_max_conjunction_size(monkeypatch):
         for trace in result.figure.traces
         if trace.kwargs.get("meta", {}).get("trace_kind") == "rule-points"
     ]
-    rendered_sizes = [
-        size
-        for trace in rule_traces
-        for size in trace.kwargs["marker"]["size"]
-    ]
+    rendered_sizes = [size for trace in rule_traces for size in trace.kwargs["marker"]["size"]]
     assert max(rendered_sizes) == 14
     assert min(rendered_sizes) == 9
 
@@ -733,7 +757,11 @@ def test_side_panel_false_has_no_table(monkeypatch):
         context=_context(_dummy_alternative_explanation(), filter_top=3),
     )
 
-    assert not [trace for trace in result.figure.traces if trace.kwargs.get("meta", {}).get("trace_kind") == "side-panel"]
+    assert not [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "side-panel"
+    ]
     assert result.extras["html"] is None
 
 
@@ -745,7 +773,11 @@ def test_side_panel_true_registers_text_payload_and_shell(monkeypatch):
     artifact = plugin.build(context)
     result = plugin.render(artifact, context=context)
 
-    assert not [trace for trace in result.figure.traces if trace.kwargs.get("meta", {}).get("trace_kind") == "side-panel"]
+    assert not [
+        trace
+        for trace in result.figure.traces
+        if trace.kwargs.get("meta", {}).get("trace_kind") == "side-panel"
+    ]
     assert result.figure.layout["meta"]["side_panel_trace_index"] is None
     registry_rows = result.figure.layout["meta"]["side_panel_registry"]
     assert registry_rows
@@ -774,8 +806,15 @@ def test_side_panel_roles_include_all_active_flags(monkeypatch):
     rules["is_ensured"] = [True, True, True, True]
     rules["is_pareto"] = [True, True, True, True]
     rules["is_counterfactual"] = [True, True, True, True]
-    artifact = plugin.build(_context(_dummy_alternative_explanation(rules=rules), filter_top=4, side_panel=True))
-    result = plugin.render(artifact, context=_context(_dummy_alternative_explanation(rules=rules), filter_top=4, side_panel=True))
+    artifact = plugin.build(
+        _context(_dummy_alternative_explanation(rules=rules), filter_top=4, side_panel=True)
+    )
+    result = plugin.render(
+        artifact,
+        context=_context(
+            _dummy_alternative_explanation(rules=rules), filter_top=4, side_panel=True
+        ),
+    )
 
     first_rule = artifact["rule_points"][0]
     detail_rows = result.figure.layout["meta"]["side_panel_registry"][first_rule["id"]]
@@ -790,7 +829,9 @@ def test_sort_by_is_deterministic(monkeypatch):
     artifact_one = plugin.build(context)
     artifact_two = plugin.build(context)
 
-    assert [point["id"] for point in artifact_one["rule_points"]] == [point["id"] for point in artifact_two["rule_points"]]
+    assert [point["id"] for point in artifact_one["rule_points"]] == [
+        point["id"] for point in artifact_two["rule_points"]
+    ]
 
 
 def test_html_export_when_context_path_is_supplied(monkeypatch, tmp_path):

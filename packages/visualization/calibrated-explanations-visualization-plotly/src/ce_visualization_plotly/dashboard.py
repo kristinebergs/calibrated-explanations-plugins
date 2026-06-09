@@ -7,10 +7,19 @@ from typing import Any, Mapping, Sequence
 from calibrated_explanations.plugins.plots import PlotRenderContext
 from calibrated_explanations.utils.exceptions import ConfigurationError
 
-from .alternative_feature_summary import AlternativeFeatureSummaryPlotBuilder, AlternativeFeatureSummaryPlotRenderer
-from .dashboard_cards import DashboardCardDescriptor, find_dashboard_card, find_dashboard_card_by_style, iter_dashboard_cards
+from .alternative_feature_summary import (
+    AlternativeFeatureSummaryPlotBuilder,
+    AlternativeFeatureSummaryPlotRenderer,
+)
+from .dashboard_cards import (
+    DashboardCardDescriptor,
+    find_dashboard_card,
+    find_dashboard_card_by_style,
+    iter_dashboard_cards,
+)
 from .ensured import LocalEnsuredPlotBuilder, LocalEnsuredPlotRenderer
-from .instance_explorer import GlobalInstanceExplorerPlotBuilder, build_figure as build_instance_explorer_figure
+from .instance_explorer import GlobalInstanceExplorerPlotBuilder
+from .instance_explorer import build_figure as build_instance_explorer_figure
 from .quadrant import UncertaintyQuadrantPlotBuilder, UncertaintyQuadrantPlotRenderer
 
 _EXPLANATION_KINDS = ("factual", "alternative")
@@ -63,10 +72,14 @@ def _slice_rows(x: Any, indices: Sequence[int]) -> Any:
 
 def _resolve_local_cards(available_cards: Any) -> tuple[DashboardCardDescriptor, ...]:
     if available_cards == "auto":
-        return tuple(descriptor for descriptor in iter_dashboard_cards() if descriptor.scope == "local")
+        return tuple(
+            descriptor for descriptor in iter_dashboard_cards() if descriptor.scope == "local"
+        )
     descriptors: list[DashboardCardDescriptor] = []
     for card_name in _as_sequence(available_cards):
-        descriptor = find_dashboard_card(str(card_name)) or find_dashboard_card_by_style(str(card_name))
+        descriptor = find_dashboard_card(str(card_name)) or find_dashboard_card_by_style(
+            str(card_name)
+        )
         if descriptor is None:
             raise ConfigurationError(f"Unknown dashboard card: {card_name}")
         if descriptor.scope == "local":
@@ -103,7 +116,9 @@ def _prediction_payload(
     try:
         import numpy as np
 
-        uncertainty = (np.array(high) - np.array(low)) if low is not None and high is not None else None
+        uncertainty = (
+            (np.array(high) - np.array(low)) if low is not None and high is not None else None
+        )
     except Exception:  # pragma: no cover - numpy is expected through CE
         uncertainty = None
     return {
@@ -208,8 +223,12 @@ def _add_conjunctions(explanation: Any, *, max_rule_size: int, options: Mapping[
     method(**kwargs)
 
 
-def _card_context(explanation: Any, descriptor: DashboardCardDescriptor, options: Mapping[str, Any]) -> PlotRenderContext:
-    intent_type = "alternative" if "alternative_explanation" in set(descriptor.requires) else "factual"
+def _card_context(
+    explanation: Any, descriptor: DashboardCardDescriptor, options: Mapping[str, Any]
+) -> PlotRenderContext:
+    intent_type = (
+        "alternative" if "alternative_explanation" in set(descriptor.requires) else "factual"
+    )
     return PlotRenderContext(
         explanation=explanation,
         instance_metadata=MappingProxyType({"type": "instance", "dashboard_mode": "live_python"}),
@@ -233,7 +252,9 @@ def _render_card(
     builder_cls = _LOCAL_CARD_BUILDERS.get(descriptor.style)
     renderer_cls = _LOCAL_CARD_RENDERERS.get(descriptor.style)
     if builder_cls is None or renderer_cls is None:
-        raise ConfigurationError(f"No live renderer is registered for dashboard card {descriptor.card_id!r}.")
+        raise ConfigurationError(
+            f"No live renderer is registered for dashboard card {descriptor.card_id!r}."
+        )
     options = dict(descriptor.default_options)
     options.setdefault("filter_top", default_filter_top)
     options.update(dict(card_options.get(descriptor.card_id, {}) or {}))
@@ -253,8 +274,14 @@ def _summary_rows(record: Mapping[str, Any]) -> list[tuple[str, Any]]:
         ("prediction", record.get("prediction")),
         ("calibrated interval", f"[{record.get('low')}, {record.get('high')}]"),
         ("uncertainty", record.get("interval_width")),
-        ("task/posture", f"{metadata.get('task')} / {metadata.get('posture', metadata.get('task'))}"),
-        ("true label/target", record.get("true_label") or record.get("target_value") or metadata.get("target_label")),
+        (
+            "task/posture",
+            f"{metadata.get('task')} / {metadata.get('posture', metadata.get('task'))}",
+        ),
+        (
+            "true label/target",
+            record.get("true_label") or record.get("target_value") or metadata.get("target_label"),
+        ),
     ]
 
 
@@ -276,7 +303,7 @@ def launch_instance_workspace(
     **options: Any,
 ) -> Any:
     """Launch a live Dash instance workspace for Plotly CE cards."""
-    ALL, Dash, Input, Output, State, callback_context, dcc, html = _import_dash()
+    ALL, Dash, Input, Output, State, callback_context, dcc, html = _import_dash()  # noqa: N806
     descriptors = _resolve_local_cards(available_cards)
     card_options = dict(options.get("card_options", {}) or {})
     include_conjunctions = bool(options.get("include_conjunctions", False))
@@ -291,7 +318,9 @@ def launch_instance_workspace(
     )
     records = list(global_artifact.get("instance_records", ()))
     record_by_index = {int(record["instance_index"]): record for record in records}
-    figure = build_instance_explorer_figure(global_artifact, dict(global_artifact.get("options", {}) or {}))
+    figure = build_instance_explorer_figure(
+        global_artifact, dict(global_artifact.get("options", {}) or {})
+    )
     state: dict[tuple[int, str], Any] = {}
     conjunction_state: set[int] = set()
     workspace_items: list[dict[str, Any]] = []
@@ -300,12 +329,17 @@ def launch_instance_workspace(
     app.title = "CE Plotly instance workspace"
     app.layout = html.Div(
         [
-            dcc.Store(id="ce-selected-instance", data=records[0]["instance_index"] if records else None),
+            dcc.Store(
+                id="ce-selected-instance", data=records[0]["instance_index"] if records else None
+            ),
             dcc.Store(id="ce-workspace-items", data=[]),
             dcc.Store(id="ce-live-explanation-status", data={}),
             html.Div(
                 [
-                    html.Div([dcc.Graph(id="ce-global-instance-explorer", figure=figure)], className="ce-live-overview"),
+                    html.Div(
+                        [dcc.Graph(id="ce-global-instance-explorer", figure=figure)],
+                        className="ce-live-overview",
+                    ),
                     html.Div(id="ce-live-workspace", className="ce-live-workspace"),
                 ],
                 className="ce-live-main",
@@ -316,7 +350,10 @@ def launch_instance_workspace(
                     dcc.Dropdown(
                         id="ce-live-instance-select",
                         options=[
-                            {"label": f"Instance {record['instance_index']}", "value": int(record["instance_index"])}
+                            {
+                                "label": f"Instance {record['instance_index']}",
+                                "value": int(record["instance_index"]),
+                            }
                             for record in records
                         ],
                         value=records[0]["instance_index"] if records else None,
@@ -335,7 +372,9 @@ def launch_instance_workspace(
                     ),
                     html.Button("Add Card", id="ce-live-add-card", n_clicks=0),
                     html.Button("Explain and explore", id="ce-live-explain-explore", n_clicks=0),
-                    html.Button("Add conjunctions", id="ce-live-add-conjunctions", n_clicks=0, disabled=True),
+                    html.Button(
+                        "Add conjunctions", id="ce-live-add-conjunctions", n_clicks=0, disabled=True
+                    ),
                     html.Div(id="ce-live-status"),
                 ],
                 className="ce-live-panel",
@@ -401,7 +440,13 @@ def launch_instance_workspace(
         record = record_by_index.get(int(instance_index)) if instance_index is not None else None
         if record is None:
             return html.P("No instance selected.")
-        return html.Dl([item for row in _summary_rows(record) for item in (html.Dt(row[0]), html.Dd(str(row[1])))])
+        return html.Dl(
+            [
+                item
+                for row in _summary_rows(record)
+                for item in (html.Dt(row[0]), html.Dd(str(row[1])))
+            ]
+        )
 
     @app.callback(
         Output("ce-workspace-items", "data"),
@@ -432,15 +477,29 @@ def launch_instance_workspace(
         if triggered_id == "ce-live-explain-explore":
             for kind in _EXPLANATION_KINDS:
                 _ensure_explanation_kind(selected_index, kind)
-            return current_items, _status_payload(), f"Generated factual and alternative explanations for instance {selected_index}."
+            return (
+                current_items,
+                _status_payload(),
+                f"Generated factual and alternative explanations for instance {selected_index}.",
+            )
         if triggered_id == "ce-live-add-conjunctions":
             missing = [kind for kind in _EXPLANATION_KINDS if (selected_index, kind) not in state]
             if missing:
-                return current_items, _status_payload(), "Click Explain and explore before adding conjunctions."
+                return (
+                    current_items,
+                    _status_payload(),
+                    "Click Explain and explore before adding conjunctions.",
+                )
             for kind in _EXPLANATION_KINDS:
-                _add_conjunctions(state[(selected_index, kind)], max_rule_size=max_rule_size, options=options)
+                _add_conjunctions(
+                    state[(selected_index, kind)], max_rule_size=max_rule_size, options=options
+                )
             conjunction_state.add(selected_index)
-            return current_items, _status_payload(), f"Added conjunctions to factual and alternative explanations for instance {selected_index}."
+            return (
+                current_items,
+                _status_payload(),
+                f"Added conjunctions to factual and alternative explanations for instance {selected_index}.",  # noqa: E501
+            )
         descriptor = find_dashboard_card(card_id)
         if descriptor is None:
             return current_items, _status_payload(), f"Unknown card: {card_id}"
@@ -468,7 +527,11 @@ def launch_instance_workspace(
         )
         next_items = list(current_items)
         next_items.append({"id": item_id})
-        return next_items, _status_payload(), f"Added {descriptor.label} for instance {selected_index}."
+        return (
+            next_items,
+            _status_payload(),
+            f"Added {descriptor.label} for instance {selected_index}.",
+        )
 
     @app.callback(
         Output("ce-live-add-conjunctions", "disabled"),
@@ -494,7 +557,9 @@ def launch_instance_workspace(
             if item is None:
                 continue
             body = (
-                html.Iframe(srcDoc=item["html"], style={"width": "100%", "height": "520px", "border": "0"})
+                html.Iframe(
+                    srcDoc=item["html"], style={"width": "100%", "height": "520px", "border": "0"}
+                )
                 if item.get("html")
                 else dcc.Graph(figure=item["figure"])
             )
@@ -504,9 +569,15 @@ def launch_instance_workspace(
                         html.Header(
                             [
                                 html.H3(f"{item['label']} - instance {item['instance_index']}"),
-                                html.Button("Up", id={"type": "ce-live-move-card-up", "id": item_id}),
-                                html.Button("Down", id={"type": "ce-live-move-card-down", "id": item_id}),
-                                html.Button("Remove", id={"type": "ce-live-remove-card", "id": item_id}),
+                                html.Button(
+                                    "Up", id={"type": "ce-live-move-card-up", "id": item_id}
+                                ),
+                                html.Button(
+                                    "Down", id={"type": "ce-live-move-card-down", "id": item_id}
+                                ),
+                                html.Button(
+                                    "Remove", id={"type": "ce-live-remove-card", "id": item_id}
+                                ),
                             ]
                         ),
                         body,

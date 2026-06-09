@@ -3,9 +3,10 @@
 PreToolUse safety guard hook for calibrated-explanations-plugins.
 Blocks dangerous shell commands. Exit 0 = allow, JSON deny = block.
 """
+
 import json
-import sys
 import re
+import sys
 
 BLOCKED_PATTERNS = [
     (r"git\s+push\s+--force", "git push --force is not allowed. Use --force-with-lease manually."),
@@ -16,15 +17,23 @@ BLOCKED_PATTERNS = [
     (r"rm\s+-rf\s+\.", "rm -rf on current directory is not allowed."),
     (r"\bsudo\s+rm\b", "sudo rm is not allowed."),
     (r"\bsudo\s+chmod\b", "sudo chmod is not allowed."),
-    (r"pip\s+install\b(?!.*--dry-run).*--index-url", "pip install from custom index requires manual review."),
+    (
+        r"pip\s+install\b(?!.*--dry-run).*--index-url",
+        "pip install from custom index requires manual review.",
+    ),
     (r"twine\s+upload", "Package publishing (twine upload) requires manual execution."),
     (r"npm\s+publish", "npm publish requires manual execution."),
     (r"gh\s+release\s+create", "GitHub release creation requires manual confirmation."),
 ]
 
 TERMINAL_TOOL_NAMES = {
-    "run_terminal_command", "execute_command", "bash", "shell",
-    "terminal", "Bash", "Shell",
+    "run_terminal_command",
+    "execute_command",
+    "bash",
+    "shell",
+    "terminal",
+    "Bash",
+    "Shell",
 }
 
 

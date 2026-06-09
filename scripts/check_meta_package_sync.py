@@ -104,9 +104,7 @@ def main() -> int:
     umbrella_current = meta_deps.get(UMBRELLA_META_DISTRIBUTION)
     expected_umbrella = sorted(FAMILY_META_DISTRIBUTIONS.values())
     if umbrella_current is None:
-        errors.append(
-            f"Missing metapackage {UMBRELLA_META_DISTRIBUTION!r} under packages/meta."
-        )
+        errors.append(f"Missing metapackage {UMBRELLA_META_DISTRIBUTION!r} under packages/meta.")
     elif umbrella_current != expected_umbrella:
         errors.append(
             f"{UMBRELLA_META_DISTRIBUTION!r} dependencies are stale. "

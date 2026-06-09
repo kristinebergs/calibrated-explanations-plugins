@@ -25,7 +25,32 @@ The scaffold enforces:
 - import package naming
 - family-appropriate entry-point registration
 - family-appropriate `plugin_meta` structure
+- optional provisional `plugin_meta["config_schema"]` for plugins that receive
+  runtime config through CE context objects
 - README install and compatibility text
+
+## Provisional plugin config
+
+Official plugins may include a provisional `plugin_meta["config_schema"]` while
+OSS CE, CEE, and this plugin repo harden config behavior together. This schema is
+for integration validation only; it is not yet a compatibility-frozen public
+plugin config standard.
+
+Use this shape only when the plugin actually consumes runtime config:
+
+```python
+plugin_meta = {
+    "config_schema": {
+        "version": 1,
+        "additional_properties": False,
+        "keys": {
+            "label_prefix": {"type": "str", "default": "example"},
+            "enabled_labels": {"type": "list[str]", "default": []},
+            "diagnostic_token": {"type": "str", "required": False, "sensitive": True},
+        },
+    },
+}
+```
 
 ## Attaching a plugin to the official runtime suite
 

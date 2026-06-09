@@ -75,7 +75,12 @@ jobs:
               if package.startswith("packages/meta/"):
                   continue
               subprocess.check_call(
-                  ["python", "scripts/runtime_check_package.py", "--package-path", package]
+                  [
+                      "python",
+                      "scripts/runtime_check_package.py",
+                      "--package-path",
+                      package,
+                  ]
               )
           PY
 

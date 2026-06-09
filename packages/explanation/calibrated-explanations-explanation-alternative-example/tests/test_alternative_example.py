@@ -2,8 +2,8 @@ import pytest
 
 pytest.importorskip("calibrated_explanations")
 
-from calibrated_explanations import CalibratedExplainer
 import calibrated_explanations.plugins.registry as registry
+from calibrated_explanations import CalibratedExplainer
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -45,9 +45,7 @@ def test_plugin_should_be_runtime_consumable(monkeypatch):
         n_redundant=0,
         random_state=0,
     )
-    x_train, x_test, y_train, _ = train_test_split(
-        x, y, test_size=0.2, random_state=0, stratify=y
-    )
+    x_train, x_test, y_train, _ = train_test_split(x, y, test_size=0.2, random_state=0, stratify=y)
     learner = LogisticRegression(random_state=0, solver="liblinear")
     learner.fit(x_train, y_train)
 

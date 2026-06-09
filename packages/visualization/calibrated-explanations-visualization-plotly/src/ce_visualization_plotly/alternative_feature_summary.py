@@ -376,9 +376,8 @@ def _resolve_primary_role(
             mode_metadata.get("is_probabilistic")
             and prediction is not None
             and base_prediction is not None
-        ):
-            if (prediction >= 0.5) != (base_prediction >= 0.5):
-                return "counter", "heuristic", {"heuristic": "probability_crosses_0_5_boundary"}
+        ) and (prediction >= 0.5) != (base_prediction >= 0.5):
+            return "counter", "heuristic", {"heuristic": "probability_crosses_0_5_boundary"}
 
     return "unknown", "unavailable", {"raw_role": explicit_role}
 
@@ -403,12 +402,17 @@ def _empty_feature_summary(
         "feature_name": feature_name,
         "true_value": true_value,
         "total_rule_count": 0,
-        "role_quality_counts": {key: 0 for key in ROLE_QUALITY_KEYS},
-        "primary_role_counts": {role: 0 for role in _PRIMARY_ROLES},
-        "quality_flag_counts": {flag: 0 for flag in _QUALITY_FLAGS},
+        "role_quality_counts": dict.fromkeys(ROLE_QUALITY_KEYS, 0),
+        "primary_role_counts": dict.fromkeys(_PRIMARY_ROLES, 0),
+        "quality_flag_counts": dict.fromkeys(_QUALITY_FLAGS, 0),
         "conjunction_counts": {"size_1": 0, "size_2": 0, "size_3": 0, "size_4_plus": 0, "total": 0},
         "rule_ids_by_role_quality": {key: [] for key in ROLE_QUALITY_KEYS},
-        "rule_ids_by_conjunction_size": {"size_1": [], "size_2": [], "size_3": [], "size_4_plus": []},
+        "rule_ids_by_conjunction_size": {
+            "size_1": [],
+            "size_2": [],
+            "size_3": [],
+            "size_4_plus": [],
+        },
         "role_source_counts": {
             "ce_metadata": 0,
             "rule_metadata": 0,

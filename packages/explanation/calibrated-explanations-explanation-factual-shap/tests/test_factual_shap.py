@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import importlib
 import sys
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
-import numpy as np
 import calibrated_explanations.plugins.registry as registry
+import numpy as np
 import pytest
 from calibrated_explanations import CalibratedExplainer
 from calibrated_explanations.plugins.explanations import ExplanationRequest
@@ -165,11 +165,13 @@ def test_should_emit_feature_names_with_lower_upper_shap_weights(monkeypatch):
     for row in uq_meta["values"]:
         assert isinstance(row, list)
         assert len(row) == len(feature_names)
-    for feature_index, value in enumerate(uq_meta["values"][0]):
+    for _feature_index, value in enumerate(uq_meta["values"][0]):
         assert value == pytest.approx(1.0)
 
 
-def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain_batch_called(monkeypatch):
+def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain_batch_called(
+    monkeypatch,
+):
     """Verify explain_batch uses factual scaffold and SHAP lower/upper weights."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -185,22 +187,34 @@ def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain
             n_rows, n_features = x_test.shape
             return {
                 "center": {
-                    "values": [[0.1 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "values": [
+                        [0.1 * (feature + 1) for feature in range(n_features)]
+                        for _ in range(n_rows)
+                    ],
                     "base_values": [0.2 for _ in range(n_rows)],
                     "raw": "center-runtime",
                 },
                 "lower": {
-                    "values": [[0.05 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "values": [
+                        [0.05 * (feature + 1) for feature in range(n_features)]
+                        for _ in range(n_rows)
+                    ],
                     "base_values": [0.1 for _ in range(n_rows)],
                     "raw": "lower-runtime",
                 },
                 "upper": {
-                    "values": [[0.15 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "values": [
+                        [0.15 * (feature + 1) for feature in range(n_features)]
+                        for _ in range(n_rows)
+                    ],
                     "base_values": [0.3 for _ in range(n_rows)],
                     "raw": "upper-runtime",
                 },
                 "uncertainty": {
-                    "values": [[0.10 * (feature + 1) for feature in range(n_features)] for _ in range(n_rows)],
+                    "values": [
+                        [0.10 * (feature + 1) for feature in range(n_features)]
+                        for _ in range(n_rows)
+                    ],
                     "base_values": [0.2 for _ in range(n_rows)],
                     "raw": "uncertainty-runtime",
                 },
@@ -274,7 +288,9 @@ def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain
     batch = plugin.explain_batch(x_test, request)
 
     assert batch.collection_metadata["shap"]["lower_upper_attributions"] is True
-    assert np.allclose(np.asarray(batch.collection_metadata["shap"]["data"], dtype=float), [[1.0, 2.0, 3.0]])
+    assert np.allclose(
+        np.asarray(batch.collection_metadata["shap"]["data"], dtype=float), [[1.0, 2.0, 3.0]]
+    )
     assert np.allclose(
         np.asarray(batch.collection_metadata["shap"]["values"]["center"], dtype=float),
         [[0.1, 0.2, 0.3]],
@@ -290,10 +306,14 @@ def test_should_use_factual_scaffold_and_reconstruct_predict_bounds_when_explain
 
     rules = dummy_explanation.rules
     assert rules["rule"] == ["a", "b", "c"]
-    assert all("<" not in label and ">" not in label and "=" not in label for label in rules["rule"])
+    assert all(
+        "<" not in label and ">" not in label and "=" not in label for label in rules["rule"]
+    )
 
     for index in range(len(rules["feature"])):
-        assert rules["predict"][index] == pytest.approx(rules["base_predict"][0] + rules["weight"][index])
+        assert rules["predict"][index] == pytest.approx(
+            rules["base_predict"][0] + rules["weight"][index]
+        )
         assert rules["predict_low"][index] == pytest.approx(
             rules["base_predict_low"][0] + rules["weight_low"][index]
         )

@@ -23,7 +23,9 @@ class ShapHelper:
             raise RuntimeError("SHAP plugin requires non-empty explainer.x_cal.")
         return x_cal
 
-    def _predict_triplet(self, x: Any, *, bins: Any | None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _predict_triplet(
+        self, x: Any, *, bins: Any | None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         payload = self.explainer.predict(x, uq_interval=True, bins=bins)
 
         if isinstance(payload, tuple) and len(payload) == 2 and isinstance(payload[1], tuple):

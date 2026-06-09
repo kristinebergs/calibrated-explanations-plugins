@@ -4,15 +4,20 @@ PostToolUse auto-formatter hook for calibrated-explanations-plugins.
 After a file-edit tool call on a .py file, runs ruff format on it.
 Non-blocking — exits 0 regardless.
 """
+
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 FILE_EDIT_TOOL_NAMES = {
-    "edit_file", "write_file", "create_file",
-    "str_replace_editor", "str_replace_based_edit_tool",
-    "EditFile", "WriteFile",
+    "edit_file",
+    "write_file",
+    "create_file",
+    "str_replace_editor",
+    "str_replace_based_edit_tool",
+    "EditFile",
+    "WriteFile",
 }
 
 
@@ -32,7 +37,9 @@ def main() -> int:
     tool_input = data.get("toolInput", data.get("input", {}))
     file_path = ""
     if isinstance(tool_input, dict):
-        file_path = tool_input.get("path", tool_input.get("file_path", tool_input.get("target_file", "")))
+        file_path = tool_input.get(
+            "path", tool_input.get("file_path", tool_input.get("target_file", ""))
+        )
     elif isinstance(tool_input, str):
         file_path = tool_input
 
@@ -44,9 +51,11 @@ def main() -> int:
         return 0
 
     try:
-        result = subprocess.run(
-            ["ruff", "format", str(p)],
-            capture_output=True, text=True, timeout=10,
+        result = subprocess.run(  # noqa: S603
+            ["ruff", "format", str(p)],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             message = f"[autoformat] ruff format applied to {p.name}"

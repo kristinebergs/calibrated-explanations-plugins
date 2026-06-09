@@ -85,7 +85,7 @@ def _resolve_static_value(node: ast.AST, constants: dict[str, object]) -> object
     if isinstance(node, ast.Dict):
         return {
             _resolve_static_value(key, constants): _resolve_static_value(value, constants)
-            for key, value in zip(node.keys, node.values)
+            for key, value in zip(node.keys, node.values, strict=False)
         }
     if isinstance(node, ast.Name):
         if node.id in constants:
@@ -104,7 +104,10 @@ def static_plugin_meta(package_path: Path, target: str) -> dict[str, Any]:
             for statement in node.body:
                 if isinstance(statement, ast.Assign):
                     for assign_target in statement.targets:
-                        if isinstance(assign_target, ast.Name) and assign_target.id == "plugin_meta":
+                        if (
+                            isinstance(assign_target, ast.Name)
+                            and assign_target.id == "plugin_meta"
+                        ):
                             resolved = _resolve_static_value(statement.value, constants)
                             if isinstance(resolved, dict):
                                 return dict(resolved)
@@ -126,16 +129,16 @@ def main_plugin_meta(package_path: Path) -> dict[str, Any]:
     return dict(plugin_meta)
 
 
-def visualization_metas(package_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def visualization_metas(
+    package_path: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     bootstrap = main_plugin_meta(package_path)
     builder_entries = entry_points_for_group(package_path, PLOT_BUILDER_GROUP)
     renderer_entries = entry_points_for_group(package_path, PLOT_RENDERER_GROUP)
     if len(builder_entries) != 1 or len(renderer_entries) != 1:
         raise RuntimeError(f"{package_path} must expose exactly one builder and one renderer")
-    builder_meta = dict(getattr(load_entrypoint_target(next(iter(builder_entries.values()))), "plugin_meta"))
-    renderer_meta = dict(
-        getattr(load_entrypoint_target(next(iter(renderer_entries.values()))), "plugin_meta")
-    )
+    builder_meta = dict(load_entrypoint_target(next(iter(builder_entries.values()))).plugin_meta)
+    renderer_meta = dict(load_entrypoint_target(next(iter(renderer_entries.values()))).plugin_meta)
     return bootstrap, builder_meta, renderer_meta
 
 
@@ -162,7 +165,9 @@ def configure_trust(package_path: Path) -> None:
             ]
         )
     else:
-        trust_ids.append(str(static_plugin_meta(package_path, next(iter(main_entries.values())))["name"]))
+        trust_ids.append(
+            str(static_plugin_meta(package_path, next(iter(main_entries.values())))["name"])
+        )
 
     os.environ["CE_TRUST_PLUGIN"] = ",".join(trust_ids)
 
@@ -291,7 +296,9 @@ def validate_explanation_runtime(package_path: Path) -> None:
         concrete_tasks = ("classification",)
     for task in concrete_tasks:
         for mode in modes:
-            explainer, x_test = build_explainer(task=task, **{_explanation_override_name(mode): plugin_id})
+            explainer, x_test = build_explainer(
+                task=task, **{_explanation_override_name(mode): plugin_id}
+            )
             collection = _invoke_explanation(explainer, mode, x_test[:2])
             assert_non_empty_collection(collection)
             selected = explainer.plugin_manager.explanation_plugin_identifiers.get(mode)

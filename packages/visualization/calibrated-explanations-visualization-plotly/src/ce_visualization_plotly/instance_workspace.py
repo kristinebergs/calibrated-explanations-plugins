@@ -28,6 +28,8 @@ from .dashboard_cards import (
 from .ensured import LocalEnsuredPlotBuilder, LocalEnsuredPlotRenderer
 from .instance_explorer import (
     GlobalInstanceExplorerPlotBuilder,
+)
+from .instance_explorer import (
     build_figure as build_global_instance_explorer_figure,
 )
 from .quadrant import UncertaintyQuadrantPlotBuilder, UncertaintyQuadrantPlotRenderer
@@ -122,9 +124,12 @@ def _local_explanation_for(payload: Any, instance_index: int, *, alternative: bo
             "instances",
         )
         candidates = [item for item in candidates if not _is_alternative(item)]
-    if not candidates and not isinstance(payload, Mapping):
-        if _is_alternative(payload) == alternative:
-            return payload
+    if (
+        not candidates
+        and not isinstance(payload, Mapping)
+        and _is_alternative(payload) == alternative
+    ):
+        return payload
     return _item_by_instance_index(candidates, instance_index)
 
 
@@ -150,11 +155,15 @@ def _selected_descriptors(options: Mapping[str, Any]) -> tuple[DashboardCardDesc
     include_alternatives = bool(options.get("include_alternatives", True))
     requested = options.get("available_cards", "auto")
     if requested == "auto":
-        descriptors = [descriptor for descriptor in iter_dashboard_cards() if descriptor.scope == "local"]
+        descriptors = [
+            descriptor for descriptor in iter_dashboard_cards() if descriptor.scope == "local"
+        ]
     else:
         descriptors = []
         for card_name in _as_sequence(requested):
-            descriptor = find_dashboard_card(str(card_name)) or find_dashboard_card_by_style(str(card_name))
+            descriptor = find_dashboard_card(str(card_name)) or find_dashboard_card_by_style(
+                str(card_name)
+            )
             if descriptor is None:
                 raise ConfigurationError(f"Unknown dashboard card: {card_name}")
             if descriptor.scope == "local":
@@ -189,7 +198,9 @@ def _precompute_indices(
     elif mode == "top_uncertain":
         selected = [
             int(record["instance_index"])
-            for record in sorted(records, key=lambda item: float(item.get("interval_width", 0.0)), reverse=True)
+            for record in sorted(
+                records, key=lambda item: float(item.get("interval_width", 0.0)), reverse=True
+            )
         ][:max_instances]
     else:
         selected = available_indices
@@ -200,7 +211,11 @@ def _precompute_indices(
             f"Precomputing {len(selected)} instances exceeds max_precomputed_instances="
             f"{max_instances}. Set allow_large_precompute=True to override."
         )
-    if len(selected) > max_instances and allow_large and bool(options.get("show_limit_warnings", True)):
+    if (
+        len(selected) > max_instances
+        and allow_large
+        and bool(options.get("show_limit_warnings", True))
+    ):
         warnings.append(
             f"Large standalone precompute enabled for {len(selected)} instances; HTML export may be heavy."
         )
@@ -216,7 +231,9 @@ def _card_context(
 ) -> PlotRenderContext:
     return PlotRenderContext(
         explanation=explanation,
-        instance_metadata=MappingProxyType({"type": "instance", "dashboard_mode": "standalone_html"}),
+        instance_metadata=MappingProxyType(
+            {"type": "instance", "dashboard_mode": "standalone_html"}
+        ),
         style=descriptor.style,
         intent=MappingProxyType({"type": intent_type}),
         show=False,
@@ -235,7 +252,9 @@ def _options_for_card(
     options.update(_as_options(card_options.get(descriptor.card_id)))
     options.update(_as_options(card_options.get(descriptor.style)))
     if descriptor.card_id == "alternative_feature_summary":
-        options.setdefault("include_conjunctions", bool(dashboard_options.get("include_conjunctions", False)))
+        options.setdefault(
+            "include_conjunctions", bool(dashboard_options.get("include_conjunctions", False))
+        )
     return options
 
 
@@ -333,7 +352,9 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
         global_options["include_instance_records"] = True
         global_context = PlotRenderContext(
             explanation=context.explanation,
-            instance_metadata=MappingProxyType({"type": "global", "dashboard_mode": dashboard_mode}),
+            instance_metadata=MappingProxyType(
+                {"type": "global", "dashboard_mode": dashboard_mode}
+            ),
             style=global_descriptor.style,
             intent=MappingProxyType({"type": "global"}),
             show=False,
@@ -450,14 +471,18 @@ def _card_html(card: Mapping[str, Any], *, div_id: str) -> str:
             f'<p>{escape(str(card.get("reason", "Unavailable")))}</p></div>'
         )
     renderer_cls = _LOCAL_CARD_RENDERERS.get(str(card.get("style")))
-    descriptor = find_dashboard_card(str(card.get("card_id"))) or find_dashboard_card_by_style(str(card.get("style")))
+    descriptor = find_dashboard_card(str(card.get("card_id"))) or find_dashboard_card_by_style(
+        str(card.get("style"))
+    )
     if renderer_cls is None or descriptor is None:
         return ""
     context = _card_context(
         None,
         descriptor,
         dict(card.get("options", {}) or {}),
-        intent_type="alternative" if "alternative_explanation" in set(descriptor.requires) else "factual",
+        intent_type="alternative"
+        if "alternative_explanation" in set(descriptor.requires)
+        else "factual",
     )
     result = renderer_cls().render(dict(card["artifact"]), context=context)
     shell_html = result.extras.get("html") if isinstance(result.extras, Mapping) else None
@@ -677,7 +702,9 @@ class InstanceWorkspaceDashboardRenderer(PlotRenderer):
 
     def render(self, artifact: PlotArtifact, *, context: PlotRenderContext) -> PlotRenderResult:
         if artifact.get("artifact_type") != ARTIFACT_TYPE:
-            raise ConfigurationError("Unexpected artifact type for plotly.dashboard.instance_workspace.")
+            raise ConfigurationError(
+                "Unexpected artifact type for plotly.dashboard.instance_workspace."
+            )
         html_content = build_dashboard_html(artifact)
         saved_paths: tuple[str, ...] = ()
         if context.path:

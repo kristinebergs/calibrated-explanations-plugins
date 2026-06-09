@@ -28,9 +28,7 @@ class ShapPipeline:
             # Binary classification: use positive class attributions.
             if values.shape[2] == 2:
                 return values[:, :, 1]
-            raise NotImplementedError(
-                "Multiclass SHAP factual plugin is not implemented yet."
-            )
+            raise NotImplementedError("Multiclass SHAP factual plugin is not implemented yet.")
 
         raise RuntimeError("Unexpected SHAP values shape; expected 2D or 3D array.")
 

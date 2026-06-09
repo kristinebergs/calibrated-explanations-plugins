@@ -9,14 +9,13 @@ pytest.importorskip("lime")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from calibrated_explanations import CalibratedExplainer
 import calibrated_explanations.plugins.registry as registry
+from calibrated_explanations import CalibratedExplainer
+from ce_explanation_factual_lime import plugin as lime_plugin_mod
+from ce_explanation_factual_lime.lime_helper import LimeHelper
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-
-from ce_explanation_factual_lime import plugin as lime_plugin_mod
-from ce_explanation_factual_lime.lime_helper import LimeHelper
 
 
 def _reset_registry_state() -> None:
@@ -96,9 +95,7 @@ def test_plugin_should_emit_lime_backed_factual_explanations(monkeypatch):
         n_redundant=0,
         random_state=0,
     )
-    x_train, x_test, y_train, _ = train_test_split(
-        x, y, test_size=0.2, random_state=0, stratify=y
-    )
+    x_train, x_test, y_train, _ = train_test_split(x, y, test_size=0.2, random_state=0, stratify=y)
     learner = LogisticRegression(random_state=0, solver="liblinear")
     learner.fit(x_train, y_train)
 
@@ -127,7 +124,7 @@ def test_plugin_should_emit_lime_backed_factual_explanations(monkeypatch):
     weight_vectors_plugin = []
     weight_vectors_baseline = []
     for explanation, baseline_explanation in zip(
-        collection.explanations, baseline.explanations
+        collection.explanations, baseline.explanations, strict=False
     ):
         # Contract: LIME factual plugin should emit ordinary factual explanations with conditions.
         assert explanation.__class__.__name__ == "FactualExplanation"
@@ -147,5 +144,5 @@ def test_plugin_should_emit_lime_backed_factual_explanations(monkeypatch):
     # Guardrail: if plugin silently falls back to plain factual output, these vectors are identical.
     assert not all(
         np.allclose(plugin_w, base_w, rtol=1e-6, atol=1e-8)
-        for plugin_w, base_w in zip(weight_vectors_plugin, weight_vectors_baseline)
+        for plugin_w, base_w in zip(weight_vectors_plugin, weight_vectors_baseline, strict=False)
     ), "LIME plugin output is numerically identical to plain factual fallback."

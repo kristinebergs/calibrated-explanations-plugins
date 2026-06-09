@@ -8,7 +8,6 @@ from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
 import calibrated_explanations.plugins.registry as registry
-import pytest
 from calibrated_explanations import WrapCalibratedExplainer
 from calibrated_explanations.plugins.plots import PlotRenderContext
 from sklearn.datasets import make_classification
@@ -117,7 +116,9 @@ def _collection(task: str, predictions: list[dict], *, threshold=None, percentil
             prediction=prediction,
             y_threshold=threshold,
             low_high_percentiles=percentiles,
-            get_mode=lambda task=task: "classification" if task == "classification" else "regression",
+            get_mode=lambda task=task: "classification"
+            if task == "classification"
+            else "regression",
             is_thresholded=lambda task=task: task == "probabilistic_regression",
         )
         locals_.append(local)
@@ -296,8 +297,12 @@ def test_aggregation_by_rounded_position_and_precision(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    coarse = plugin.build(_context(_classification_payload(), task="classification", position_precision=2))
-    fine = plugin.build(_context(_classification_payload(), task="classification", position_precision=3))
+    coarse = plugin.build(
+        _context(_classification_payload(), task="classification", position_precision=2)
+    )
+    fine = plugin.build(
+        _context(_classification_payload(), task="classification", position_precision=3)
+    )
 
     assert coarse["aggregation_metadata"]["num_markers"] == 2
     assert fine["aggregation_metadata"]["num_markers"] == 3
@@ -407,7 +412,9 @@ def test_global_payload_with_targets_uses_target_symbols(monkeypatch):
     legend_traces = result.figure.traces[4:6]
     instance_trace = result.figure.traces[6]
     assert [trace.kwargs["name"] for trace in legend_traces] == ["Y = 0", "Y = 1"]
-    assert legend_traces[0].kwargs["marker"]["symbol"] != legend_traces[1].kwargs["marker"]["symbol"]
+    assert (
+        legend_traces[0].kwargs["marker"]["symbol"] != legend_traces[1].kwargs["marker"]["symbol"]
+    )
     assert instance_trace.kwargs["name"] == "instances"
     assert instance_trace.kwargs["showlegend"] is False
 
@@ -501,9 +508,7 @@ def test_wrap_explainer_plot_invokes_global_instance_explorer_with_targets(monke
     x_cal, x_query, y_cal, y_query = train_test_split(
         x_tmp, y_tmp, test_size=0.5, random_state=23, stratify=y_tmp
     )
-    explainer = WrapCalibratedExplainer(
-        RandomForestClassifier(n_estimators=20, random_state=23)
-    )
+    explainer = WrapCalibratedExplainer(RandomForestClassifier(n_estimators=20, random_state=23))
     explainer.fit(x_proper, y_proper)
     explainer.calibrate(x_cal, y_cal)
 

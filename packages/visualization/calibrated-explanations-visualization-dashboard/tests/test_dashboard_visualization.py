@@ -20,7 +20,6 @@ matplotlib.use("Agg")
 
 from calibrated_explanations.plugins.plots import PlotRenderContext, PlotRenderResult
 
-
 STYLE_ID = "official.visualization.dashboard"
 BUILDER_ID = "official.visualization.dashboard.builder"
 RENDERER_ID = "official.visualization.dashboard.renderer"
@@ -89,6 +88,7 @@ def _white_png_bytes() -> bytes:
     fig, ax = plt.subplots(figsize=(1, 1))
     ax.axis("off")
     import io
+
     buf = io.BytesIO()
     fig.savefig(buf, format="png")
     plt.close(fig)
@@ -151,6 +151,7 @@ def _register_stub_style(monkeypatch) -> None:
         register_plot_renderer,
         register_plot_style,
     )
+
     builder, renderer = _make_stub_plugin()
     register_plot_builder("stub.builder", builder, source="manual")
     register_plot_renderer("stub.renderer", renderer, source="manual")
@@ -171,6 +172,7 @@ def _register_stub_style(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_builder_raises_for_unregistered_style(monkeypatch):
     sys.path.insert(0, _PKG_SRC)
@@ -333,22 +335,37 @@ def test_renderer_sub_plugin_exception_produces_placeholder(monkeypatch):
     # Register a plugin whose renderer always raises
     class _BrokenBuilder:
         plugin_meta = {
-            "schema_version": 1, "name": "broken.builder", "version": "0.1.0",
-            "provider": "test", "style": "broken.style", "output_formats": ("png",),
-            "capabilities": ["plot:plotspec"], "dependencies": (),
-            "trusted": True, "trust": True, "legacy_compatible": False,
+            "schema_version": 1,
+            "name": "broken.builder",
+            "version": "0.1.0",
+            "provider": "test",
+            "style": "broken.style",
+            "output_formats": ("png",),
+            "capabilities": ["plot:plotspec"],
+            "dependencies": (),
+            "trusted": True,
+            "trust": True,
+            "legacy_compatible": False,
             "default_renderer": "broken.renderer",
         }
+
         def build(self, context):
             return {}
 
     class _BrokenRenderer:
         plugin_meta = {
-            "schema_version": 1, "name": "broken.renderer", "version": "0.1.0",
-            "provider": "test", "output_formats": ("png",),
-            "capabilities": ["plot:renderer"], "dependencies": (),
-            "trusted": True, "trust": True, "supports_interactive": False,
+            "schema_version": 1,
+            "name": "broken.renderer",
+            "version": "0.1.0",
+            "provider": "test",
+            "output_formats": ("png",),
+            "capabilities": ["plot:renderer"],
+            "dependencies": (),
+            "trusted": True,
+            "trust": True,
+            "supports_interactive": False,
         }
+
         def render(self, artifact, *, context):
             raise RuntimeError("intentional failure")
 
@@ -357,9 +374,13 @@ def test_renderer_sub_plugin_exception_produces_placeholder(monkeypatch):
     register_plot_style(
         "broken.style",
         metadata={
-            "style": "broken.style", "builder_id": "broken.builder",
-            "renderer_id": "broken.renderer", "fallbacks": (),
-            "legacy_compatible": False, "is_default": False, "default_for": (),
+            "style": "broken.style",
+            "builder_id": "broken.builder",
+            "renderer_id": "broken.renderer",
+            "fallbacks": (),
+            "legacy_compatible": False,
+            "is_default": False,
+            "default_for": (),
         },
     )
 
@@ -398,10 +419,17 @@ def test_renderer_sub_plugin_exception_raises_when_strict(monkeypatch):
 
     class _BrokenBuilder:
         plugin_meta = {
-            "schema_version": 1, "name": "broken.strict.builder", "version": "0.1.0",
-            "provider": "test", "style": "broken.strict.style", "output_formats": ("png",),
-            "capabilities": ["plot:plotspec"], "dependencies": (),
-            "trusted": True, "trust": True, "legacy_compatible": False,
+            "schema_version": 1,
+            "name": "broken.strict.builder",
+            "version": "0.1.0",
+            "provider": "test",
+            "style": "broken.strict.style",
+            "output_formats": ("png",),
+            "capabilities": ["plot:plotspec"],
+            "dependencies": (),
+            "trusted": True,
+            "trust": True,
+            "legacy_compatible": False,
             "default_renderer": "broken.strict.renderer",
         }
 
@@ -410,10 +438,16 @@ def test_renderer_sub_plugin_exception_raises_when_strict(monkeypatch):
 
     class _BrokenRenderer:
         plugin_meta = {
-            "schema_version": 1, "name": "broken.strict.renderer", "version": "0.1.0",
-            "provider": "test", "output_formats": ("png",),
-            "capabilities": ["plot:renderer"], "dependencies": (),
-            "trusted": True, "trust": True, "supports_interactive": False,
+            "schema_version": 1,
+            "name": "broken.strict.renderer",
+            "version": "0.1.0",
+            "provider": "test",
+            "output_formats": ("png",),
+            "capabilities": ["plot:renderer"],
+            "dependencies": (),
+            "trusted": True,
+            "trust": True,
+            "supports_interactive": False,
         }
 
         def render(self, artifact, *, context):
@@ -424,9 +458,13 @@ def test_renderer_sub_plugin_exception_raises_when_strict(monkeypatch):
     register_plot_style(
         "broken.strict.style",
         metadata={
-            "style": "broken.strict.style", "builder_id": "broken.strict.builder",
-            "renderer_id": "broken.strict.renderer", "fallbacks": (),
-            "legacy_compatible": False, "is_default": False, "default_for": (),
+            "style": "broken.strict.style",
+            "builder_id": "broken.strict.builder",
+            "renderer_id": "broken.strict.renderer",
+            "fallbacks": (),
+            "legacy_compatible": False,
+            "is_default": False,
+            "default_for": (),
         },
     )
 
@@ -439,7 +477,11 @@ def test_renderer_sub_plugin_exception_raises_when_strict(monkeypatch):
         path=None,
         save_ext=None,
         options=MappingProxyType(
-            {"plots": [{"style": "broken.strict.style"}], "narrative": False, "strict_subplots": True}
+            {
+                "plots": [{"style": "broken.strict.style"}],
+                "narrative": False,
+                "strict_subplots": True,
+            }
         ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
@@ -645,9 +687,7 @@ def _build_case_explanations(case_name: str, explanation_kind: str):
 
     if case_name == "regression":
         X, y = make_regression(n_samples=120, n_features=4, noise=0.1, random_state=0)
-        X_train, X_test, y_train, _ = train_test_split(
-            X, y, test_size=0.2, random_state=0
-        )
+        X_train, X_test, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=0)
         model = LinearRegression().fit(X_train, y_train)
         explainer = CalibratedExplainer(model, X_train, y_train, mode="regression", seed=0)
         return (
@@ -658,9 +698,7 @@ def _build_case_explanations(case_name: str, explanation_kind: str):
 
     if case_name == "probabilistic_regression":
         X, y = make_regression(n_samples=120, n_features=4, noise=0.1, random_state=7)
-        X_train, X_test, y_train, _ = train_test_split(
-            X, y, test_size=0.2, random_state=0
-        )
+        X_train, X_test, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=0)
         model = LinearRegression().fit(X_train, y_train)
         explainer = CalibratedExplainer(model, X_train, y_train, mode="regression", seed=0)
         threshold = float(np.median(y_train))
@@ -703,11 +741,13 @@ def test_ce_default_factual_collection_per_instance(monkeypatch, real_factual_ex
         show=False,
         path=None,
         save_ext=None,
-        options=MappingProxyType({
-            "plots": [{"style": CE_DEFAULT_STYLE_ID}],
-            "narrative": False,
-            "strict_subplots": True,
-        }),
+        options=MappingProxyType(
+            {
+                "plots": [{"style": CE_DEFAULT_STYLE_ID}],
+                "narrative": False,
+                "strict_subplots": True,
+            }
+        ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
     artifact = plugin.build(context)
@@ -742,12 +782,14 @@ def test_ce_default_factual_collection_combined(monkeypatch, real_factual_explan
         show=False,
         path=None,
         save_ext=None,
-        options=MappingProxyType({
-            "plots": [{"style": CE_DEFAULT_STYLE_ID}],
-            "narrative": False,
-            "per_instance": False,
-            "strict_subplots": True,
-        }),
+        options=MappingProxyType(
+            {
+                "plots": [{"style": CE_DEFAULT_STYLE_ID}],
+                "narrative": False,
+                "per_instance": False,
+                "strict_subplots": True,
+            }
+        ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
     artifact = plugin.build(context)
@@ -782,11 +824,13 @@ def test_ce_default_factual_single_instance(monkeypatch, real_factual_explanatio
         show=False,
         path=None,
         save_ext=None,
-        options=MappingProxyType({
-            "plots": [{"style": CE_DEFAULT_STYLE_ID}],
-            "narrative": False,
-            "strict_subplots": True,
-        }),
+        options=MappingProxyType(
+            {
+                "plots": [{"style": CE_DEFAULT_STYLE_ID}],
+                "narrative": False,
+                "strict_subplots": True,
+            }
+        ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
     artifact = plugin.build(context)
@@ -817,11 +861,13 @@ def test_ce_default_alternative_collection_per_instance(monkeypatch, real_altern
         show=False,
         path=None,
         save_ext=None,
-        options=MappingProxyType({
-            "plots": [{"style": CE_DEFAULT_STYLE_ID}],
-            "narrative": False,
-            "strict_subplots": True,
-        }),
+        options=MappingProxyType(
+            {
+                "plots": [{"style": CE_DEFAULT_STYLE_ID}],
+                "narrative": False,
+                "strict_subplots": True,
+            }
+        ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
     artifact = plugin.build(context)
@@ -854,11 +900,13 @@ def test_ce_default_alternative_single_instance(monkeypatch, real_alternative_ex
         show=False,
         path=None,
         save_ext=None,
-        options=MappingProxyType({
-            "plots": [{"style": CE_DEFAULT_STYLE_ID}],
-            "narrative": False,
-            "strict_subplots": True,
-        }),
+        options=MappingProxyType(
+            {
+                "plots": [{"style": CE_DEFAULT_STYLE_ID}],
+                "narrative": False,
+                "strict_subplots": True,
+            }
+        ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
     artifact = plugin.build(context)
@@ -888,12 +936,14 @@ def test_ce_default_with_narrative(monkeypatch, real_factual_explanations):
         show=False,
         path=None,
         save_ext=None,
-        options=MappingProxyType({
-            "plots": [{"style": CE_DEFAULT_STYLE_ID}],
-            "narrative": True,
-            "expertise_level": "beginner",
-            "strict_subplots": True,
-        }),
+        options=MappingProxyType(
+            {
+                "plots": [{"style": CE_DEFAULT_STYLE_ID}],
+                "narrative": True,
+                "expertise_level": "beginner",
+                "strict_subplots": True,
+            }
+        ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
     artifact = plugin.build(context)
@@ -907,7 +957,6 @@ def test_ce_default_with_narrative(monkeypatch, real_factual_explanations):
 
 def test_ce_default_ce_style_forwarded(monkeypatch, real_factual_explanations):
     """ce_style in the plot spec is forwarded as style= to explanation.plot()."""
-    import plotly.graph_objects as go
 
     sys.path.insert(0, _PKG_SRC)
     plugin_mod = importlib.import_module("ce_visualization_dashboard.plugin")
@@ -939,11 +988,13 @@ def test_ce_default_ce_style_forwarded(monkeypatch, real_factual_explanations):
         show=False,
         path=None,
         save_ext=None,
-        options=MappingProxyType({
-            "plots": [{"style": CE_DEFAULT_STYLE_ID, "ce_style": "ensured"}],
-            "narrative": False,
-            "strict_subplots": True,
-        }),
+        options=MappingProxyType(
+            {
+                "plots": [{"style": CE_DEFAULT_STYLE_ID, "ce_style": "ensured"}],
+                "narrative": False,
+                "strict_subplots": True,
+            }
+        ),
     )
     plugin = registry.find_plot_plugin(STYLE_ID)
     artifact = plugin.build(context)
@@ -967,7 +1018,9 @@ def test_ce_default_ce_style_forwarded(monkeypatch, real_factual_explanations):
         ("probabilistic_regression", "alternative", "alternative"),
     ],
 )
-def test_ce_default_all_modes_collection_per_instance(monkeypatch, case_name, explanation_kind, intent_type):
+def test_ce_default_all_modes_collection_per_instance(
+    monkeypatch, case_name, explanation_kind, intent_type
+):
     import plotly.graph_objects as go
 
     sys.path.insert(0, _PKG_SRC)
@@ -1019,7 +1072,9 @@ def test_ce_default_all_modes_collection_per_instance(monkeypatch, case_name, ex
         ("probabilistic_regression", "alternative", "alternative"),
     ],
 )
-def test_ce_default_all_modes_collection_combined(monkeypatch, case_name, explanation_kind, intent_type):
+def test_ce_default_all_modes_collection_combined(
+    monkeypatch, case_name, explanation_kind, intent_type
+):
     import plotly.graph_objects as go
 
     sys.path.insert(0, _PKG_SRC)
@@ -1071,7 +1126,9 @@ def test_ce_default_all_modes_collection_combined(monkeypatch, case_name, explan
         ("probabilistic_regression", "alternative", "alternative"),
     ],
 )
-def test_ce_default_all_modes_single_instance(monkeypatch, case_name, explanation_kind, intent_type):
+def test_ce_default_all_modes_single_instance(
+    monkeypatch, case_name, explanation_kind, intent_type
+):
     import plotly.graph_objects as go
 
     sys.path.insert(0, _PKG_SRC)

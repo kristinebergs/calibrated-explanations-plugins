@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import sys
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
 from calibrated_explanations.utils.exceptions import (
     ConfigurationError,
     DataShapeError,
@@ -99,9 +98,7 @@ def test_lime_pipeline_should_raise_for_shape_and_mondrian(monkeypatch):
 
     mondrian_explainer = _make_lime_explainer(mondrian=True)
     mondrian_pipeline = LimePipeline(mondrian_explainer)
-    monkeypatch.setattr(
-        mondrian_pipeline, "_preload_lime", lambda: (_DummyLimeExplainer(), None)
-    )
+    monkeypatch.setattr(mondrian_pipeline, "_preload_lime", lambda: (_DummyLimeExplainer(), None))
     with pytest.raises(ValidationError, match="bins parameter must be specified"):
         mondrian_pipeline.explain(np.array([[1.0, 2.0]]), bins=None)
 

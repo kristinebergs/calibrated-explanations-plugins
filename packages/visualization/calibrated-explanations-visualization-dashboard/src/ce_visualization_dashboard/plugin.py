@@ -9,8 +9,8 @@ from calibrated_explanations.plugins.plots import (
     PlotArtifact,
     PlotBuilder,
     PlotRenderContext,
-    PlotRenderResult,
     PlotRenderer,
+    PlotRenderResult,
 )
 from calibrated_explanations.plugins.registry import (
     find_plot_builder_descriptor,
@@ -23,7 +23,6 @@ from calibrated_explanations.plugins.registry import (
 )
 
 from . import layout as _layout
-
 
 STYLE_ID = "official.visualization.dashboard"
 BUILDER_ID = "official.visualization.dashboard.builder"
@@ -122,7 +121,9 @@ def _render_panels(
         if plugin is None:
             if strict_subplots:
                 raise RuntimeError(f"Style {style!r} not found in registry.")
-            panel_bytes.append(_layout.error_placeholder_bytes(f"Style {style!r} not found in registry."))
+            panel_bytes.append(
+                _layout.error_placeholder_bytes(f"Style {style!r} not found in registry.")
+            )
             continue
         sub_context = PlotRenderContext(
             explanation=explanation,

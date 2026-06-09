@@ -43,7 +43,9 @@ def load_package_records() -> list[PackageRecord]:
         if not isinstance(distribution_name, str) or not isinstance(version, str):
             raise SystemExit(f"Invalid package metadata in {pyproject_path.relative_to(ROOT)}")
         if not isinstance(family, str):
-            raise SystemExit(f"Missing tool.ce_plugin_repo.family in {pyproject_path.relative_to(ROOT)}")
+            raise SystemExit(
+                f"Missing tool.ce_plugin_repo.family in {pyproject_path.relative_to(ROOT)}"
+            )
         records.append(
             PackageRecord(
                 root=pyproject_path.parent,
@@ -59,8 +61,7 @@ def parse_tag(tag: str) -> tuple[str, str]:
     match = TAG_PATTERN.match(tag)
     if match is None:
         raise SystemExit(
-            "Release tag must match pkg/<distribution-name>/v<version>; "
-            f"received {tag!r}."
+            "Release tag must match pkg/<distribution-name>/v<version>; " f"received {tag!r}."
         )
     return match.group("distribution_name"), match.group("version")
 
