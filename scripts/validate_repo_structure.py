@@ -260,7 +260,7 @@ def resolve_plugin_meta(package_dir: Path, import_name: str, target: str) -> dic
 
 def extract_plugin_meta(module_path: Path, object_name: str) -> dict | None:
     tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
-    module_constants = collect_module_constants(tree)
+    module_constants = collect_module_constants(tree, module_path)
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == object_name:
             for statement in node.body:
@@ -271,8 +271,10 @@ def extract_plugin_meta(module_path: Path, object_name: str) -> dict | None:
     return None
 
 
-def collect_module_constants(tree: ast.Module) -> dict[str, object]:
+def collect_module_constants(tree: ast.Module, module_path: Path | None = None) -> dict[str, object]:
     constants: dict[str, object] = {}
+    if module_path is not None:
+        constants.update(collect_imported_metadata_constants(tree, module_path))
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
@@ -282,6 +284,26 @@ def collect_module_constants(tree: ast.Module) -> dict[str, object]:
             constants[node.targets[0].id] = resolve_static_value(node.value, constants)
         except ValueError:
             continue
+    return constants
+
+
+def collect_imported_metadata_constants(tree: ast.Module, module_path: Path) -> dict[str, object]:
+    constants: dict[str, object] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        if not node.module.endswith(".metadata"):
+            continue
+        metadata_path = module_path.with_name("metadata.py")
+        if not metadata_path.exists():
+            continue
+        metadata_tree = ast.parse(metadata_path.read_text(encoding="utf-8"), filename=str(metadata_path))
+        metadata_constants = collect_module_constants(metadata_tree)
+        for alias in node.names:
+            imported_name = alias.name
+            local_name = alias.asname or alias.name
+            if imported_name in metadata_constants:
+                constants[local_name] = metadata_constants[imported_name]
     return constants
 
 

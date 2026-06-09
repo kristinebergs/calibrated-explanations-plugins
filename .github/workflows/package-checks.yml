@@ -74,6 +74,10 @@ jobs:
           for package in packages:
               if package.startswith("packages/meta/"):
                   continue
+              if package == "packages/calibration/calibrated-explanations-calibration-idr":
+                  # This package requires Python >=3.13 and a real upstream isodistrreg build.
+                  # It is validated by the dedicated mandatory idr-isodistrreg-runtime job below.
+                  continue
               subprocess.check_call(
                   [
                       "python",
@@ -125,3 +129,37 @@ jobs:
                   ]
               )
           PY
+
+  idr-isodistrreg-runtime:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Rust toolchain for isodistrreg
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install IDR plugin with real upstream isodistrreg
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "isodistrreg @ git+https://github.com/AlexanderHenzi/isodistrreg.git@324d85a6e83c4c44c9fde1c29d0a2b743776096e#subdirectory=bindings/python"
+          python -m pip install -e packages/calibration/calibrated-explanations-calibration-idr
+          python -m pip install "calibrated-explanations>=0.11" scikit-learn pytest
+
+      - name: Run mandatory real isodistrreg and CE checks
+        env:
+          CE_IDR_REQUIRE_REAL_BACKEND: "1"
+        run: |
+          pytest -q \
+            packages/calibration/calibrated-explanations-calibration-idr/tests/test_idr_adapter.py::test_should_use_real_isodistrreg_when_installed \
+            packages/calibration/calibrated-explanations-calibration-idr/tests/test_ce_integration.py \
+            packages/calibration/calibrated-explanations-calibration-idr/tests/test_plugin_meta.py::test_plugin_meta_validates_against_ce_contract \
+            packages/calibration/calibrated-explanations-calibration-idr/tests/test_notebook_contract.py

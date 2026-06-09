@@ -91,3 +91,11 @@ If you are authoring or reviewing a plugin package rather than installing one,
 start with the upstream plugin contract before changing scaffolded code.
 To make a plugin official in this repository, it must be added to the matching
 family metapackage dependencies.
+
+### IDR regression calibration
+
+```bash
+pip install calibrated-explanations-calibration-idr
+```
+
+Use this package for IDR regression interval calibration backed by upstream `isodistrreg.IDR`. It is not listed in the official calibration metapackage until dependency, licensing, wheel, and CE integration conformance are proven.
