@@ -1,6 +1,7 @@
 """Plugin metadata tests for IDR calibration package."""
 
 import os
+from types import SimpleNamespace
 
 import pytest
 from ce_calibration_idr.metadata import PLUGIN_META
@@ -26,13 +27,22 @@ def test_plugin_class_uses_metadata_single_source():
     assert plugin.plugin_meta is PLUGIN_META
 
 
+def test_plugin_infers_regression_from_ce_interval_context_without_mode():
+    pytest.importorskip("numpy")
+    from ce_calibration_idr import IDRRegressionIntervalCalibratorPlugin  # noqa: E402
+
+    context = SimpleNamespace(
+        learner=SimpleNamespace(predict=lambda x: x),
+        metadata={"operation": "initialize"},
+    )
+    assert IDRRegressionIntervalCalibratorPlugin._task_name(context) == "regression"
+
+
 def test_metadata_declares_threshold_probability_calibrator_policy():
     assert PLUGIN_META["requires_probability_interval_calibrator"] is True
     assert (
-        PLUGIN_META["default_probability_interval_calibrator"]
-        == "official.calibration.venn_abers"
+        PLUGIN_META["default_probability_interval_calibrator"] == "official.calibration.venn_abers"
     )
     assert (
-        PLUGIN_META["threshold_probability_calibrator_role"]
-        == "binary_event_probability_interval"
+        PLUGIN_META["threshold_probability_calibrator_role"] == "binary_event_probability_interval"
     )

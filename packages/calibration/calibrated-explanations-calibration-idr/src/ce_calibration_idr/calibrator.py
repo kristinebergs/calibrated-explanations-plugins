@@ -39,7 +39,7 @@ class IDRRegressionIntervalCalibrator:
         self._threshold_adapter = IDRThresholdProbabilityAdapter(
             idr=self._idr,
             learner=self._learner,
-            X_cal=self._X_cal,
+            x_cal=self._X_cal,
             y_cal=self._y_cal,
             raw_predict_fn=self._raw_predict,
             venn_abers_factory=self._extract_venn_abers_factory(context),
@@ -47,30 +47,31 @@ class IDRRegressionIntervalCalibrator:
 
     def predict_probability(
         self,
-        X: Any,
-        *,
+        x: Any,
         threshold: float | tuple[float, float],
+        *,
         output_interval: bool = True,
         **kwargs: Any,
-    ) -> dict[str, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, None]:
         """Return threshold-event probabilities through CE Venn-Abers calibration."""
-        return self._predict_threshold_probability(
-            X,
+        prediction = self._predict_threshold_probability(
+            x,
             threshold=threshold,
             output_interval=output_interval,
         )
+        return prediction["predict"], prediction["low"], prediction["high"], None
 
     def predict_proba(
         self,
-        X: Any,
-        *,
+        x: Any,
         threshold: float | tuple[float, float],
+        *,
         output_interval: bool = True,
         **kwargs: Any,
-    ) -> dict[str, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, None]:
         """Alias CE probability calls to threshold-event probability prediction."""
         return self.predict_probability(
-            X,
+            x,
             threshold=threshold,
             output_interval=output_interval,
             **kwargs,
@@ -78,22 +79,21 @@ class IDRRegressionIntervalCalibrator:
 
     def predict_uncertainty(
         self,
-        X: Any,
-        *,
+        x: Any,
         low_high_percentiles: tuple[float, float] = (5.0, 95.0),
+        bins: Any | None = None,
+        *,
         threshold: float | tuple[float, float] | None = None,
         **kwargs: Any,
-    ) -> np.ndarray:
-        """Return interval width as an uncertainty proxy for CE compatibility."""
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, None]:
+        """Return CE-compatible regression prediction interval components."""
         prediction = self.predict(
-            X,
+            x,
             low_high_percentiles=low_high_percentiles,
             threshold=threshold,
             **kwargs,
         )
-        return np.asarray(prediction["high"], dtype=float) - np.asarray(
-            prediction["low"], dtype=float
-        )
+        return prediction["predict"], prediction["low"], prediction["high"], None
 
     def pre_fit_for_probabilistic(
         self, *args: Any, **kwargs: Any
@@ -126,7 +126,7 @@ class IDRRegressionIntervalCalibrator:
 
     def predict(
         self,
-        X: Any,
+        x: Any,
         *,
         low_high_percentiles: tuple[float, float] = (5.0, 95.0),
         threshold: float | tuple[float, float] | None = None,
@@ -136,18 +136,18 @@ class IDRRegressionIntervalCalibrator:
         """Return a CE-compatible calibrated prediction payload."""
         if threshold is None:
             return self._predict_regression_interval(
-                X,
+                x,
                 low_high_percentiles=low_high_percentiles,
             )
         return self._predict_threshold_probability(
-            X,
+            x,
             threshold=threshold,
             output_interval=output_interval,
         )
 
     def _predict_regression_interval(
         self,
-        X: Any,
+        x: Any,
         *,
         low_high_percentiles: tuple[float, float],
     ) -> dict[str, np.ndarray]:
@@ -158,7 +158,7 @@ class IDRRegressionIntervalCalibrator:
             raise ValueError(
                 "low_high_percentiles must bracket the calibrated median: low <= 50 <= high."
             )
-        scores = self._raw_predict(X)
+        scores = self._raw_predict(x)
         low = self._idr.quantile(scores, low_alpha)
         predict = self._idr.quantile(scores, 0.5)
         high = self._idr.quantile(scores, high_alpha)
@@ -173,19 +173,19 @@ class IDRRegressionIntervalCalibrator:
 
     def _predict_threshold_probability(
         self,
-        X: Any,
+        x: Any,
         *,
         threshold: float | tuple[float, float],
         output_interval: bool,
     ) -> dict[str, np.ndarray]:
         return self._threshold_adapter.predict_probability_interval(
-            X,
+            x,
             threshold=threshold,
             output_interval=output_interval,
         )
 
-    def _raw_predict(self, X: Any) -> np.ndarray:
-        pred = self._learner.predict(X)
+    def _raw_predict(self, x: Any) -> np.ndarray:
+        pred = self._learner.predict(x)
         pred = np.asarray(pred, dtype=float)
         if pred.ndim == 2 and pred.shape[1] == 1:
             pred = pred[:, 0]
@@ -235,9 +235,14 @@ class IDRRegressionIntervalCalibrator:
     def _extract_calibration_data(context: Any) -> tuple[Any, np.ndarray]:
         if hasattr(context, "X_cal") and hasattr(context, "y_cal"):
             return context.X_cal, np.asarray(context.y_cal, dtype=float)
+        if hasattr(context, "calibration_splits"):
+            calibration_splits = context.calibration_splits
+            if calibration_splits:
+                x_cal, y_cal = calibration_splits[0]
+                return x_cal, np.asarray(y_cal, dtype=float)
         if hasattr(context, "calibration_data"):
-            X_cal, y_cal = context.calibration_data
-            return X_cal, np.asarray(y_cal, dtype=float)
+            x_cal, y_cal = context.calibration_data
+            return x_cal, np.asarray(y_cal, dtype=float)
         if hasattr(context, "X") and hasattr(context, "y"):
             return context.X, np.asarray(context.y, dtype=float)
         raise AttributeError("Could not extract calibration data from IntervalCalibratorContext.")

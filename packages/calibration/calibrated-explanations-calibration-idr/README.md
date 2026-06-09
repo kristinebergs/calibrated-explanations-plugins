@@ -42,6 +42,18 @@ factory. Metadata declares this as the `binary_event_probability_interval` role 
 Do **not** call `model.fit(...)` and `explainer.fit(...)` on the same model instance. Use either CE
 owned fitting or a pre-fitted model, as shown in the example notebook.
 
+## Evaluation
+
+Run the local parity and speed comparison against CE's default CPS regression calibrator with:
+
+```bash
+python evaluation/compare_idr_cps.py --samples 400 --repeats 5
+```
+
+The evaluation trains one underlying regression model, reuses that fitted model state for both
+calibrators, and reports interval validity, empirical coverage, interval-width deltas, raw model
+prediction parity, and median calibration/prediction timings.
+
 The plugin has exactly one IDR backend: upstream `isodistrreg.IDR`. It does not use
 `sklearn.isotonic.IsotonicRegression` and does not silently fall back to CE's legacy regression
 calibrator. Since upstream `isodistrreg` is GPL-2.0-or-later and may not be available as a normal

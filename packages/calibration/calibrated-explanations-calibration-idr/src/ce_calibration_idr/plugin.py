@@ -77,6 +77,17 @@ class IDRRegressionIntervalCalibratorPlugin(IntervalCalibratorPlugin):
                 continue
             value = getattr(value, "value", value)
             return str(value).lower()
+        metadata = getattr(candidate, "metadata", None)
+        if isinstance(metadata, dict):
+            for key in ("task", "mode", "calibration_kind"):
+                value = metadata.get(key)
+                if value is None:
+                    continue
+                value = getattr(value, "value", value)
+                return str(value).lower()
+        learner = getattr(candidate, "learner", None)
+        if learner is not None and not hasattr(learner, "predict_proba"):
+            return "regression"
         return None
 
     def explain(self, model: Any, x: Any, **kwargs: Any) -> Any:

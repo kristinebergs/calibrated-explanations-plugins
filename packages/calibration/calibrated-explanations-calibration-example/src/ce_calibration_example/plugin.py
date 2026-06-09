@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 from typing import Any
 
 from calibrated_explanations.plugins.builtins import LegacyIntervalCalibratorPlugin
@@ -10,8 +9,8 @@ from calibrated_explanations.plugins.intervals import (
 )
 from calibrated_explanations.plugins.registry import (
     find_interval_descriptor,
+    mark_interval_trusted,
     register_interval_plugin,
-    trust_plugin,
 )
 
 
@@ -56,9 +55,7 @@ def register_example_interval_plugin() -> None:
         ExampleIntervalCalibratorPlugin(),
         source="entrypoint",
     )
-    # Explicitly trust the plugin after registration
-    with contextlib.suppress(Exception):
-        trust_plugin(identifier)
+    mark_interval_trusted(identifier)
 
 
 register_example_interval_plugin()

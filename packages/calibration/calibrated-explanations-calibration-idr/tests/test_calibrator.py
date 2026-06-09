@@ -14,31 +14,31 @@ from ce_calibration_idr.calibrator import IDRRegressionIntervalCalibrator  # noq
 class FakeIDR:
     """Small fake with the subset of isodistrreg.IDR used by the adapter."""
 
-    def __init__(self, *, X: np.ndarray, y: np.ndarray) -> None:
+    def __init__(self, *, X: np.ndarray, y: np.ndarray) -> None:  # noqa: N803
         """Store calibration pairs for deterministic fake distributions."""
         self.X = np.asarray(X, dtype=float).reshape(-1)
         self.y = np.asarray(y, dtype=float)
         self.y_min = float(np.min(self.y))
         self.y_max = float(np.max(self.y))
 
-    def cdf_at(self, X: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
+    def cdf_at(self, x_values: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
         """Return fake CDF values clipped to probability space."""
-        x = np.asarray(X, dtype=float).reshape(-1)
+        x = np.asarray(x_values, dtype=float).reshape(-1)
         t = np.asarray(thresholds, dtype=float).reshape(-1)
         return 1.0 / (1.0 + np.exp(-(t - x)))
 
-    def quantile(self, X: np.ndarray, probabilities: float) -> np.ndarray:
+    def quantile(self, x_values: np.ndarray, probabilities: float) -> np.ndarray:
         """Return fake quantiles that differ from raw scores."""
-        x = np.asarray(X, dtype=float).reshape(-1)
+        x = np.asarray(x_values, dtype=float).reshape(-1)
         return np.clip(x + float(probabilities) + 1.0, self.y_min, self.y_max)
 
 
 class LinearLearner:
     """Tiny deterministic learner for calibrator tests."""
 
-    def predict(self, X: Any) -> np.ndarray:
+    def predict(self, x_values: Any) -> np.ndarray:
         """Return the first column as a scalar regression score."""
-        return np.asarray(X, dtype=float)[:, 0]
+        return np.asarray(x_values, dtype=float)[:, 0]
 
 
 class FakeVennAbers:
@@ -114,7 +114,7 @@ def test_should_support_one_sided_percentile_bounds(monkeypatch):
 def test_should_return_probability_interval_for_scalar_threshold(monkeypatch):
     calibrator = fitted_calibrator(monkeypatch)
     pred = calibrator.predict(np.array([[1.0], [4.0]]), threshold=5.0, output_interval=True)
-    assert np.all(0.0 <= pred["low"])
+    assert np.all(pred["low"] >= 0.0)
     assert np.all(pred["low"] <= pred["predict"])
     assert np.all(pred["predict"] <= pred["high"])
     assert np.all(pred["high"] <= 1.0)
@@ -123,7 +123,7 @@ def test_should_return_probability_interval_for_scalar_threshold(monkeypatch):
 def test_should_return_probability_interval_for_within_spec_threshold(monkeypatch):
     calibrator = fitted_calibrator(monkeypatch)
     pred = calibrator.predict(np.array([[1.0], [4.0]]), threshold=(4.0, 8.0))
-    assert np.all(0.0 <= pred["low"])
+    assert np.all(pred["low"] >= 0.0)
     assert np.all(pred["low"] <= pred["predict"])
     assert np.all(pred["predict"] <= pred["high"])
     assert np.all(pred["high"] <= 1.0)
@@ -193,6 +193,33 @@ def test_created_calibrator_exposes_ce_regression_interval_surface(monkeypatch):
         "is_mondrian",
     ):
         assert callable(getattr(calibrator, method_name))
+
+
+@dataclass
+class SplitContext:
+    """CE-style regression context exposing calibration_splits."""
+
+    learner: LinearLearner
+    calibration_splits: tuple[tuple[np.ndarray, np.ndarray], ...]
+    mode: str = "regression"
+
+
+def test_created_calibrator_accepts_ce_calibration_splits_context(monkeypatch):
+    from ce_calibration_idr.idr_adapter import IDRDistributionAdapter  # noqa: E402
+
+    monkeypatch.setattr(IDRDistributionAdapter, "_load_idr_class", staticmethod(lambda: FakeIDR))
+    X_cal = np.arange(8, dtype=float).reshape(-1, 1)
+    y_cal = np.arange(8, dtype=float)
+    calibrator = IDRRegressionIntervalCalibrator(
+        context=SplitContext(
+            learner=LinearLearner(),
+            calibration_splits=((X_cal, y_cal),),
+        )
+    )
+    pred = calibrator.predict_uncertainty(np.array([[1.0], [4.0]]), (5.0, 95.0))
+    assert len(pred) == 4
+    assert np.all(pred[1] <= pred[0])
+    assert np.all(pred[0] <= pred[2])
 
 
 @dataclass

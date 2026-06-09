@@ -72,6 +72,24 @@ Example visualization plugin:
 pip install calibrated-explanations-visualization-example
 ```
 
+Dashboard visualization plugin:
+
+```bash
+pip install calibrated-explanations-visualization-dashboard
+```
+
+Factual SHAP visualization plugin:
+
+```bash
+pip install calibrated-explanations-visualization-factual-shap
+```
+
+Plotly visualization plugin layouts:
+
+```bash
+pip install calibrated-explanations-visualization-plotly
+```
+
 ## Official naming model
 
 Official individual plugin packages use this form:

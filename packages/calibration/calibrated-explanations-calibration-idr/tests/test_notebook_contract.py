@@ -12,10 +12,7 @@ NOTEBOOK = Path(__file__).resolve().parents[1] / "examples" / "idr_regression_ca
 def test_example_notebook_exists_and_documents_lifecycles():
     """Ensure the notebook captures both valid lifecycles and the invalid double-fit pattern."""
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-    text = "\n".join(
-        "".join(cell.get("source", []))
-        for cell in notebook["cells"]
-    )
+    text = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
     assert "WrapCalibratedExplainer" in text
     assert "explainer.fit(X_train, y_train)" in text
     assert "prefit_model = RandomForestRegressor(random_state=0).fit" in text
@@ -51,4 +48,4 @@ def test_execute_example_notebook_when_real_backend_required():
         if cell.get("cell_type") != "code":
             continue
         source = "".join(cell.get("source", []))
-        exec(compile(source, str(NOTEBOOK), "exec"), globals_dict)
+        exec(compile(source, str(NOTEBOOK), "exec"), globals_dict)  # noqa: S102  # nosec B102

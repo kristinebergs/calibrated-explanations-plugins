@@ -271,7 +271,9 @@ def extract_plugin_meta(module_path: Path, object_name: str) -> dict | None:
     return None
 
 
-def collect_module_constants(tree: ast.Module, module_path: Path | None = None) -> dict[str, object]:
+def collect_module_constants(
+    tree: ast.Module, module_path: Path | None = None
+) -> dict[str, object]:
     constants: dict[str, object] = {}
     if module_path is not None:
         constants.update(collect_imported_metadata_constants(tree, module_path))
@@ -297,7 +299,9 @@ def collect_imported_metadata_constants(tree: ast.Module, module_path: Path) -> 
         metadata_path = module_path.with_name("metadata.py")
         if not metadata_path.exists():
             continue
-        metadata_tree = ast.parse(metadata_path.read_text(encoding="utf-8"), filename=str(metadata_path))
+        metadata_tree = ast.parse(
+            metadata_path.read_text(encoding="utf-8"), filename=str(metadata_path)
+        )
         metadata_constants = collect_module_constants(metadata_tree)
         for alias in node.names:
             imported_name = alias.name

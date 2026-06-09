@@ -22,7 +22,7 @@ class IDRThresholdProbabilityAdapter:
         *,
         idr: Any,
         learner: Any,
-        X_cal: Any,
+        x_cal: Any,
         y_cal: np.ndarray,
         raw_predict_fn: Callable[[Any], np.ndarray],
         venn_abers_factory: VennAbersFactory | None,
@@ -30,7 +30,7 @@ class IDRThresholdProbabilityAdapter:
         """Create a threshold adapter for a fitted distribution calibrator."""
         self._idr = idr
         self._learner = learner
-        self._X_cal = X_cal
+        self._X_cal = x_cal
         self._y_cal = np.asarray(y_cal, dtype=float)
         self._raw_predict = raw_predict_fn
         self._venn_abers_factory = venn_abers_factory
@@ -38,7 +38,7 @@ class IDRThresholdProbabilityAdapter:
 
     def predict_probability_interval(
         self,
-        X: Any,
+        x: Any,
         *,
         threshold: float | tuple[float, float],
         output_interval: bool,
@@ -46,7 +46,7 @@ class IDRThresholdProbabilityAdapter:
         """Return Venn-Abers calibrated event probability predictions and intervals."""
         event_key = self._event_key(threshold)
         va = self._get_or_fit_venn_abers(threshold, event_key)
-        scores_query = self._event_scores(X, threshold)
+        scores_query = self._event_scores(x, threshold)
         predict, low, high = self._predict_with_venn_abers(
             va,
             scores_query,
@@ -74,8 +74,8 @@ class IDRThresholdProbabilityAdapter:
         self._va_cache[event_key] = va
         return va
 
-    def _event_scores(self, X: Any, threshold: float | tuple[float, float]) -> np.ndarray:
-        raw_scores = self._raw_predict(X)
+    def _event_scores(self, x: Any, threshold: float | tuple[float, float]) -> np.ndarray:
+        raw_scores = self._raw_predict(x)
         if isinstance(threshold, tuple):
             lower, upper = threshold
             if lower > upper:

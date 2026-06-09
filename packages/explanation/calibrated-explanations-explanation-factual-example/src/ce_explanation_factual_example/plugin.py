@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 from typing import Any
 
 from calibrated_explanations.plugins.builtins import LegacyFactualExplanationPlugin
@@ -12,8 +11,8 @@ from calibrated_explanations.plugins.explanations import (
 )
 from calibrated_explanations.plugins.registry import (
     find_explanation_descriptor,
+    mark_explanation_trusted,
     register_explanation_plugin,
-    trust_plugin,
 )
 
 
@@ -90,9 +89,7 @@ def register_factual_example_plugin() -> None:
         FactualExampleExplanationPlugin(),
         source="entrypoint",
     )
-    # Explicitly trust the plugin after registration
-    with contextlib.suppress(Exception):
-        trust_plugin(identifier)
+    mark_explanation_trusted(identifier)
 
 
 register_factual_example_plugin()

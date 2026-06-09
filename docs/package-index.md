@@ -17,4 +17,7 @@ dependencies. CI treats those dependency declarations as the official package se
 - `calibrated-explanations-explanation-factual-example`: example factual explanation plugin
 - `calibrated-explanations-explanation-factual-lime`: factual LIME explanation plugin
 - `calibrated-explanations-explanation-factual-shap`: factual SHAP explanation plugin
+- `calibrated-explanations-visualization-dashboard`: dashboard visualization plugin
 - `calibrated-explanations-visualization-example`: example visualization plugin
+- `calibrated-explanations-visualization-factual-shap`: factual SHAP visualization plugin
+- `calibrated-explanations-visualization-plotly`: Plotly visualization plugin layouts

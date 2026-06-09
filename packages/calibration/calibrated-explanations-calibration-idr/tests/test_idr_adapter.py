@@ -11,22 +11,22 @@ from ce_calibration_idr.idr_adapter import IDRDistributionAdapter  # noqa: E402
 class FakeIDR:
     """Small fake with the subset of isodistrreg.IDR used by the adapter."""
 
-    def __init__(self, *, X: np.ndarray, y: np.ndarray) -> None:
+    def __init__(self, *, X: np.ndarray, y: np.ndarray) -> None:  # noqa: N803
         """Store sorted calibration pairs."""
         self.X = np.asarray(X, dtype=float).reshape(-1)
         self.y = np.asarray(y, dtype=float)
         self.y_min = float(np.min(self.y))
         self.y_max = float(np.max(self.y))
 
-    def cdf_at(self, X: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
+    def cdf_at(self, x_values: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
         """Return a monotone logistic-like fake CDF for adapter tests."""
-        x = np.asarray(X, dtype=float).reshape(-1)
+        x = np.asarray(x_values, dtype=float).reshape(-1)
         t = np.asarray(thresholds, dtype=float).reshape(-1)
         return 1.0 / (1.0 + np.exp(-(t - x)))
 
-    def quantile(self, X: np.ndarray, probabilities: float) -> np.ndarray:
+    def quantile(self, x_values: np.ndarray, probabilities: float) -> np.ndarray:
         """Return fake quantiles shifted away from raw scores."""
-        x = np.asarray(X, dtype=float).reshape(-1)
+        x = np.asarray(x_values, dtype=float).reshape(-1)
         return np.clip(x + float(probabilities) + 1.0, self.y_min, self.y_max)
 
 
@@ -76,7 +76,7 @@ def test_should_return_ordered_quantiles_and_bounded_cdf(monkeypatch):
     prob = adapter.cdf(scores, 25.0)
     assert np.all(low <= predict)
     assert np.all(predict <= high)
-    assert np.all((0.0 <= prob) & (prob <= 1.0))
+    assert np.all((prob >= 0.0) & (prob <= 1.0))
 
 
 def test_should_use_real_isodistrreg_when_installed():
@@ -95,4 +95,4 @@ def test_should_use_real_isodistrreg_when_installed():
     prob = adapter.cdf(scores, 1.5)
     assert np.all(low <= predict)
     assert np.all(predict <= high)
-    assert np.all((0.0 <= prob) & (prob <= 1.0))
+    assert np.all((prob >= 0.0) & (prob <= 1.0))
