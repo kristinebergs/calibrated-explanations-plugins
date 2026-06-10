@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
-
 from calibrated_explanations.plugins.builtins import collection_to_batch
 from calibrated_explanations.plugins.explanations import (
     ExplanationBatch,
@@ -129,8 +128,12 @@ class FactualShapExplanationPlugin(ExplanationPlugin):
             rules["weight_high"] = upper_weights
 
             base_predict = float(rules["base_predict"][0]) if rules.get("base_predict") else 0.0
-            base_predict_low = float(rules["base_predict_low"][0]) if rules.get("base_predict_low") else 0.0
-            base_predict_high = float(rules["base_predict_high"][0]) if rules.get("base_predict_high") else 0.0
+            base_predict_low = (
+                float(rules["base_predict_low"][0]) if rules.get("base_predict_low") else 0.0
+            )
+            base_predict_high = (
+                float(rules["base_predict_high"][0]) if rules.get("base_predict_high") else 0.0
+            )
             rules["predict"] = [base_predict + weight for weight in center_weights]
             rules["predict_low"] = [base_predict_low + weight for weight in lower_weights]
             rules["predict_high"] = [base_predict_high + weight for weight in upper_weights]

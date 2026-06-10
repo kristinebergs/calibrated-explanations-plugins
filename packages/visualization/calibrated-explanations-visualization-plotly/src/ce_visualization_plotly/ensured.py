@@ -45,9 +45,7 @@ def _warn_fallback(reason: str) -> None:
 def _warn_deprecated_alias(style_id: str) -> None:
     if style_id != ALIAS_STYLE_ID:
         return
-    message = (
-        "plotly.local.ensured_triangular is deprecated; use plotly.local.ensured instead."
-    )
+    message = "plotly.local.ensured_triangular is deprecated; use plotly.local.ensured instead."
     _LOGGER.info(message)
     warnings.warn(message, UserWarning, stacklevel=3)
 
@@ -249,9 +247,11 @@ def _ranked_rule_indices(
     ordered_indices = list(reversed([int(index) for index in ordered]))
     filtered_indices: list[int] = []
     for index in ordered_indices:
-        if np.isclose(float(predict_values[index]), base_prediction) and np.isclose(
-            float(low_values[index]), float(prediction.get("low", 0.0))
-        ) and np.isclose(float(high_values[index]), float(prediction.get("high", 0.0))):
+        if (
+            np.isclose(float(predict_values[index]), base_prediction)
+            and np.isclose(float(low_values[index]), float(prediction.get("low", 0.0)))
+            and np.isclose(float(high_values[index]), float(prediction.get("high", 0.0)))
+        ):
             continue
         filtered_indices.append(index)
     return filtered_indices
@@ -576,7 +576,9 @@ def _sort_rule_points(rule_points: list[dict[str, Any]], sort_by: str) -> list[d
     if sort_by == "delta_prediction":
         return sorted(rule_points, key=lambda item: (-abs(item["delta_prediction"]), item["index"]))
     if sort_by == "delta_uncertainty":
-        return sorted(rule_points, key=lambda item: (-abs(item["delta_uncertainty"]), item["index"]))
+        return sorted(
+            rule_points, key=lambda item: (-abs(item["delta_uncertainty"]), item["index"])
+        )
     if sort_by == "label":
         return sorted(rule_points, key=lambda item: (item["rule"].lower(), item["index"]))
     raise ValueError(
@@ -602,10 +604,15 @@ def _rule_groups(rule_points: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
         group["point_ids"].append(point["id"])
         group["point_count"] += 1
-        group["group_rank"] = min(int(group["group_rank"]), int(point.get("rank", group["group_rank"])))
+        group["group_rank"] = min(
+            int(group["group_rank"]), int(point.get("rank", group["group_rank"]))
+        )
     return sorted(
         groups.values(),
-        key=lambda item: (int(item.get("group_rank", 0)), str(item.get("group_label") or item.get("group_key"))),
+        key=lambda item: (
+            int(item.get("group_rank", 0)),
+            str(item.get("group_label") or item.get("group_key")),
+        ),
     )
 
 
@@ -753,7 +760,9 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
                 "is_conjunctive": is_conjunctive,
                 "conjunction_size": conjunction_size,
                 "metadata": {
-                    "group_key": feature_name or str(feature_index) if feature_index is not None else "unknown",
+                    "group_key": feature_name or str(feature_index)
+                    if feature_index is not None
+                    else "unknown",
                     "group_label": feature_name or f"Feature {feature_index}"
                     if feature_index is not None
                     else "Unknown feature",
@@ -775,7 +784,9 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
             filter_top = options.get("max_points")
         resolved_filter_top = None if filter_top is None else max(0, int(filter_top))
         shown_rule_points = (
-            sorted_rule_points if resolved_filter_top is None else sorted_rule_points[:resolved_filter_top]
+            sorted_rule_points
+            if resolved_filter_top is None
+            else sorted_rule_points[:resolved_filter_top]
         )
 
         base_spec = build_triangular_plotspec(
@@ -973,14 +984,16 @@ def _role_signature(point: dict[str, Any]) -> tuple[bool, bool, bool, bool, bool
     )
 
 
-def add_rule_points(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> dict[str, list[int]]:
+def add_rule_points(
+    fig: Any, artifact: PlotArtifact, options: dict[str, Any]
+) -> dict[str, list[int]]:
     import plotly.graph_objects as go
 
     side_panel = bool(options.get("side_panel", False))
-    feature_groups = dict(
-        (group["group_key"], []) for group in artifact.get("metadata", {}).get("feature_groups", [])
-    )
-    for point in artifact.get("rule_points", ()): 
+    feature_groups = {
+        group["group_key"]: [] for group in artifact.get("metadata", {}).get("feature_groups", [])
+    }
+    for point in artifact.get("rule_points", ()):
         feature_groups.setdefault(point["metadata"]["group_key"], []).append(point)
 
     trace_indexes: dict[str, list[int]] = {}
@@ -1039,7 +1052,7 @@ def add_arrows(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> dic
     side_panel = bool(options.get("side_panel", False))
     feature_checklist = bool(options.get("feature_checklist", False))
     grouped_arrows: dict[tuple[str, tuple[bool, bool, bool, bool, bool]], list[dict[str, Any]]] = {}
-    for arrow in artifact.get("arrows", ()): 
+    for arrow in artifact.get("arrows", ()):
         roles = dict(arrow.get("roles", {}) or {})
         signature = (
             bool(roles.get("ensured", False)),
@@ -1048,7 +1061,9 @@ def add_arrows(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> dic
             bool(roles.get("semi", False)),
             bool(roles.get("super", False)),
         )
-        grouped_arrows.setdefault((str(arrow.get("feature_key", "unknown")), signature), []).append(arrow)
+        grouped_arrows.setdefault((str(arrow.get("feature_key", "unknown")), signature), []).append(
+            arrow
+        )
 
     trace_indexes: dict[str, list[int]] = {}
     if feature_checklist:
@@ -1077,7 +1092,7 @@ def add_arrows(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> dic
             trace_indexes.setdefault(feature_key, []).append(_trace_count(fig) - 1)
         return trace_indexes
 
-    for arrow in artifact.get("arrows", ()): 
+    for arrow in artifact.get("arrows", ()):
         fig.add_annotation(
             x=arrow.get("x1"),
             y=arrow.get("y1"),
@@ -1153,11 +1168,13 @@ def _build_side_panel_detail_payload(point: dict[str, Any]) -> dict[str, str]:
     return {"title": title, "body_html": body_html}
 
 
-def build_side_panel_registry(artifact: PlotArtifact, options: dict[str, Any]) -> dict[str, dict[str, str]]:
+def build_side_panel_registry(
+    artifact: PlotArtifact, options: dict[str, Any]
+) -> dict[str, dict[str, str]]:
     if not bool(options.get("side_panel", False)):
         return {}
     registry: dict[str, dict[str, str]] = {}
-    for point in artifact.get("rule_points", ()): 
+    for point in artifact.get("rule_points", ()):
         point_id = point.get("id")
         if point_id is None:
             continue
@@ -1170,155 +1187,157 @@ def add_side_panel(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) ->
     return None
 
 
-def add_feature_checklist_controls(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) -> None:
-        del fig, artifact, options
+def add_feature_checklist_controls(
+    fig: Any, artifact: PlotArtifact, options: dict[str, Any]
+) -> None:
+    del fig, artifact, options
 
 
 def _requires_ui_shell(options: dict[str, Any]) -> bool:
-        return bool(options.get("feature_checklist", False) or options.get("side_panel", False))
+    return bool(options.get("feature_checklist", False) or options.get("side_panel", False))
 
 
 def _set_trace_visible(fig: Any, index: int, visible: bool) -> None:
-        trace = None
-        if hasattr(fig, "data"):
-                trace = fig.data[index]
-        elif hasattr(fig, "traces"):
-                trace = fig.traces[index]
-        if trace is None:
-                return
-        if hasattr(trace, "kwargs"):
-                trace.kwargs["visible"] = visible
-        try:
-                trace.visible = visible
-        except Exception:
-                return
+    trace = None
+    if hasattr(fig, "data"):
+        trace = fig.data[index]
+    elif hasattr(fig, "traces"):
+        trace = fig.traces[index]
+    if trace is None:
+        return
+    if hasattr(trace, "kwargs"):
+        trace.kwargs["visible"] = visible
+    try:
+        trace.visible = visible
+    except Exception:
+        return
 
 
 def _build_feature_control_registry(
-        artifact: PlotArtifact,
-        trace_registry: dict[str, Any],
-        options: dict[str, Any],
+    artifact: PlotArtifact,
+    trace_registry: dict[str, Any],
+    options: dict[str, Any],
 ) -> list[dict[str, Any]]:
-        if not bool(options.get("feature_checklist", False)):
-                return []
+    if not bool(options.get("feature_checklist", False)):
+        return []
 
-        feature_groups = list(artifact.get("metadata", {}).get("feature_groups", ()))
-        rule_trace_indexes = dict(trace_registry.get("rule_trace_indexes", {}) or {})
-        arrow_trace_indexes = dict(trace_registry.get("arrow_trace_indexes", {}) or {})
-        registry: list[dict[str, Any]] = []
-        for index, group in enumerate(feature_groups):
-                group_key = str(group.get("group_key"))
-                trace_indexes = [
-                        *list(rule_trace_indexes.get(group_key, ())),
-                        *list(arrow_trace_indexes.get(group_key, ())),
-                ]
-                registry.append(
-                        {
-                                "group_key": group_key,
-                                "group_label": group.get("group_label") or group_key,
-                                "feature_index": group.get("feature_index"),
-                                "point_count": int(group.get("point_count", len(group.get("point_ids", ())))),
-                                "group_rank": int(group.get("group_rank", index)),
-                                "trace_indexes": trace_indexes,
-                                "default_selected": True,
-                        }
-                )
-        return registry
+    feature_groups = list(artifact.get("metadata", {}).get("feature_groups", ()))
+    rule_trace_indexes = dict(trace_registry.get("rule_trace_indexes", {}) or {})
+    arrow_trace_indexes = dict(trace_registry.get("arrow_trace_indexes", {}) or {})
+    registry: list[dict[str, Any]] = []
+    for index, group in enumerate(feature_groups):
+        group_key = str(group.get("group_key"))
+        trace_indexes = [
+            *list(rule_trace_indexes.get(group_key, ())),
+            *list(arrow_trace_indexes.get(group_key, ())),
+        ]
+        registry.append(
+            {
+                "group_key": group_key,
+                "group_label": group.get("group_label") or group_key,
+                "feature_index": group.get("feature_index"),
+                "point_count": int(group.get("point_count", len(group.get("point_ids", ())))),
+                "group_rank": int(group.get("group_rank", index)),
+                "trace_indexes": trace_indexes,
+                "default_selected": True,
+            }
+        )
+    return registry
 
 
 def _apply_feature_control_visibility(fig: Any, trace_registry: dict[str, Any]) -> None:
-        feature_registry = list(trace_registry.get("feature_control_registry", ()))
-        if not feature_registry:
-                trace_registry["default_visible"] = [True] * int(trace_registry.get("trace_count", 0))
-                return
+    feature_registry = list(trace_registry.get("feature_control_registry", ()))
+    if not feature_registry:
+        trace_registry["default_visible"] = [True] * int(trace_registry.get("trace_count", 0))
+        return
 
-        trace_count = int(trace_registry.get("trace_count", 0))
-        always_visible = set(trace_registry.get("always_visible", []))
-        visible = [index in always_visible for index in range(trace_count)]
-        for item in feature_registry:
-                if not item.get("default_selected", False):
-                        continue
-                for trace_index in item.get("trace_indexes", ()): 
-                        if 0 <= int(trace_index) < trace_count:
-                                visible[int(trace_index)] = True
-        for index, is_visible in enumerate(visible):
-                _set_trace_visible(fig, index, bool(is_visible))
-        trace_registry["default_visible"] = visible
+    trace_count = int(trace_registry.get("trace_count", 0))
+    always_visible = set(trace_registry.get("always_visible", []))
+    visible = [index in always_visible for index in range(trace_count)]
+    for item in feature_registry:
+        if not item.get("default_selected", False):
+            continue
+        for trace_index in item.get("trace_indexes", ()):
+            if 0 <= int(trace_index) < trace_count:
+                visible[int(trace_index)] = True
+    for index, is_visible in enumerate(visible):
+        _set_trace_visible(fig, index, bool(is_visible))
+    trace_registry["default_visible"] = visible
 
 
 def _figure_html(fig: Any, *, include_plotlyjs: bool | str, div_id: str) -> str:
-        if hasattr(fig, "to_html"):
-                return fig.to_html(
-                        full_html=False,
-                        include_plotlyjs=include_plotlyjs,
-                        div_id=div_id,
-                        config={"responsive": True},
-                )
-
-        import plotly.io as plotly_io
-
-        return plotly_io.to_html(
-                fig,
-                full_html=False,
-                include_plotlyjs=include_plotlyjs,
-                div_id=div_id,
-                config={"responsive": True},
+    if hasattr(fig, "to_html"):
+        return fig.to_html(
+            full_html=False,
+            include_plotlyjs=include_plotlyjs,
+            div_id=div_id,
+            config={"responsive": True},
         )
+
+    import plotly.io as plotly_io
+
+    return plotly_io.to_html(
+        fig,
+        full_html=False,
+        include_plotlyjs=include_plotlyjs,
+        div_id=div_id,
+        config={"responsive": True},
+    )
 
 
 def build_render_shell_html(
-        fig: Any,
-        artifact: PlotArtifact,
-        options: dict[str, Any],
-        *,
-        include_plotlyjs: bool | str,
+    fig: Any,
+    artifact: PlotArtifact,
+    options: dict[str, Any],
+    *,
+    include_plotlyjs: bool | str,
 ) -> str:
-        shell_id = f"ce-ensured-shell-{uuid4().hex}"
-        plot_id = f"{shell_id}-plot"
-        figure_html = _figure_html(fig, include_plotlyjs=include_plotlyjs, div_id=plot_id)
-        show_panel = bool(options.get("side_panel", False))
-        show_controls = bool(options.get("feature_checklist", False))
-        empty_panel = build_side_panel_rows(artifact, options)
+    shell_id = f"ce-ensured-shell-{uuid4().hex}"
+    plot_id = f"{shell_id}-plot"
+    figure_html = _figure_html(fig, include_plotlyjs=include_plotlyjs, div_id=plot_id)
+    show_panel = bool(options.get("side_panel", False))
+    show_controls = bool(options.get("feature_checklist", False))
+    empty_panel = build_side_panel_rows(artifact, options)
 
-        panel_markup = ""
-        if show_panel:
-                panel_markup = (
-                        '<aside class="ce-ensured-shell__panel">'
-                        f'<div class="ce-ensured-panel__title" data-panel-title>{escape(empty_panel["title"])}</div>'
-                        f'<div class="ce-ensured-panel__body" data-panel-body>{empty_panel["body_html"]}</div>'
-                        "</aside>"
-                )
+    panel_markup = ""
+    if show_panel:
+        panel_markup = (
+            '<aside class="ce-ensured-shell__panel">'
+            f'<div class="ce-ensured-panel__title" data-panel-title>{escape(empty_panel["title"])}</div>'  # noqa: E501
+            f'<div class="ce-ensured-panel__body" data-panel-body>{empty_panel["body_html"]}</div>'
+            "</aside>"
+        )
 
-        controls_markup = ""
-        if show_controls:
-                controls_markup = (
-                        '<section class="ce-ensured-shell__controls">'
-                        '<div class="ce-ensured-controls__header">Feature controls</div>'
-                        '<input type="search" class="ce-ensured-controls__search" data-feature-search '
-                        'placeholder="Filter by searched feature (regex)" '
-                        'aria-label="Filter by searched feature using regex" />'
-                        '<div class="ce-ensured-controls__actions">'
-                        '<button type="button" data-feature-action="all">All</button>'
-                        '<button type="button" data-feature-action="none">None</button>'
-                        '<button type="button" data-feature-action="reset">Reset</button>'
-                        '<button type="button" data-feature-action="ensured">Ensured</button>'
-                        '<button type="button" data-feature-action="pareto">Pareto</button>'
-                        '<label class="ce-ensured-controls__role">'
-                        '<input type="checkbox" data-role-filter="counter" checked /> Counter'
-                        '</label>'
-                        '<label class="ce-ensured-controls__role">'
-                        '<input type="checkbox" data-role-filter="semi" checked /> Semi'
-                        '</label>'
-                        '<label class="ce-ensured-controls__role">'
-                        '<input type="checkbox" data-role-filter="super" checked /> Super'
-                        '</label>'
-                        '</div>'
-                        '<div class="ce-ensured-controls__summary" data-feature-summary></div>'
-                        '<div class="ce-ensured-controls__list" data-feature-list></div>'
-                        '</section>'
-                )
+    controls_markup = ""
+    if show_controls:
+        controls_markup = (
+            '<section class="ce-ensured-shell__controls">'
+            '<div class="ce-ensured-controls__header">Feature controls</div>'
+            '<input type="search" class="ce-ensured-controls__search" data-feature-search '
+            'placeholder="Filter by searched feature (regex)" '
+            'aria-label="Filter by searched feature using regex" />'
+            '<div class="ce-ensured-controls__actions">'
+            '<button type="button" data-feature-action="all">All</button>'
+            '<button type="button" data-feature-action="none">None</button>'
+            '<button type="button" data-feature-action="reset">Reset</button>'
+            '<button type="button" data-feature-action="ensured">Ensured</button>'
+            '<button type="button" data-feature-action="pareto">Pareto</button>'
+            '<label class="ce-ensured-controls__role">'
+            '<input type="checkbox" data-role-filter="counter" checked /> Counter'
+            "</label>"
+            '<label class="ce-ensured-controls__role">'
+            '<input type="checkbox" data-role-filter="semi" checked /> Semi'
+            "</label>"
+            '<label class="ce-ensured-controls__role">'
+            '<input type="checkbox" data-role-filter="super" checked /> Super'
+            "</label>"
+            "</div>"
+            '<div class="ce-ensured-controls__summary" data-feature-summary></div>'
+            '<div class="ce-ensured-controls__list" data-feature-list></div>'
+            "</section>"
+        )
 
-        shell_script = f"""
+    shell_script = f"""
 <script>
 (function() {{
     const shell = document.getElementById({json.dumps(shell_id)});
@@ -1603,7 +1622,7 @@ def build_render_shell_html(
 </script>
 """
 
-        return f"""
+    return f"""
 <div id="{shell_id}" class="ce-ensured-shell">
     <style>
         #{shell_id}.ce-ensured-shell {{
@@ -1852,7 +1871,7 @@ class LocalEnsuredPlotRenderer(PlotRenderer):
             figure = build_figure(artifact, dict(context.options))
         except ImportError as exc:
             raise RuntimeError(
-                "Plotly is required to render plotly.local.ensured. Install this package with the [plotly] extra."
+                "Plotly is required to render plotly.local.ensured. Install this package with the [plotly] extra."  # noqa: E501
             ) from exc
         shell_html = None
         if _requires_ui_shell(dict(context.options)):
@@ -1881,9 +1900,8 @@ class LocalEnsuredPlotRenderer(PlotRenderer):
                 saved_paths = (str(export_path),)
             else:
                 saved_paths = (export_html(figure, context.path),)
-        if context.show:
-            if not (shell_html is not None and _display_html_shell(shell_html)):
-                figure.show()
+        if context.show and not (shell_html is not None and _display_html_shell(shell_html)):
+            figure.show()
         return PlotRenderResult(
             artifact=artifact,
             figure=figure,

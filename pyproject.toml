@@ -7,4 +7,13 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "B", "C4", "SIM", "NPY", "S", "N"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["S603", "S607", "E501"]
+".github/**/*.py" = ["S603", "S607"]
+"conftest.py" = ["S110"]
+"**/tests/**/*.py" = ["E402", "N806", "B017", "S104", "S105"]
+"packages/**/ensured.py" = ["E501"]
+"packages/**/instance_workspace.py" = ["E501"]

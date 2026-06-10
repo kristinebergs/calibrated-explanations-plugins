@@ -179,13 +179,13 @@ def test_launch_instance_workspace_can_start_server(monkeypatch):
         [[1, 2]],
         run_server=True,
         open_browser=True,
-        host="0.0.0.0",
+        host="0.0.0.0",  # nosec B104
         port=8099,
         debug=True,
     )
 
     assert opened == ["http://0.0.0.0:8099"]
-    assert app.runs == [{"host": "0.0.0.0", "port": 8099, "debug": True}]
+    assert app.runs == [{"host": "0.0.0.0", "port": 8099, "debug": True}]  # nosec B104
 
 
 def test_live_workspace_actions_do_not_add_cards_until_add_card(monkeypatch):
@@ -207,8 +207,16 @@ def test_live_workspace_actions_do_not_add_cards_until_add_card(monkeypatch):
         open_browser=False,
         max_rule_size=3,
     )
-    handler = next(callback["func"] for callback in app.callbacks if callback["func"].__name__ == "_handle_workspace_action")
-    toggle = next(callback["func"] for callback in app.callbacks if callback["func"].__name__ == "_toggle_conjunction_button")
+    handler = next(
+        callback["func"]
+        for callback in app.callbacks
+        if callback["func"].__name__ == "_handle_workspace_action"
+    )
+    toggle = next(
+        callback["func"]
+        for callback in app.callbacks
+        if callback["func"].__name__ == "_toggle_conjunction_button"
+    )
     dash_mod = sys.modules["dash"]
 
     dash_mod.callback_context.triggered_id = "ce-live-add-card"
@@ -237,8 +245,12 @@ def test_live_workspace_actions_do_not_add_cards_until_add_card(monkeypatch):
     assert items == []
     assert status["0"]["has_conjunctions"] is True
     assert message == "Added conjunctions to factual and alternative explanations for instance 0."
-    assert app.ce_workspace_state["explanations"][(0, "factual")].conjunction_calls == [{"max_rule_size": 3}]
-    assert app.ce_workspace_state["explanations"][(0, "alternative")].conjunction_calls == [{"max_rule_size": 3}]
+    assert app.ce_workspace_state["explanations"][(0, "factual")].conjunction_calls == [
+        {"max_rule_size": 3}
+    ]
+    assert app.ce_workspace_state["explanations"][(0, "alternative")].conjunction_calls == [
+        {"max_rule_size": 3}
+    ]
 
     dash_mod.callback_context.triggered_id = "ce-live-add-card"
     items, status, message = handler(2, 1, 1, 0, "uncertainty_quadrant", items)

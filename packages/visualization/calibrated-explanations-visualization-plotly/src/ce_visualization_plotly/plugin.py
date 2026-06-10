@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 from functools import wraps
-from types import SimpleNamespace
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
-from calibrated_explanations.plugins.plots import PlotRenderContext
 from calibrated_explanations.plugins.registry import (
     find_plot_builder_descriptor,
     find_plot_renderer_descriptor,
@@ -349,7 +348,8 @@ def _render_local_alternative_feature_summary(
     option_payload = {
         key: value
         for key, value in kwargs.items()
-        if key not in {"style", "renderer", "show", "path", "save_ext", "use_legacy", "style_override"}
+        if key
+        not in {"style", "renderer", "show", "path", "save_ext", "use_legacy", "style_override"}
     }
 
     context = PlotRenderContext(
@@ -384,7 +384,9 @@ def _install_global_instance_explorer_plot_bridge() -> None:
         return
 
     if getattr(ce_plotting.plot_global, "_plotly_bridge_version", 0) < _PLOT_BRIDGE_VERSION:
-        original_plot_global = getattr(ce_plotting.plot_global, "__wrapped__", ce_plotting.plot_global)
+        original_plot_global = getattr(
+            ce_plotting.plot_global, "__wrapped__", ce_plotting.plot_global
+        )
 
         @wraps(original_plot_global)
         def plot_global_bridge(
@@ -401,7 +403,9 @@ def _install_global_instance_explorer_plot_bridge() -> None:
         ce_plotting.plot_global = plot_global_bridge
 
     if getattr(CalibratedExplainer.plot, "_plotly_bridge_version", 0) < _PLOT_BRIDGE_VERSION:
-        original_calibrated_plot = getattr(CalibratedExplainer.plot, "__wrapped__", CalibratedExplainer.plot)
+        original_calibrated_plot = getattr(
+            CalibratedExplainer.plot, "__wrapped__", CalibratedExplainer.plot
+        )
 
         @wraps(original_calibrated_plot)
         def calibrated_plot_bridge(
@@ -420,7 +424,9 @@ def _install_global_instance_explorer_plot_bridge() -> None:
         CalibratedExplainer.plot = calibrated_plot_bridge
 
     if getattr(WrapCalibratedExplainer.plot, "_plotly_bridge_version", 0) < _PLOT_BRIDGE_VERSION:
-        original_wrap_plot = getattr(WrapCalibratedExplainer.plot, "__wrapped__", WrapCalibratedExplainer.plot)
+        original_wrap_plot = getattr(
+            WrapCalibratedExplainer.plot, "__wrapped__", WrapCalibratedExplainer.plot
+        )
 
         @wraps(original_wrap_plot)
         def wrap_plot_bridge(
@@ -577,10 +583,8 @@ def _first_explanation(collection: Any) -> Any:
 
 
 def _set_original_index(explanation: Any, instance_index: int) -> Any:
-    try:
-        setattr(explanation, "index", instance_index)
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        explanation.index = instance_index
     return explanation
 
 
@@ -738,9 +742,9 @@ def _render_instance_workspace_dashboard(
     )
     descriptors = _dashboard_selected_descriptors(option_payload)
     precompute_options = dict(option_payload)
-    precompute_options["include_factual"] = bool(option_payload.get("include_factual", True)) and any(
-        "factual_explanation" in set(descriptor.requires) for descriptor in descriptors
-    )
+    precompute_options["include_factual"] = bool(
+        option_payload.get("include_factual", True)
+    ) and any("factual_explanation" in set(descriptor.requires) for descriptor in descriptors)
     precompute_options["include_alternatives"] = bool(
         option_payload.get("include_alternatives", True)
     ) and any("alternative_explanation" in set(descriptor.requires) for descriptor in descriptors)

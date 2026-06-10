@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover
 from runtime_harness import validate_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_DOCSTRING_FAIL_UNDER = 70.0
 
 
 def read_distribution_name(package_path: Path) -> str:
@@ -61,7 +63,9 @@ def find_wheel(package_path: Path, artifact_dir: Path) -> Path:
 
 def build_wheel(package_path: Path, artifact_dir: Path) -> Path:
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.check_call([sys.executable, "-m", "build", "--wheel", "--outdir", str(artifact_dir), str(package_path)])
+    subprocess.check_call(
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(artifact_dir), str(package_path)]
+    )
     return find_wheel(package_path, artifact_dir)
 
 
@@ -75,11 +79,51 @@ def run_checked(command: list[str], *, env: dict[str, str] | None = None) -> Non
     subprocess.check_call(command, cwd=ROOT, env=env)
 
 
+def plugin_docstring_coverage(package_path: Path) -> float:
+    documented = 0
+    total = 0
+    for path in sorted((package_path / "src").rglob("plugin.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            has_plugin_meta = any(
+                isinstance(child, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "plugin_meta"
+                    for target in child.targets
+                )
+                for child in node.body
+            )
+            if not has_plugin_meta:
+                continue
+            total += 1
+            if ast.get_docstring(node, clean=False):
+                documented += 1
+    if total == 0:
+        return 100.0
+    return documented / total * 100
+
+
+def check_plugin_docstrings(package_path: Path) -> None:
+    coverage = plugin_docstring_coverage(package_path)
+    print(f"Plugin entry-point docstring coverage: {coverage:.1f}%")
+    if coverage < PLUGIN_DOCSTRING_FAIL_UNDER:
+        raise RuntimeError(
+            f"{package_path} plugin.py docstring coverage is {coverage:.1f}%, "
+            f"below {PLUGIN_DOCSTRING_FAIL_UNDER:.1f}%"
+        )
+
+
 def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool) -> None:
     with tempfile.TemporaryDirectory(prefix="ce-plugin-runtime-") as tmp_dir:
         tmp_path = Path(tmp_dir)
         dist_dir = artifact_dir.resolve() if artifact_dir else tmp_path / "dist"
-        wheel_path = find_wheel(package_path, dist_dir) if artifact_dir else build_wheel(package_path, dist_dir)
+        wheel_path = (
+            find_wheel(package_path, dist_dir)
+            if artifact_dir
+            else build_wheel(package_path, dist_dir)
+        )
         venv_dir = tmp_path / "venv"
         python_bin = create_virtualenv(venv_dir)
 
@@ -95,7 +139,7 @@ def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool)
         )
         run_checked([str(python_bin), "-m", "pip", "install", str(wheel_path)])
         if run_pytest:
-            run_checked([str(python_bin), "-m", "pip", "install", "pytest"])
+            run_checked([str(python_bin), "-m", "pip", "install", "pytest", "pytest-cov"])
 
         run_checked(
             [
@@ -121,9 +165,22 @@ def installed_check(package_path: Path, run_pytest: bool) -> None:
             calibrated_explanations_requirement(package_path),
         ]
     )
-    validate_runtime(package_path)
     if run_pytest:
-        run_checked([sys.executable, "-m", "pytest", str(package_path / "tests")])
+        run_checked([sys.executable, "-m", "pip", "install", "pytest", "pytest-cov"])
+    validate_runtime(package_path)
+    check_plugin_docstrings(package_path)
+    if run_pytest:
+        run_checked(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(package_path / "tests"),
+                f"--cov={package_path / 'src'}",
+                "--cov-report=term-missing",
+                "--cov-fail-under=80",
+            ]
+        )
 
 
 def main() -> int:

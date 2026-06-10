@@ -1,0 +1,20 @@
+"""Plugin metadata for the IDR regression interval calibrator."""
+
+PLUGIN_META = {
+    "schema_version": 1,
+    "name": "official.calibration.idr_regression",
+    "version": "0.1.0",
+    "provider": "official",
+    "capabilities": ["interval:regression"],
+    "modes": ("regression",),
+    "dependencies": ("core.interval.venn_abers",),
+    "requires_probability_interval_calibrator": True,
+    "default_probability_interval_calibrator": "official.calibration.venn_abers",
+    "threshold_probability_calibrator_role": "binary_event_probability_interval",
+    "trusted": False,
+    "confidence_source": "isodistrreg+venn-abers",
+    "requires_bins": False,
+    "fast_compatible": False,
+    "data_modalities": ("tabular",),
+    "plugin_api_version": "1.0",
+}

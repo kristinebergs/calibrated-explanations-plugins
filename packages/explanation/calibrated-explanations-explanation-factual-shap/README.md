@@ -43,31 +43,31 @@ The current SHAP package should be treated as a failed prototype. The rewrite st
 
 **Implementation Plan**
 
-1. **Delete the current explanation path completely.**  
+1. **Delete the current explanation path completely.**
 Remove the use of `LegacyFactualExplanationPlugin`, remove `collection_to_batch`, and remove any call to `explain_factual(..., _use_plugin=False)` from plugin.py. That code path guarantees the wrong output type.
 
-2. **Define the v1 scope explicitly before coding.**  
+2. **Define the v1 scope explicitly before coding.**
 Do not try to support every task on day one. The defensible v1 is:
    - Binary classification: supported
    - Regression: optional second milestone
    - Multiclass classification: fail with `NotImplementedError` until class-target semantics are designed
 This prevents shipping another semantically ambiguous plugin.
 
-3. **Replace the current SHAP helper with bound-specific prediction adapters.**  
+3. **Replace the current SHAP helper with bound-specific prediction adapters.**
 The new helper should expose three public callables over the CE prediction bridge:
    - `predict_center(x) -> calibrated point prediction`
    - `predict_lower(x) -> calibrated lower bound`
    - `predict_upper(x) -> calibrated upper bound`
 These functions must be built from the CE runtime context, not private internals and not raw learner probabilities. The current helper in shap_helper.py only creates one SHAP explainer, which makes true lower/upper SHAP impossible.
 
-4. **Create three SHAP explainers, not one.**  
+4. **Create three SHAP explainers, not one.**
 For each supported task, instantiate:
    - one SHAP explainer for the calibrated center prediction,
    - one for the lower bound,
    - one for the upper bound.
 The output of the plugin should be derived from those three attribution tensors. This is the core requirement you stated.
 
-5. **Materialize a fast-style explanation payload instead of a factual-rule payload.**  
+5. **Materialize a fast-style explanation payload instead of a factual-rule payload.**
 The plugin should use the same presentation semantics as `FastExplanation` in the core library:
    - `rule` values are just feature names,
    - `value` is the observed feature value,
@@ -76,16 +76,16 @@ The plugin should use the same presentation semantics as `FastExplanation` in th
    - `weight_high` is the upper-bound SHAP attribution.
 The existing core `FastExplanation` shape in the CE library is the right conceptual target because it already avoids rule conditions and supports lower/high envelopes.
 
-6. **Decide whether to reuse `FastExplanation` or add a plugin-local `ShapExplanation` subclass.**  
+6. **Decide whether to reuse `FastExplanation` or add a plugin-local `ShapExplanation` subclass.**
 My recommendation:
    - First implementation: reuse the fast-style payload contract to minimize core churn.
    - If `FastExplanation` cannot faithfully express the SHAP base value and bound-specific reconstruction semantics, create a plugin-local `ShapExplanation` subclass with the same feature-only display model.
 This decision should be made after a short spike against one binary classification example.
 
-7. **Build explanation objects directly instead of hiding SHAP in metadata.**  
+7. **Build explanation objects directly instead of hiding SHAP in metadata.**
 SHAP values must become the primary explanation object. Metadata may still exist for debugging, but it is secondary. The notebook symptom `"shap" in batch_metadata == False` becomes irrelevant once the explanation itself is SHAP-backed.
 
-8. **Add a SHAP-specific plot path as a separate milestone.**  
+8. **Add a SHAP-specific plot path as a separate milestone.**
 Do not block the semantic rewrite on custom plotting. Sequence it like this:
    - Milestone A: correct data model, fast-style rendering, no conditions
    - Milestone B: SHAP-native plot builder using PlotSpec
@@ -95,7 +95,7 @@ For Milestone B, add an opt-in plot builder that renders:
    - explicit selector for center/lower/upper.
 This should not silently replace CE default plotting until the output is stable.
 
-9. **Rewrite the tests from behavior-first acceptance criteria.**  
+9. **Rewrite the tests from behavior-first acceptance criteria.**
 Replace test_factual_shap.py entirely. New tests should assert:
    - no delegation to ordinary factual explanations,
    - no rule strings containing comparisons,
@@ -107,7 +107,7 @@ Replace test_factual_shap.py entirely. New tests should assert:
    - missing `shap` import fails immediately,
    - notebooks demonstrate true SHAP behavior.
 
-10. **Rewrite the notebook after the code is correct, not before.**  
+10. **Rewrite the notebook after the code is correct, not before.**
 The notebook should become a validation artifact:
    - print the feature-only rows,
    - show central/lower/upper attribution tables,

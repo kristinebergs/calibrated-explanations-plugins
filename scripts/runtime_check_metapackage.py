@@ -58,7 +58,9 @@ def run_checked(command: list[str]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate metapackage runtime coverage via local wheelhouse.")
+    parser = argparse.ArgumentParser(
+        description="Validate metapackage runtime coverage via local wheelhouse."
+    )
     parser.add_argument("--package-path", required=True)
     parser.add_argument("--artifact-dir", required=True)
     parser.add_argument("--wheelhouse", required=True)

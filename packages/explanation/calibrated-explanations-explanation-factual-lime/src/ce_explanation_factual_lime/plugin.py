@@ -25,9 +25,14 @@ class FactualLimeExplanationPlugin(ExplanationPlugin):
         "name": "official.explanation.factual.lime",
         "version": "0.1.0",
         "provider": "official",
-        "capabilities": ['explain', 'explanation:factual', 'task:classification', 'task:regression'],
+        "capabilities": [
+            "explain",
+            "explanation:factual",
+            "task:classification",
+            "task:regression",
+        ],
         "modes": ("factual",),
-        "tasks": ('classification', 'regression'),
+        "tasks": ("classification", "regression"),
         "dependencies": ("core.interval.legacy", "plot_spec.default"),
         "trusted": False,
         "trust": False,
@@ -75,7 +80,9 @@ class FactualLimeExplanationPlugin(ExplanationPlugin):
 def register_scaffold_explanation_plugin() -> None:
     if find_explanation_descriptor("official.explanation.factual.lime") is not None:
         return
-    register_explanation_plugin("official.explanation.factual.lime", FactualLimeExplanationPlugin(), source="entrypoint")
+    register_explanation_plugin(
+        "official.explanation.factual.lime", FactualLimeExplanationPlugin(), source="entrypoint"
+    )
 
 
 register_scaffold_explanation_plugin()

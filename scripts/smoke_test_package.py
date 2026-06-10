@@ -90,15 +90,24 @@ def main() -> int:
                     style_id = getattr(module, "STYLE_ID", None)
                     builder_id = getattr(module, "BUILDER_ID", None)
                     renderer_id = getattr(module, "RENDERER_ID", None)
-                    if not isinstance(style_id, str) or find_plot_style_descriptor(style_id) is None:
+                    if (
+                        not isinstance(style_id, str)
+                        or find_plot_style_descriptor(style_id) is None
+                    ):
                         raise RuntimeError(
                             f"{package_path} visualization bootstrap did not register a plot style"
                         )
-                    if not isinstance(builder_id, str) or find_plot_builder_descriptor(builder_id) is None:
+                    if (
+                        not isinstance(builder_id, str)
+                        or find_plot_builder_descriptor(builder_id) is None
+                    ):
                         raise RuntimeError(
                             f"{package_path} visualization bootstrap did not register a plot builder"
                         )
-                    if not isinstance(renderer_id, str) or find_plot_renderer_descriptor(renderer_id) is None:
+                    if (
+                        not isinstance(renderer_id, str)
+                        or find_plot_renderer_descriptor(renderer_id) is None
+                    ):
                         raise RuntimeError(
                             f"{package_path} visualization bootstrap did not register a plot renderer"
                         )

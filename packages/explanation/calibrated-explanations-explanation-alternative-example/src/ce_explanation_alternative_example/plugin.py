@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from calibrated_explanations.plugins.builtins import LegacyAlternativeExplanationPlugin
 from calibrated_explanations.plugins.explanations import (
     ExplanationBatch,
     ExplanationContext,
@@ -12,7 +13,6 @@ from calibrated_explanations.plugins.registry import (
     find_explanation_descriptor,
     register_explanation_plugin,
 )
-from calibrated_explanations.plugins.builtins import LegacyAlternativeExplanationPlugin
 
 
 class AlternativeExampleExplanationPlugin(ExplanationPlugin):
@@ -28,9 +28,9 @@ class AlternativeExampleExplanationPlugin(ExplanationPlugin):
         "name": "official.explanation.alternative.example",
         "version": "0.1.0",
         "provider": "official",
-        "capabilities": ['explanation:alternative', 'task:classification', 'explain'],
+        "capabilities": ["explanation:alternative", "task:classification", "explain"],
         "modes": ("alternative",),
-        "tasks": ('classification',),
+        "tasks": ("classification",),
         "dependencies": ("core.interval.legacy", "plot_spec.default"),
         "trusted": False,
         "trust": False,
@@ -58,7 +58,11 @@ def register_alternative_example_plugin() -> None:
     """Register the alternative example explanation descriptor on entry-point load."""
     if find_explanation_descriptor("official.explanation.alternative.example") is not None:
         return
-    register_explanation_plugin("official.explanation.alternative.example", AlternativeExampleExplanationPlugin(), source="entrypoint")
+    register_explanation_plugin(
+        "official.explanation.alternative.example",
+        AlternativeExampleExplanationPlugin(),
+        source="entrypoint",
+    )
 
 
 register_alternative_example_plugin()

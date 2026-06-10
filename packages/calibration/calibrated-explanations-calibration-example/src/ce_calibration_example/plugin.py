@@ -3,8 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from calibrated_explanations.plugins.builtins import LegacyIntervalCalibratorPlugin
-from calibrated_explanations.plugins.intervals import IntervalCalibratorContext, IntervalCalibratorPlugin
-from calibrated_explanations.plugins.registry import find_interval_descriptor, register_interval_plugin, trust_plugin
+from calibrated_explanations.plugins.intervals import (
+    IntervalCalibratorContext,
+    IntervalCalibratorPlugin,
+)
+from calibrated_explanations.plugins.registry import (
+    find_interval_descriptor,
+    mark_interval_trusted,
+    register_interval_plugin,
+)
 
 
 class ExampleIntervalCalibratorPlugin(IntervalCalibratorPlugin):
@@ -48,11 +55,7 @@ def register_example_interval_plugin() -> None:
         ExampleIntervalCalibratorPlugin(),
         source="entrypoint",
     )
-    # Explicitly trust the plugin after registration
-    try:
-        trust_plugin(identifier)
-    except Exception:
-        pass
+    mark_interval_trusted(identifier)
 
 
 register_example_interval_plugin()

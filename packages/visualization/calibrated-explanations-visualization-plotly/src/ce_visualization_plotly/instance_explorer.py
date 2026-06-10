@@ -238,7 +238,9 @@ def _percentiles_for(payload: Any, item: Any, options: dict[str, Any]) -> tuple[
     )
 
 
-def _confidence_from_percentiles(percentiles: tuple[Any, Any] | None, options: dict[str, Any]) -> Any:
+def _confidence_from_percentiles(
+    percentiles: tuple[Any, Any] | None, options: dict[str, Any]
+) -> Any:
     if options.get("confidence") is not None:
         return options.get("confidence")
     if percentiles is None:
@@ -250,10 +252,14 @@ def _confidence_from_percentiles(percentiles: tuple[Any, Any] | None, options: d
     return max(0.0, high - low)
 
 
-def _axis_metadata(payload: Any, records: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+def _axis_metadata(
+    payload: Any, records: list[dict[str, Any]], options: dict[str, Any]
+) -> dict[str, Any]:
     task = records[0]["metadata"]["task"] if records else str(options.get("task", "auto"))
     threshold = options.get("threshold")
-    percentiles = _option_tuple(options, "low_high_percentiles") or _option_tuple(options, "percentiles")
+    percentiles = _option_tuple(options, "low_high_percentiles") or _option_tuple(
+        options, "percentiles"
+    )
     confidence = options.get("confidence")
     if records:
         threshold = records[0]["metadata"].get("threshold", threshold)
@@ -323,7 +329,9 @@ def _threshold_target_class(target: Any, threshold: Any) -> tuple[int | None, st
     return 0, f"Y >= {threshold}"
 
 
-def _records_from_global_payload(payload: dict[str, Any], options: dict[str, Any]) -> list[dict[str, Any]]:
+def _records_from_global_payload(
+    payload: dict[str, Any], options: dict[str, Any]
+) -> list[dict[str, Any]]:
     proba = payload.get("proba")
     predict = payload.get("predict")
     low = payload.get("low")
@@ -412,7 +420,9 @@ def _records_from_global_payload(payload: dict[str, Any], options: dict[str, Any
             low_value = prediction_value - uncertainty_value / 2.0
             high_value = prediction_value + uncertainty_value / 2.0
         if low_value is None or high_value is None or uncertainty_value is None:
-            raise ValueError("plotly.global.instance_explorer requires low/high or uncertainty values.")
+            raise ValueError(
+                "plotly.global.instance_explorer requires low/high or uncertainty values."
+            )
         target_metadata_value = target
         target_label = (
             target_label_lookup.get(str(target), f"Y = {target}") if target is not None else None
@@ -423,7 +433,9 @@ def _records_from_global_payload(payload: dict[str, Any], options: dict[str, Any
                 target_metadata_value = threshold_class
                 target_label = threshold_label
         true_label = (
-            target_metadata_value if task in {"classification", "probabilistic_regression"} else None
+            target_metadata_value
+            if task in {"classification", "probabilistic_regression"}
+            else None
         )
         target_value = target if task == "regression" else None
         records.append(
@@ -450,13 +462,17 @@ def _records_from_global_payload(payload: dict[str, Any], options: dict[str, Any
                     "target": target_metadata_value,
                     "raw_target": target,
                     "target_label": target_label,
-                    "target_kind": "continuous" if task == "regression" and target is not None else "class",
+                    "target_kind": "continuous"
+                    if task == "regression" and target is not None
+                    else "class",
                     "is_aggregated_marker": False,
                 },
             }
         )
     if not records:
-        raise ValueError("No global prediction records were available for plotly.global.instance_explorer.")
+        raise ValueError(
+            "No global prediction records were available for plotly.global.instance_explorer."
+        )
     return records
 
 
@@ -475,7 +491,9 @@ def build_instance_records(payload: Any, options: dict[str, Any]) -> list[dict[s
         low = _as_float(prediction.get("low"))
         high = _as_float(prediction.get("high"))
         if low is None or high is None:
-            raise ValueError("plotly.global.instance_explorer requires calibrated low/high intervals.")
+            raise ValueError(
+                "plotly.global.instance_explorer requires calibrated low/high intervals."
+            )
 
         class_id = options.get("class_id")
         threshold = _threshold_for(payload, item, options)
@@ -523,7 +541,9 @@ def build_instance_records(payload: Any, options: dict[str, Any]) -> list[dict[s
             }
         )
     if not records:
-        raise ValueError("No batch prediction records were available for plotly.global.instance_explorer.")
+        raise ValueError(
+            "No batch prediction records were available for plotly.global.instance_explorer."
+        )
     return records
 
 
@@ -566,7 +586,10 @@ def _mean(values: list[float]) -> float | None:
 
 
 def _format_counter(values: list[Any]) -> dict[str, int]:
-    return {str(key): count for key, count in sorted(Counter(values).items(), key=lambda item: str(item[0]))}
+    return {
+        str(key): count
+        for key, count in sorted(Counter(values).items(), key=lambda item: str(item[0]))
+    }
 
 
 def _summarize_group(records: list[dict[str, Any]], task: str) -> dict[str, Any]:
@@ -574,11 +597,23 @@ def _summarize_group(records: list[dict[str, Any]], task: str) -> dict[str, Any]
     lows = [record["low"] for record in records]
     highs = [record["high"] for record in records]
     widths = [record["interval_width"] for record in records]
-    predicted_classes = [record.get("predicted_class") for record in records if record.get("predicted_class") is not None]
-    true_labels = [record.get("true_label") for record in records if record.get("true_label") is not None]
-    target_values = [record.get("target_value") for record in records if record.get("target_value") is not None]
+    predicted_classes = [
+        record.get("predicted_class")
+        for record in records
+        if record.get("predicted_class") is not None
+    ]
+    true_labels = [
+        record.get("true_label") for record in records if record.get("true_label") is not None
+    ]
+    target_values = [
+        record.get("target_value") for record in records if record.get("target_value") is not None
+    ]
     summary = {
-        "prediction_summary": {"mean": _mean(predictions), "min": min(predictions), "max": max(predictions)},
+        "prediction_summary": {
+            "mean": _mean(predictions),
+            "min": min(predictions),
+            "max": max(predictions),
+        },
         "interval_summary": {
             "low_mean": _mean(lows),
             "high_mean": _mean(highs),
@@ -606,7 +641,11 @@ def _summarize_group(records: list[dict[str, Any]], task: str) -> dict[str, Any]
         threshold = records[0]["metadata"].get("threshold")
         threshold_float = _as_float(threshold)
         if threshold_float is not None and target_values:
-            observed = sum(1 for value in target_values if _as_float(value) is not None and float(value) <= threshold_float)
+            observed = sum(
+                1
+                for value in target_values
+                if _as_float(value) is not None and float(value) <= threshold_float
+            )
             summary["target_summary"] = {
                 "threshold": threshold,
                 "observed_event_count": observed,
@@ -659,7 +698,7 @@ def build_hover_text(marker_record: dict[str, Any], task: str, options: dict[str
             lines.append(f"True labels: {true_distribution}")
         if class_summary.get("num_correct") is not None:
             lines.append(
-                f"Correct / incorrect: {class_summary['num_correct']} / {class_summary['num_incorrect']}"
+                f"Correct / incorrect: {class_summary['num_correct']} / {class_summary['num_incorrect']}"  # noqa: E501
             )
     elif task == "probabilistic_regression":
         threshold = metadata.get("threshold")
@@ -681,8 +720,12 @@ def build_hover_text(marker_record: dict[str, Any], task: str, options: dict[str
         lines.extend(
             [
                 f"Point prediction / median: {prediction['mean']:.6g}",
-                f"Percentiles: {percentiles[0]} / {percentiles[1]}" if percentiles else "Percentiles: unavailable",
-                f"Confidence: {confidence:g}%" if _as_float(confidence) is not None else "Confidence: unavailable",
+                f"Percentiles: {percentiles[0]} / {percentiles[1]}"
+                if percentiles
+                else "Percentiles: unavailable",
+                f"Confidence: {confidence:g}%"
+                if _as_float(confidence) is not None
+                else "Confidence: unavailable",
                 f"Prediction interval: [{interval['low_mean']:.6g}, {interval['high_mean']:.6g}]",
                 f"Interval width: {interval['width_mean']:.6g}",
             ]
@@ -704,7 +747,9 @@ def build_hover_text(marker_record: dict[str, Any], task: str, options: dict[str
     return "<br>".join(lines)
 
 
-def aggregate_instance_records(records: list[dict[str, Any]], options: dict[str, Any]) -> list[dict[str, Any]]:
+def aggregate_instance_records(
+    records: list[dict[str, Any]], options: dict[str, Any]
+) -> list[dict[str, Any]]:
     groups: dict[tuple[Any, Any], list[dict[str, Any]]] = defaultdict(list)
     for record in records:
         key = _aggregation_group_key(record, options)
@@ -712,7 +757,9 @@ def aggregate_instance_records(records: list[dict[str, Any]], options: dict[str,
 
     max_count = max(len(group) for group in groups.values())
     markers: list[dict[str, Any]] = []
-    for marker_index, key in enumerate(sorted(groups, key=lambda item: (float(item[0]), float(item[1]), str(item[2:])))):
+    for marker_index, key in enumerate(
+        sorted(groups, key=lambda item: (float(item[0]), float(item[1]), str(item[2:])))
+    ):
         group = groups[key]
         task = group[0]["metadata"]["task"]
         count = len(group)
@@ -839,7 +886,16 @@ def add_marker_trace(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) 
             "star",
             "hexagon",
         ]
-        colors = ["#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b", "#17becf", "#7f7f7f"]
+        colors = [
+            "#1f77b4",
+            "#d62728",
+            "#2ca02c",
+            "#ff7f0e",
+            "#9467bd",
+            "#8c564b",
+            "#17becf",
+            "#7f7f7f",
+        ]
         targets = list(target_metadata.get("targets", ()))
         target_styles = {
             str(target): {
@@ -849,7 +905,7 @@ def add_marker_trace(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) 
             }
             for index, target in enumerate(targets)
         }
-        for index, target in enumerate(targets):
+        for _index, target in enumerate(targets):
             style = target_styles[str(target)]
             fig.add_trace(
                 go.Scatter(
@@ -908,10 +964,7 @@ def add_marker_trace(fig: Any, artifact: PlotArtifact, options: dict[str, Any]) 
     colorbar_title = "Instances"
     showscale = True
     if target_kind == "continuous":
-        marker_color = [
-            marker.get("target_summary", {}).get("target_mean")
-            for marker in markers
-        ]
+        marker_color = [marker.get("target_summary", {}).get("target_mean") for marker in markers]
         colorbar_title = "Target"
     fig.add_trace(
         go.Scatter(
@@ -990,7 +1043,9 @@ class GlobalInstanceExplorerPlotBuilder(PlotBuilder):
     def build(self, context: PlotRenderContext) -> PlotArtifact:
         options = {**_artifact_options(dict(context.options)), **dict(context.options)}
         if str(options.get("marker_size_mode", "count")) != "count":
-            raise ValueError("marker_size_mode must be 'count' for plotly.global.instance_explorer v1.")
+            raise ValueError(
+                "marker_size_mode must be 'count' for plotly.global.instance_explorer v1."
+            )
         records = build_instance_records(context.explanation, options)
         markers = aggregate_instance_records(records, options)
         counts = [marker["count"] for marker in markers]

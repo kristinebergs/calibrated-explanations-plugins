@@ -6,7 +6,6 @@ from time import time
 from typing import Any
 
 import numpy as np
-
 from calibrated_explanations.explanations import CalibratedExplanations
 from calibrated_explanations.utils import assert_threshold, safe_isinstance
 from calibrated_explanations.utils.exceptions import (
@@ -105,11 +104,13 @@ class LimePipeline:
             for _ in range(len(x_test))
         ]
 
-        predict, low, high, predicted_class = self.explainer.prediction_orchestrator.predict_internal(
-            x_test,
-            threshold=threshold,
-            low_high_percentiles=low_high_percentiles,
-            bins=bins,
+        predict, low, high, predicted_class = (
+            self.explainer.prediction_orchestrator.predict_internal(
+                x_test,
+                threshold=threshold,
+                low_high_percentiles=low_high_percentiles,
+                bins=bins,
+            )
         )
         prediction["predict"] = predict
         prediction["low"] = low
@@ -180,13 +181,12 @@ class LimePipeline:
                 tmp_high = res_struct["high"]["values"][feat_idx]
                 instance_weights[idx]["low"][feat_idx] = np.min([tmp_low, tmp_high])
                 instance_weights[idx]["high"][feat_idx] = np.max([tmp_low, tmp_high])
-                instance_weights[idx]["predict"][feat_idx] = (
-                    instance_weights[idx]["high"][feat_idx]
-                    / (
-                        1
-                        - instance_weights[idx]["low"][feat_idx]
-                        + instance_weights[idx]["high"][feat_idx]
-                    )
+                instance_weights[idx]["predict"][feat_idx] = instance_weights[idx]["high"][
+                    feat_idx
+                ] / (
+                    1
+                    - instance_weights[idx]["low"][feat_idx]
+                    + instance_weights[idx]["high"][feat_idx]
                 )
 
                 low_predict_proba = getattr(low_explanation, "predict_proba", None)
@@ -207,13 +207,12 @@ class LimePipeline:
                 instance_predict[idx]["high"][feat_idx] = (
                     high_point - instance_weights[idx]["high"][feat_idx]
                 )
-                instance_predict[idx]["predict"][feat_idx] = (
-                    instance_predict[idx]["high"][feat_idx]
-                    / (
-                        1
-                        - instance_predict[idx]["low"][feat_idx]
-                        + instance_predict[idx]["high"][feat_idx]
-                    )
+                instance_predict[idx]["predict"][feat_idx] = instance_predict[idx]["high"][
+                    feat_idx
+                ] / (
+                    1
+                    - instance_predict[idx]["low"][feat_idx]
+                    + instance_predict[idx]["high"][feat_idx]
                 )
 
             feature_weights["predict"].append(instance_weights[idx]["predict"])

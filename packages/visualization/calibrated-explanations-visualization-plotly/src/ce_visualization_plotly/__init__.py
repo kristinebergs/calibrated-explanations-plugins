@@ -4,6 +4,7 @@ from .alternative_feature_summary import (
     AlternativeFeatureSummaryPlotBuilder,
     AlternativeFeatureSummaryPlotRenderer,
 )
+from .dashboard import launch_instance_workspace
 from .dashboard_cards import (
     DashboardCardDescriptor,
     dashboard_cards_for_scope,
@@ -12,7 +13,6 @@ from .dashboard_cards import (
     find_dashboard_card_by_style,
     iter_dashboard_cards,
 )
-from .dashboard import launch_instance_workspace
 from .ensured import (
     LocalEnsuredPlotBuilder,
     LocalEnsuredPlotRenderer,

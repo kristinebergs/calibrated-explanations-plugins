@@ -6,7 +6,6 @@ from pathlib import Path
 
 from official_plugins import UMBRELLA_META_DISTRIBUTION, official_plugin_paths_for_meta_distribution
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -25,4 +24,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 from textwrap import dedent, indent
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES_DIR = ROOT / "packages"
 PLUGIN_FAMILIES = ("calibration", "explanation", "visualization")
@@ -271,6 +270,13 @@ def build_calibration_files(
                 "confidence_source": "legacy-delegate",
                 "requires_bins": False,
                 "fast_compatible": False,
+                "config_schema": {{
+                    "version": 1,
+                    "additional_properties": False,
+                    "keys": {{
+                        "enabled": {{"type": "bool", "default": True}},
+                    }},
+                }},
             }}
 
             def __init__(self) -> None:
@@ -429,6 +435,14 @@ def build_explanation_files(
                 "dependencies": ("core.interval.legacy", "plot_spec.default"),
                 "trusted": False,
                 "trust": False,
+                "config_schema": {{
+                    "version": 1,
+                    "additional_properties": False,
+                    "keys": {{
+                        "label_prefix": {{"type": "str", "default": ""}},
+                        "enabled_labels": {{"type": "list[str]", "default": []}},
+                    }},
+                }},
             }}
 
             def __init__(self) -> None:
@@ -611,6 +625,13 @@ def build_visualization_files(
                 "trust": False,
                 "legacy_compatible": False,
                 "default_renderer": RENDERER_ID,
+                "config_schema": {{
+                    "version": 1,
+                    "additional_properties": False,
+                    "keys": {{
+                        "colorway": {{"type": "list[str]", "default": []}},
+                    }},
+                }},
             }}
 
             def __init__(self) -> None:

@@ -6,8 +6,8 @@ from sklearn.model_selection import train_test_split
 
 pytest.importorskip("calibrated_explanations")
 
-from calibrated_explanations import CalibratedExplainer
 import calibrated_explanations.plugins.registry as registry
+from calibrated_explanations import CalibratedExplainer
 from ce_calibration_example import ExampleIntervalCalibratorPlugin
 
 
@@ -41,9 +41,7 @@ def test_interval_plugin_should_be_discoverable_and_runtime_valid(monkeypatch):
         n_redundant=0,
         random_state=0,
     )
-    x_train, x_test, y_train, _ = train_test_split(
-        x, y, test_size=0.2, random_state=0, stratify=y
-    )
+    x_train, x_test, y_train, _ = train_test_split(x, y, test_size=0.2, random_state=0, stratify=y)
     learner = LogisticRegression(random_state=0, solver="liblinear").fit(x_train, y_train)
     explainer = CalibratedExplainer(
         learner,

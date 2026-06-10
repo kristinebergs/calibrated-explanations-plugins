@@ -30,6 +30,15 @@ ENTRYPOINT_GROUPS = (
 PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)+$")
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 DISALLOWED_ALIAS_PATTERN = re.compile(r"(?:^|[-_])(plot|plots|viz)(?:[-_]|$)")
+CONFIG_SCHEMA_TYPES = {
+    "str",
+    "int",
+    "float",
+    "bool",
+    "list",
+    "list[str]",
+    "mapping",
+}
 
 
 @dataclass
@@ -71,7 +80,9 @@ def discover_packages(errors: list[str]) -> list[PackageInfo]:
             continue
         for package_dir in sorted(family_dir.iterdir()):
             if not package_dir.is_dir():
-                errors.append(f"Unexpected file in {family_dir.relative_to(ROOT)}: {package_dir.name}")
+                errors.append(
+                    f"Unexpected file in {family_dir.relative_to(ROOT)}: {package_dir.name}"
+                )
                 continue
             info = load_package_info(package_dir, family_dir.name, errors)
             if info:
@@ -145,7 +156,9 @@ def validate_meta_package(
     if name not in META_PACKAGES:
         errors.append(f"{package_dir.relative_to(ROOT)} has invalid meta-package name {name!r}")
     if metadata_family != "meta":
-        errors.append(f"{package_dir.relative_to(ROOT)} must declare tool.ce_plugin_repo.family = 'meta'")
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} must declare tool.ce_plugin_repo.family = 'meta'"
+        )
     if (package_dir / "src").exists():
         errors.append(f"{package_dir.relative_to(ROOT)} meta-package must not contain src/")
     if (package_dir / "tests").exists():
@@ -171,7 +184,9 @@ def validate_plugin_package(
             f"{package_dir.relative_to(ROOT)} package name {name!r} must start with {expected_prefix!r}"
         )
     if DISALLOWED_ALIAS_PATTERN.search(name):
-        errors.append(f"{package_dir.relative_to(ROOT)} package name uses disallowed plot/viz alias")
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} package name uses disallowed plot/viz alias"
+        )
     if metadata_family != family:
         errors.append(f"{package_dir.relative_to(ROOT)} must declare family {family!r}")
     if not isinstance(import_name, str) or not import_name:
@@ -197,7 +212,9 @@ def validate_plugin_entry_points(
 ) -> None:
     present_groups = [group for group, entries in entry_points.items() if entries]
     if not present_groups:
-        errors.append(f"{package_dir.relative_to(ROOT)} must declare at least one CE entry-point group")
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} must declare at least one CE entry-point group"
+        )
         return
     expected_groups = (
         {
@@ -243,7 +260,7 @@ def resolve_plugin_meta(package_dir: Path, import_name: str, target: str) -> dic
 
 def extract_plugin_meta(module_path: Path, object_name: str) -> dict | None:
     tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
-    module_constants = collect_module_constants(tree)
+    module_constants = collect_module_constants(tree, module_path)
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == object_name:
             for statement in node.body:
@@ -254,8 +271,12 @@ def extract_plugin_meta(module_path: Path, object_name: str) -> dict | None:
     return None
 
 
-def collect_module_constants(tree: ast.Module) -> dict[str, object]:
+def collect_module_constants(
+    tree: ast.Module, module_path: Path | None = None
+) -> dict[str, object]:
     constants: dict[str, object] = {}
+    if module_path is not None:
+        constants.update(collect_imported_metadata_constants(tree, module_path))
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
@@ -265,6 +286,28 @@ def collect_module_constants(tree: ast.Module) -> dict[str, object]:
             constants[node.targets[0].id] = resolve_static_value(node.value, constants)
         except ValueError:
             continue
+    return constants
+
+
+def collect_imported_metadata_constants(tree: ast.Module, module_path: Path) -> dict[str, object]:
+    constants: dict[str, object] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        if not node.module.endswith(".metadata"):
+            continue
+        metadata_path = module_path.with_name("metadata.py")
+        if not metadata_path.exists():
+            continue
+        metadata_tree = ast.parse(
+            metadata_path.read_text(encoding="utf-8"), filename=str(metadata_path)
+        )
+        metadata_constants = collect_module_constants(metadata_tree)
+        for alias in node.names:
+            imported_name = alias.name
+            local_name = alias.asname or alias.name
+            if imported_name in metadata_constants:
+                constants[local_name] = metadata_constants[imported_name]
     return constants
 
 
@@ -280,7 +323,7 @@ def resolve_static_value(node: ast.AST, constants: dict[str, object]) -> object:
     if isinstance(node, ast.Dict):
         return {
             resolve_static_value(key, constants): resolve_static_value(value, constants)
-            for key, value in zip(node.keys, node.values)
+            for key, value in zip(node.keys, node.values, strict=False)
         }
     if isinstance(node, ast.Name):
         if node.id in constants:
@@ -294,7 +337,9 @@ def resolve_static_value(node: ast.AST, constants: dict[str, object]) -> object:
     raise ValueError(f"Unsupported static expression: {ast.dump(node, include_attributes=False)}")
 
 
-def validate_plugin_meta(package_dir: Path, family: str, plugin_meta: dict, errors: list[str]) -> None:
+def validate_plugin_meta(
+    package_dir: Path, family: str, plugin_meta: dict, errors: list[str]
+) -> None:
     required = {
         "schema_version",
         "name",
@@ -305,13 +350,18 @@ def validate_plugin_meta(package_dir: Path, family: str, plugin_meta: dict, erro
     }
     missing = required - set(plugin_meta)
     if missing:
-        errors.append(f"{package_dir.relative_to(ROOT)} plugin_meta missing keys: {sorted(missing)}")
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} plugin_meta missing keys: {sorted(missing)}"
+        )
         return
     if plugin_meta["schema_version"] != 1:
         errors.append(f"{package_dir.relative_to(ROOT)} plugin_meta.schema_version must be 1")
     if not isinstance(plugin_meta["name"], str) or not PLUGIN_ID_PATTERN.match(plugin_meta["name"]):
         errors.append(f"{package_dir.relative_to(ROOT)} plugin_meta.name is invalid")
-    if not isinstance(plugin_meta["capabilities"], (list, tuple)) or not plugin_meta["capabilities"]:
+    if (
+        not isinstance(plugin_meta["capabilities"], (list, tuple))
+        or not plugin_meta["capabilities"]
+    ):
         errors.append(f"{package_dir.relative_to(ROOT)} plugin_meta.capabilities must be non-empty")
         return
     expected_prefix = {
@@ -326,6 +376,81 @@ def validate_plugin_meta(package_dir: Path, family: str, plugin_meta: dict, erro
         errors.append(
             f"{package_dir.relative_to(ROOT)} plugin_meta.capabilities must include {expected_prefix!r}"
         )
+    if "config_schema" in plugin_meta:
+        validate_plugin_config_schema(package_dir, plugin_meta["config_schema"], errors)
+
+
+def validate_plugin_config_schema(package_dir: Path, schema: object, errors: list[str]) -> None:
+    """Validate the provisional plugin config schema shape used by official examples."""
+    prefix = f"{package_dir.relative_to(ROOT)} plugin_meta.config_schema"
+    if not isinstance(schema, dict):
+        errors.append(f"{prefix} must be a mapping")
+        return
+    version = schema.get("version", 1)
+    if version != 1:
+        errors.append(f"{prefix}.version must be 1")
+    additional_properties = schema.get("additional_properties", False)
+    if not isinstance(additional_properties, bool):
+        errors.append(f"{prefix}.additional_properties must be boolean")
+    keys = schema.get("keys", schema.get("properties", {}))
+    if not isinstance(keys, dict):
+        errors.append(f"{prefix}.keys must be a mapping")
+        return
+    for key, entry in keys.items():
+        if not isinstance(key, str) or not key:
+            errors.append(f"{prefix}.keys names must be non-empty strings")
+            continue
+        if not isinstance(entry, dict):
+            errors.append(f"{prefix}.keys[{key!r}] must be a mapping")
+            continue
+        raw_type = entry.get("type")
+        if raw_type not in CONFIG_SCHEMA_TYPES:
+            errors.append(
+                f"{prefix}.keys[{key!r}].type must be one of {sorted(CONFIG_SCHEMA_TYPES)}"
+            )
+        if "required" in entry and not isinstance(entry["required"], bool):
+            errors.append(f"{prefix}.keys[{key!r}].required must be boolean")
+        if "sensitive" in entry and not isinstance(entry["sensitive"], bool):
+            errors.append(f"{prefix}.keys[{key!r}].sensitive must be boolean")
+        choices = entry.get("choices")
+        if choices is not None and (
+            isinstance(choices, str) or not isinstance(choices, (list, tuple))
+        ):
+            errors.append(f"{prefix}.keys[{key!r}].choices must be a sequence")
+        if "default" in entry and raw_type in CONFIG_SCHEMA_TYPES:
+            validate_plugin_config_default(
+                package_dir,
+                key,
+                entry["default"],
+                str(raw_type),
+                errors,
+            )
+
+
+def validate_plugin_config_default(
+    package_dir: Path,
+    key: str,
+    value: object,
+    raw_type: str,
+    errors: list[str],
+) -> None:
+    prefix = f"{package_dir.relative_to(ROOT)} " f"plugin_meta.config_schema.keys[{key!r}].default"
+    if raw_type == "str" and not isinstance(value, str):
+        errors.append(f"{prefix} must be str")
+    elif raw_type == "int" and (not isinstance(value, int) or isinstance(value, bool)):
+        errors.append(f"{prefix} must be int")
+    elif raw_type == "float" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
+        errors.append(f"{prefix} must be float")
+    elif raw_type == "bool" and not isinstance(value, bool):
+        errors.append(f"{prefix} must be bool")
+    elif raw_type == "list" and not isinstance(value, (list, tuple)):
+        errors.append(f"{prefix} must be a list-like sequence")
+    elif raw_type == "list[str]" and (
+        not isinstance(value, (list, tuple)) or not all(isinstance(item, str) for item in value)
+    ):
+        errors.append(f"{prefix} must be a sequence of strings")
+    elif raw_type == "mapping" and not isinstance(value, dict):
+        errors.append(f"{prefix} must be a mapping")
 
 
 def validate_readme(readme_path: Path, package_name: str, family: str, errors: list[str]) -> None:
@@ -337,7 +462,9 @@ def validate_readme(readme_path: Path, package_name: str, family: str, errors: l
     if "Purpose:" not in text:
         errors.append(f"{readme_path.relative_to(ROOT)} must contain Purpose:")
     if "Compatibility: `calibrated-explanations" not in text:
-        errors.append(f"{readme_path.relative_to(ROOT)} must declare calibrated-explanations compatibility")
+        errors.append(
+            f"{readme_path.relative_to(ROOT)} must declare calibrated-explanations compatibility"
+        )
 
 
 def check_uniqueness(packages: list[PackageInfo], errors: list[str]) -> None:
@@ -383,7 +510,9 @@ def check_uniqueness(packages: list[PackageInfo], errors: list[str]) -> None:
 
 def check_cross_package_imports(packages: list[PackageInfo], errors: list[str]) -> None:
     plugin_packages = [package for package in packages if package.package_type == "plugin"]
-    known_imports = {package.import_name: package for package in plugin_packages if package.import_name}
+    known_imports = {
+        package.import_name: package for package in plugin_packages if package.import_name
+    }
     for package in plugin_packages:
         for python_file in (package.root / "src").rglob("*.py"):
             tree = ast.parse(python_file.read_text(encoding="utf-8"), filename=str(python_file))

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from calibrated_explanations.plugins.plots import (
     PlotArtifact,
     PlotBuilder,
     PlotRenderContext,
-    PlotRenderResult,
     PlotRenderer,
+    PlotRenderResult,
 )
 from calibrated_explanations.plugins.registry import (
     find_plot_builder_descriptor,
@@ -20,7 +19,6 @@ from calibrated_explanations.plugins.registry import (
 )
 
 from .adapter import get_shap_metadata, plot_shap
-
 
 STYLE_ID = "official.visualization.factual.shap"
 BUILDER_ID = "official.visualization.factual.shap.builder"
@@ -39,7 +37,9 @@ _CE_ONLY_PLOT_OPTIONS = {
 }
 
 
-def _as_save_paths(base_path: str | None, save_ext: str | tuple[str, ...] | None) -> tuple[str, ...]:
+def _as_save_paths(
+    base_path: str | None, save_ext: str | tuple[str, ...] | None
+) -> tuple[str, ...]:
     if not base_path or not save_ext:
         return ()
     suffixes = (save_ext,) if isinstance(save_ext, str) else tuple(save_ext)

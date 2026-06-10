@@ -316,9 +316,7 @@ def test_factual_regression_smoke_with_calibrated_explainer(monkeypatch):
     _load_plugin(monkeypatch)
 
     features, target = make_regression(n_samples=120, n_features=4, noise=0.2, random_state=1)
-    x_train, x_test, y_train, _ = train_test_split(
-        features, target, test_size=0.2, random_state=0
-    )
+    x_train, x_test, y_train, _ = train_test_split(features, target, test_size=0.2, random_state=0)
     model = LinearRegression().fit(x_train, y_train)
     explanations = CalibratedExplainer(
         model,

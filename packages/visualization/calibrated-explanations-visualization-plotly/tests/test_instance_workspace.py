@@ -164,7 +164,12 @@ def _explanations(count: int = 3) -> SimpleNamespace:
             SimpleNamespace(
                 index=index,
                 calibrated_explanations=collection,
-                prediction={"predict": 0.6 + index * 0.05, "low": 0.5, "high": 0.7 + index * 0.05, "classes": 1},
+                prediction={
+                    "predict": 0.6 + index * 0.05,
+                    "low": 0.5,
+                    "high": 0.7 + index * 0.05,
+                    "classes": 1,
+                },
                 rules=_factual_rules(),
                 get_mode=lambda: "classification",
                 is_probabilistic=lambda: True,
@@ -176,7 +181,12 @@ def _explanations(count: int = 3) -> SimpleNamespace:
             SimpleNamespace(
                 index=index,
                 calibrated_explanations=collection,
-                prediction={"predict": 0.6 + index * 0.05, "low": 0.5, "high": 0.7 + index * 0.05, "classes": 1},
+                prediction={
+                    "predict": 0.6 + index * 0.05,
+                    "low": 0.5,
+                    "high": 0.7 + index * 0.05,
+                    "classes": 1,
+                },
                 rules=_alternative_rules(),
                 get_rules=_alternative_rules,
                 get_mode=lambda: "classification",

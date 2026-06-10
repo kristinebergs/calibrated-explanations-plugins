@@ -1,11 +1,11 @@
 from .plugin import (
-    STYLE_ID,
-    BUILDER_ID,
-    RENDERER_ID,
     BOOTSTRAP_ID,
-    CE_DEFAULT_STYLE_ID,
+    BUILDER_ID,
     CE_DEFAULT_BUILDER_ID,
     CE_DEFAULT_RENDERER_ID,
+    CE_DEFAULT_STYLE_ID,
+    RENDERER_ID,
+    STYLE_ID,
 )
 
 __all__ = [

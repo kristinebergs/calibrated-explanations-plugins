@@ -5,8 +5,8 @@ from calibrated_explanations.plugins.plots import (
     PlotArtifact,
     PlotBuilder,
     PlotRenderContext,
-    PlotRenderResult,
     PlotRenderer,
+    PlotRenderResult,
 )
 from calibrated_explanations.plugins.registry import (
     find_plot_builder_descriptor,
@@ -16,7 +16,6 @@ from calibrated_explanations.plugins.registry import (
     register_plot_renderer,
     register_plot_style,
 )
-
 
 STYLE_ID = "official.example"
 BUILDER_ID = "official.visualization.example.builder"

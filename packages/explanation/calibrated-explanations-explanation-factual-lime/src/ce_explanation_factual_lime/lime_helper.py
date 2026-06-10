@@ -98,4 +98,3 @@ class LimeHelper:
         self._enabled = False
         self._explainer_instance = None
         self._reference_explanation = None
-

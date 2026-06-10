@@ -31,6 +31,7 @@ def figure_to_png_bytes(figure: Any) -> bytes:
         buf = io.BytesIO()
         figure.savefig(buf, format="png", bbox_inches="tight")
         import matplotlib.pyplot as plt
+
         plt.close(figure)
         buf.seek(0)
         return buf.getvalue()
@@ -44,6 +45,7 @@ def figure_to_png_bytes(figure: Any) -> bytes:
 def error_placeholder_bytes(message: str) -> bytes:
     """Render a small placeholder image containing the given error message."""
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -170,8 +172,8 @@ def assemble_dashboard(
             axis_suffix = "" if (row == 1 and col == 1) else str(idx + 1)
             fig.update_layout(
                 **{
-                    f"xaxis{axis_suffix}": dict(visible=False),
-                    f"yaxis{axis_suffix}": dict(visible=False),
+                    f"xaxis{axis_suffix}": {"visible": False},
+                    f"yaxis{axis_suffix}": {"visible": False},
                 }
             )
 
@@ -187,25 +189,31 @@ def assemble_dashboard(
         if n_panels == 0:
             # Hide the empty default axes so only the annotation is visible
             fig.update_layout(
-                xaxis=dict(visible=False, fixedrange=True),
-                yaxis=dict(visible=False, fixedrange=True),
+                xaxis={"visible": False, "fixedrange": True},
+                yaxis={"visible": False, "fixedrange": True},
             )
             fig.add_annotation(
                 text=narrative_heading,
-                xref="paper", yref="paper",
-                x=0.0, y=1.0,
-                xanchor="left", yanchor="top",
+                xref="paper",
+                yref="paper",
+                x=0.0,
+                y=1.0,
+                xanchor="left",
+                yanchor="top",
                 showarrow=False,
-                font=dict(size=13),
+                font={"size": 13},
                 align="left",
             )
             fig.add_annotation(
                 text=narrative_body,
-                xref="paper", yref="paper",
-                x=0.0, y=0.93,
-                xanchor="left", yanchor="top",
+                xref="paper",
+                yref="paper",
+                x=0.0,
+                y=0.93,
+                xanchor="left",
+                yanchor="top",
                 showarrow=False,
-                font=dict(size=11, family="monospace"),
+                font={"size": 11, "family": "monospace"},
                 align="left",
                 bgcolor="white",
                 bordercolor="lightgrey",
@@ -215,20 +223,26 @@ def assemble_dashboard(
         else:
             fig.add_annotation(
                 text=narrative_heading,
-                xref="paper", yref="paper",
-                x=0.0, y=-0.05,
-                xanchor="left", yanchor="top",
+                xref="paper",
+                yref="paper",
+                x=0.0,
+                y=-0.05,
+                xanchor="left",
+                yanchor="top",
                 showarrow=False,
-                font=dict(size=13),
+                font={"size": 13},
                 align="left",
             )
             fig.add_annotation(
                 text=narrative_body,
-                xref="paper", yref="paper",
-                x=0.0, y=-0.10,
-                xanchor="left", yanchor="top",
+                xref="paper",
+                yref="paper",
+                x=0.0,
+                y=-0.10,
+                xanchor="left",
+                yanchor="top",
                 showarrow=False,
-                font=dict(size=11, family="monospace"),
+                font={"size": 11, "family": "monospace"},
                 align="left",
                 bgcolor="white",
                 bordercolor="lightgrey",
@@ -246,7 +260,7 @@ def assemble_dashboard(
         showlegend=False,
         paper_bgcolor="white",
         plot_bgcolor="white",
-        margin=dict(t=60, b=narrative_height or 20, l=20, r=20),
+        margin={"t": 60, "b": narrative_height or 20, "l": 20, "r": 20},
     )
 
     return fig
@@ -255,6 +269,7 @@ def assemble_dashboard(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
 
 def _image_grid_specs(n_panels: int, plot_rows: int, n_cols: int) -> list[list[dict]]:
     """Build specs list for a grid of image subplots, with None padding."""
