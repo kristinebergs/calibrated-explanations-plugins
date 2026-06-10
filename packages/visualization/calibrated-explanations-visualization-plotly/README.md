@@ -7,6 +7,31 @@ explanation view that plots absolute local impact against calibrated
 uncertainty width. Signed contribution direction is encoded separately through
 marker semantics and hover text.
 
+The package registers `plotly.local.factual_bars`, a Plotly version of CE's
+standard local factual bar plot. Its default visual presentation matches the
+simple factual contribution view used with `uncertainty=False`: one horizontal
+bar per local factual rule or feature, signed around a zero reference line, with
+positive and negative contributions colored distinctly.
+
+Although interval marks are hidden by default, each bar hover includes the
+calibrated contribution interval, interval width, zero-crossing status, current
+feature value when available, and prediction interval metadata when available.
+Set `show_uncertainty=True` to add visible contribution interval overlays while
+keeping the same hover details. Classification and regression factual
+explanations are both supported.
+
+Factual bars examples:
+
+```python
+factual[0].plot(style="plotly.local.factual_bars", show=True)
+
+factual[0].plot(
+    style="plotly.local.factual_bars",
+    show=True,
+    show_uncertainty=True,
+)
+```
+
 The package also registers `plotly.local.ensured`, a Plotly version of CE's
 existing ensured local alternative plot. It preserves the current semantics:
 
@@ -280,9 +305,11 @@ pip install calibrated-explanations-visualization-plotly[live]
 See `examples/local_ensured_plotly.ipynb` for a
 `WrapCalibratedExplainer` classification and regression ensured walkthrough and
 `examples/local_uncertainty_quadrant.ipynb` for the local uncertainty quadrant
-example. See `examples/local_alternative_feature_summary.ipynb` for the local
-alternative feature summary example and `examples/global_instance_explorer.ipynb`
-for a three-section batch instance explorer walkthrough.
+example. See `examples/local_factual_bars.ipynb` for classification,
+regression, visible interval, and HTML export factual-bar examples. See
+`examples/local_alternative_feature_summary.ipynb` for the local alternative
+feature summary example and `examples/global_instance_explorer.ipynb` for a
+three-section batch instance explorer walkthrough.
 
 Dashboard examples live in the package-local `examples/` directory:
 

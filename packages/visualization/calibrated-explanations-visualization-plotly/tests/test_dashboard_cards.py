@@ -19,12 +19,14 @@ def test_dashboard_registry_contains_current_plotly_styles(monkeypatch):
 
     assert [descriptor.card_id for descriptor in descriptors] == [
         "instance_explorer",
+        "local_factual_bars",
         "uncertainty_quadrant",
         "ensured",
         "alternative_feature_summary",
     ]
     assert {descriptor.style for descriptor in descriptors} == {
         "plotly.global.instance_explorer",
+        "plotly.local.factual_bars",
         "plotly.local.uncertainty_quadrant",
         "plotly.local.ensured",
         "plotly.local.alternative_feature_summary",
@@ -35,10 +37,20 @@ def test_dashboard_registry_supports_lookup_by_id_and_style(monkeypatch):
     dashboard_cards = _load_dashboard_cards(monkeypatch)
 
     ensured = dashboard_cards.find_dashboard_card("ensured")
+    factual_bars = dashboard_cards.find_dashboard_card("local_factual_bars")
 
     assert ensured is not None
     assert ensured.style == "plotly.local.ensured"
+    assert factual_bars is not None
+    assert factual_bars.style == "plotly.local.factual_bars"
+    assert factual_bars.default_options["show_uncertainty"] is False
+    assert factual_bars.default_options["hover_uncertainty"] is True
+    assert factual_bars.default_options["filter_top"] == 10
     assert dashboard_cards.find_dashboard_card_by_style("plotly.local.ensured") is ensured
+    assert (
+        dashboard_cards.find_dashboard_card_by_style("plotly.local.factual_bars")
+        is factual_bars
+    )
     assert dashboard_cards.find_dashboard_card("missing") is None
     assert dashboard_cards.find_dashboard_card_by_style("plotly.local.missing") is None
 
@@ -52,12 +64,14 @@ def test_dashboard_registry_filters_scope_and_task(monkeypatch):
 
     assert [card.card_id for card in global_cards] == ["instance_explorer"]
     assert [card.card_id for card in local_cards] == [
+        "local_factual_bars",
         "uncertainty_quadrant",
         "ensured",
         "alternative_feature_summary",
     ]
     assert [card.card_id for card in regression_cards] == [
         "instance_explorer",
+        "local_factual_bars",
         "uncertainty_quadrant",
         "ensured",
         "alternative_feature_summary",

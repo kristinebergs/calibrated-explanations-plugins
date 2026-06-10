@@ -44,6 +44,19 @@ from .ensured import (
     LocalEnsuredPlotBuilder,
     LocalEnsuredPlotRenderer,
 )
+from .factual_bars import (
+    BUILDER_ID as FACTUAL_BARS_BUILDER_ID,
+)
+from .factual_bars import (
+    RENDERER_ID as FACTUAL_BARS_RENDERER_ID,
+)
+from .factual_bars import (
+    STYLE_ID as FACTUAL_BARS_STYLE_ID,
+)
+from .factual_bars import (
+    LocalFactualBarsPlotBuilder,
+    LocalFactualBarsPlotRenderer,
+)
 from .instance_explorer import (
     BUILDER_ID as INSTANCE_EXPLORER_BUILDER_ID,
 )
@@ -153,6 +166,31 @@ def register_plotly_visualization_components() -> None:
                 "style": ENSURED_ALIAS_STYLE_ID,
                 "builder_id": ENSURED_BUILDER_ID,
                 "renderer_id": ENSURED_RENDERER_ID,
+                "fallbacks": (),
+                "legacy_compatible": False,
+                "is_default": False,
+                "default_for": (),
+            },
+        )
+    if find_plot_builder_descriptor(FACTUAL_BARS_BUILDER_ID) is None:
+        register_plot_builder(
+            FACTUAL_BARS_BUILDER_ID,
+            LocalFactualBarsPlotBuilder(),
+            source="entrypoint",
+        )
+    if find_plot_renderer_descriptor(FACTUAL_BARS_RENDERER_ID) is None:
+        register_plot_renderer(
+            FACTUAL_BARS_RENDERER_ID,
+            LocalFactualBarsPlotRenderer(),
+            source="entrypoint",
+        )
+    if find_plot_style_descriptor(FACTUAL_BARS_STYLE_ID) is None:
+        register_plot_style(
+            FACTUAL_BARS_STYLE_ID,
+            metadata={
+                "style": FACTUAL_BARS_STYLE_ID,
+                "builder_id": FACTUAL_BARS_BUILDER_ID,
+                "renderer_id": FACTUAL_BARS_RENDERER_ID,
                 "fallbacks": (),
                 "legacy_compatible": False,
                 "is_default": False,
