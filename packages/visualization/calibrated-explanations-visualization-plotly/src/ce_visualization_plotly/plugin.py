@@ -108,6 +108,7 @@ class PlotlyVisualizationBootstrap:
         "name": BOOTSTRAP_ID,
         "version": "0.1.0",
         "provider": "plotly.local",
+        "data_modalities": ("tabular",),
         "capabilities": ["plot:bootstrap"],
         "trusted": False,
         "trust": False,

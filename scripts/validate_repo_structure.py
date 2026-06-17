@@ -39,6 +39,7 @@ CONFIG_SCHEMA_TYPES = {
     "list[str]",
     "mapping",
 }
+CANONICAL_DATA_MODALITIES = {"tabular", "vision", "audio"}
 
 
 @dataclass
@@ -345,6 +346,7 @@ def validate_plugin_meta(
         "name",
         "version",
         "provider",
+        "data_modalities",
         "capabilities",
         "trusted",
     }
@@ -358,6 +360,7 @@ def validate_plugin_meta(
         errors.append(f"{package_dir.relative_to(ROOT)} plugin_meta.schema_version must be 1")
     if not isinstance(plugin_meta["name"], str) or not PLUGIN_ID_PATTERN.match(plugin_meta["name"]):
         errors.append(f"{package_dir.relative_to(ROOT)} plugin_meta.name is invalid")
+    validate_data_modalities(package_dir, plugin_meta["data_modalities"], errors)
     if (
         not isinstance(plugin_meta["capabilities"], (list, tuple))
         or not plugin_meta["capabilities"]
@@ -378,6 +381,28 @@ def validate_plugin_meta(
         )
     if "config_schema" in plugin_meta:
         validate_plugin_config_schema(package_dir, plugin_meta["config_schema"], errors)
+
+
+def validate_data_modalities(package_dir: Path, modalities: object, errors: list[str]) -> None:
+    prefix = f"{package_dir.relative_to(ROOT)} plugin_meta.data_modalities"
+    if (
+        isinstance(modalities, str)
+        or not isinstance(modalities, (list, tuple))
+        or not modalities
+    ):
+        errors.append(f"{prefix} must be a non-empty sequence")
+        return
+    invalid = [
+        modality
+        for modality in modalities
+        if not isinstance(modality, str)
+        or (modality not in CANONICAL_DATA_MODALITIES and not modality.startswith("x-"))
+    ]
+    if invalid:
+        errors.append(
+            f"{prefix} must contain canonical modalities "
+            f"{sorted(CANONICAL_DATA_MODALITIES)} or 'x-' extension modalities"
+        )
 
 
 def validate_plugin_config_schema(package_dir: Path, schema: object, errors: list[str]) -> None:
