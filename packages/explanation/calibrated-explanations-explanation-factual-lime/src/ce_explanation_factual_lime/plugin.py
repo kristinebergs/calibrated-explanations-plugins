@@ -25,6 +25,7 @@ class FactualLimeExplanationPlugin(ExplanationPlugin):
         "name": "official.explanation.factual.lime",
         "version": "0.1.0",
         "provider": "official",
+        "data_modalities": ("tabular",),
         "capabilities": [
             "explain",
             "explanation:factual",

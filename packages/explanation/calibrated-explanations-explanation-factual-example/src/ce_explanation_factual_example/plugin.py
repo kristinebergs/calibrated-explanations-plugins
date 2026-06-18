@@ -33,6 +33,7 @@ class FactualExampleExplanationPlugin(ExplanationPlugin):
         "name": "official.explanation.factual.example",
         "version": "0.1.0",
         "provider": "official",
+        "data_modalities": ("tabular",),
         "capabilities": ["explain", "explanation:factual", "task:classification"],
         "modes": ("factual",),
         "tasks": ("classification",),

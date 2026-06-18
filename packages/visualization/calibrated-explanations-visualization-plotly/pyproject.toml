@@ -27,12 +27,14 @@ plotly_visualization = "ce_visualization_plotly.plugin:PlotlyVisualizationBootst
 [project.entry-points."calibrated_explanations.plugins.plot_builders"]
 uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotBuilder"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotBuilder"
+factual_bars = "ce_visualization_plotly.factual_bars:LocalFactualBarsPlotBuilder"
 alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotBuilder"
 instance_workspace = "ce_visualization_plotly.instance_workspace:InstanceWorkspaceDashboardBuilder"
 
 [project.entry-points."calibrated_explanations.plugins.plot_renderers"]
 uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotRenderer"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotRenderer"
+factual_bars = "ce_visualization_plotly.factual_bars:LocalFactualBarsPlotRenderer"
 alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotRenderer"
 instance_workspace = "ce_visualization_plotly.instance_workspace:InstanceWorkspaceDashboardRenderer"
 

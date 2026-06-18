@@ -28,6 +28,7 @@ class AlternativeExampleExplanationPlugin(ExplanationPlugin):
         "name": "official.explanation.alternative.example",
         "version": "0.1.0",
         "provider": "official",
+        "data_modalities": ("tabular",),
         "capabilities": ["explanation:alternative", "task:classification", "explain"],
         "modes": ("alternative",),
         "tasks": ("classification",),

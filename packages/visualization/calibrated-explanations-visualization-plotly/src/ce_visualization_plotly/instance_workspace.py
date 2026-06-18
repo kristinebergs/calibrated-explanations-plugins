@@ -26,6 +26,8 @@ from .dashboard_cards import (
     iter_dashboard_cards,
 )
 from .ensured import LocalEnsuredPlotBuilder, LocalEnsuredPlotRenderer
+from .factual_bars import LocalFactualBarsPlotBuilder, LocalFactualBarsPlotRenderer
+from .factual_bars import STYLE_ID as FACTUAL_BARS_STYLE_ID
 from .instance_explorer import (
     GlobalInstanceExplorerPlotBuilder,
 )
@@ -48,11 +50,13 @@ _VALID_PRECOMPUTE = {"none", "selected", "top_uncertain", "all"}
 _VALID_LAYOUTS = {"default", "wide", "compact"}
 _LOCAL_CARD_BUILDERS = {
     "plotly.local.uncertainty_quadrant": UncertaintyQuadrantPlotBuilder,
+    FACTUAL_BARS_STYLE_ID: LocalFactualBarsPlotBuilder,
     "plotly.local.ensured": LocalEnsuredPlotBuilder,
     "plotly.local.alternative_feature_summary": AlternativeFeatureSummaryPlotBuilder,
 }
 _LOCAL_CARD_RENDERERS = {
     "plotly.local.uncertainty_quadrant": UncertaintyQuadrantPlotRenderer,
+    FACTUAL_BARS_STYLE_ID: LocalFactualBarsPlotRenderer,
     "plotly.local.ensured": LocalEnsuredPlotRenderer,
     "plotly.local.alternative_feature_summary": AlternativeFeatureSummaryPlotRenderer,
 }
@@ -326,6 +330,7 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
         "name": BUILDER_ID,
         "version": ARTIFACT_VERSION,
         "provider": "plotly.dashboard",
+        "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
@@ -692,6 +697,7 @@ class InstanceWorkspaceDashboardRenderer(PlotRenderer):
         "name": RENDERER_ID,
         "version": ARTIFACT_VERSION,
         "provider": "plotly.dashboard",
+        "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": ("plotly",),

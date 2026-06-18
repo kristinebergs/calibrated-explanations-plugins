@@ -29,6 +29,7 @@ class ExampleIntervalCalibratorPlugin(IntervalCalibratorPlugin):
         "name": "official.calibration.example",
         "version": "0.1.0",
         "provider": "official",
+        "data_modalities": ("tabular",),
         "capabilities": ["interval:classification"],
         "modes": ("classification",),
         "dependencies": ("core.interval.legacy",),
