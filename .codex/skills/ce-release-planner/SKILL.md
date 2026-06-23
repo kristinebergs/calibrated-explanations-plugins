@@ -1,4 +1,4 @@
----
+﻿---
 name: ce-release-planner
 description: >
   Analyze RELEASE_PLAN_v1.md for an upcoming release version and produce a detailed vX.Y.Z_plan.md implementation plan with task breakdowns.
@@ -23,14 +23,14 @@ You are creating a versioned implementation plan for an upcoming CE release.
 
 ## Required references
 
-- `docs/improvement/RELEASE_PLAN_v1.md` (master release plan with milestones,
+- `development/current-work/RELEASE_PLAN_v1.md` (master release plan with milestones,
   ADR gap appendix, and release gates)
 - `references/version_plan_reference.md` (canonical structure/template for
-  `docs/improvement/vX.Y.Z_plan.md` files)
+  `development/current-work/vX.Y.Z_plan.md` files)
 - All ADR files referenced by the target milestone
 - All STD files referenced by the target milestone
 - Existing version plans for pattern reference:
-  `docs/improvement/v0.11.0_plan.md`, `docs/improvement/v0.11.1_plan.md`
+  `development/finished-work/v0.11.0_plan.md`, `development/finished-work/v0.11.1_plan.md`
 
 ## Use this skill when
 
@@ -62,7 +62,7 @@ You are creating a versioned implementation plan for an upcoming CE release.
    - Note any tasks already partially or fully completed.
 
 5. **Draft the plan.**
-   - Create `docs/improvement/vX.Y.Z_plan.md` following the structure of
+   - Create `development/current-work/vX.Y.Z_plan.md` following the structure of
      `references/version_plan_reference.md` and existing plans
      (v0.11.0_plan.md, v0.11.1_plan.md).
    - Each task section must include:
@@ -80,7 +80,7 @@ You are creating a versioned implementation plan for an upcoming CE release.
 
 ## Output contract
 
-Produce `docs/improvement/vX.Y.Z_plan.md` with:
+Produce `development/current-work/vX.Y.Z_plan.md` with:
 - header identifying version, milestone type, and authoritative task source
 - source references reviewed
 - global rules section (if applicable)

@@ -1,4 +1,4 @@
----
+﻿---
 name: ce-release-finalize
 description: >
   Execute the PyPI release checklist for calibrated-explanations: version bumps, changelog, build, validation, tagging, RTD publication, and PyPI upload.
@@ -34,7 +34,7 @@ Load `references/pypi_release_guide.md` for the full release procedure.
 
 Before starting the release process:
 
-1. Confirm all tasks in `docs/improvement/vX.Y.Z_plan.md` are completed.
+1. Confirm all tasks in `development/current-work/vX.Y.Z_plan.md` are completed.
 2. Confirm CI is green on `main`: `make ci-local-new`.
 3. Confirm the user has PyPI credentials configured.
 

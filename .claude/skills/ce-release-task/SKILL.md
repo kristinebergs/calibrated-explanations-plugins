@@ -1,4 +1,4 @@
----
+﻿---
 name: ce-release-task
 description: >
   Identify the next release task from RELEASE_PLAN_v1.md and vX.Y.Z_plan.md,
@@ -12,8 +12,8 @@ current version plan.
 
 ## Required references
 
-- `docs/improvement/RELEASE_PLAN_v1.md` (master plan and ADR gap appendix)
-- `docs/improvement/vX.Y.Z_plan.md` (current version implementation plan)
+- `development/current-work/RELEASE_PLAN_v1.md` (master plan and ADR gap appendix)
+- `development/current-work/vX.Y.Z_plan.md` (current version implementation plan)
 - Governing ADRs and standards for the selected task
 - `CONTRIBUTOR_INSTRUCTIONS.md` (coding and testing rules)
 

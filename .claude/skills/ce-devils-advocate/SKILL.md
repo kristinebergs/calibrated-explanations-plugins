@@ -1,4 +1,4 @@
----
+﻿---
 name: ce-devils-advocate
 description: >
   Adversarially challenge cleanup and test proposals for hidden risk, weak evidence,
@@ -8,12 +8,12 @@ description: >
 # CE Devil's Advocate
 
 This skill implements the **Devil's Advocate** review role from ADR-030 and
-mirrors the prompt in `docs/improvement/test-quality-method/devils_advocate.md`.
+mirrors the prompt in `development/standards/test-quality-method/devils_advocate.md`.
 
 ## Required references
 
-- `docs/improvement/test-quality-method/README.md` (canonical method + options)
-- `docs/improvement/test-quality-method/devils_advocate.md` (full role prompt)
+- `development/standards/test-quality-method/README.md` (canonical method + options)
+- `development/standards/test-quality-method/devils_advocate.md` (full role prompt)
 
 ## Use this skill when
 

@@ -1,4 +1,4 @@
----
+﻿---
 name: ce-standards-gap-analyzer
 description: >
   Analyze standards compliance by interpreting the standards's intent, verifying that implementation and RTD satisfy every decision, and producing a dated gap report with only unresolved items.
@@ -79,7 +79,7 @@ substantive compliance analysis.
 ## Phase 4 — Update the STD status appendix
 
 The output format and rules are defined in the **STD status appendix** (comes after the ADR status appendix) heading
-of `docs/improvement/RELEASE_PLAN_v1.md`. The appendix states:
+of `development/current-work/RELEASE_PLAN_v1.md`. The appendix states:
 
 > This appendix lists only unresolved gaps per STD. STDs with no open gaps
 > show a clear compliance verification line (date-stamped). Tables use the
@@ -131,7 +131,7 @@ Follow these rules exactly when writing or updating appendix sections:
 
 ```
 docs/standards/STD-XXX-*.md     ← the STD itself (primary source of intent)
-docs/improvement/RELEASE_PLAN_v1.md    ← appendix to update with gap results
+development/current-work/RELEASE_PLAN_v1.md    ← appendix to update with gap results
 src/                                   ← implementation evidence
 tests/                                 ← test coverage of STD requirements
 docs/                                  ← RTD evidence (when STD has doc requirements)
