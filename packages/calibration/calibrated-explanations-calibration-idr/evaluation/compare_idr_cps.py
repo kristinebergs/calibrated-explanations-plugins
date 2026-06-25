@@ -1,8 +1,14 @@
-"""Compare IDR and default CPS regression interval parity and speed.
+"""Compare IDR, conformal IDR, and default CPS regression interval parity and speed.
 
 This evaluation intentionally uses the same fitted regression model state for
-both calibrators. The only changed variable is the interval calibrator selected
+all calibrators. The only changed variable is the interval calibrator selected
 by CE.
+
+Calibrators compared:
+- CE default CPS (legacy) regression intervals
+- Plain IDR intervals (not conformal)
+- Conformal IDR with external IDR data (preferred regime)
+- Conformal IDR with internal calibration split (fallback regime)
 """
 
 from __future__ import annotations
@@ -28,10 +34,14 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from calibrated_explanations import WrapCalibratedExplainer  # noqa: E402
-from ce_calibration_idr import IDRRegressionIntervalCalibratorPlugin  # noqa: E402
+from ce_calibration_idr import (  # noqa: E402
+    ConformalIDRRegressionIntervalCalibratorPlugin,
+    IDRRegressionIntervalCalibratorPlugin,
+)
 
 LEGACY_CPS_ID = "core.interval.legacy"
 IDR_ID = IDRRegressionIntervalCalibratorPlugin.plugin_meta["name"]
+CONFORMAL_IDR_ID = ConformalIDRRegressionIntervalCalibratorPlugin.plugin_meta["name"]
 
 
 @dataclass(frozen=True)
@@ -63,6 +73,8 @@ class CalibratorRun:
     wrapper: WrapCalibratedExplainer
     prediction: PredictionResult
     calibration_seconds: float
+    qhat: float | None = None
+    n_conformal: int | None = None
 
 
 def make_data(*, random_state: int, n_samples: int, n_features: int) -> EvaluationData:
@@ -114,7 +126,7 @@ def run_calibrator(
     *,
     model: RandomForestRegressor,
     data: EvaluationData,
-    interval_plugin: str | IDRRegressionIntervalCalibratorPlugin,
+    interval_plugin: Any,
     low_high_percentiles: tuple[float, float],
 ) -> CalibratorRun:
     """Calibrate and predict through CE using one interval calibrator."""
@@ -136,6 +148,19 @@ def run_calibrator(
     )
     prediction_seconds = perf_counter() - start
     low, high = interval
+
+    # Extract conformal diagnostics when available
+    qhat: float | None = None
+    n_conformal: int | None = None
+    calibrator_obj = getattr(wrapper, "_interval_calibrator", None)
+    if calibrator_obj is not None:
+        qhat_cache = getattr(calibrator_obj, "_qhat_cache", None)
+        if qhat_cache and low_high_percentiles in qhat_cache:
+            qhat = float(qhat_cache[low_high_percentiles])
+        n_conformal_attr = getattr(calibrator_obj, "_n_conformal", None)
+        if n_conformal_attr is not None:
+            n_conformal = int(n_conformal_attr)
+
     return CalibratorRun(
         wrapper=wrapper,
         prediction=PredictionResult(
@@ -145,16 +170,22 @@ def run_calibrator(
             elapsed_seconds=prediction_seconds,
         ),
         calibration_seconds=calibration_seconds,
+        qhat=qhat,
+        n_conformal=n_conformal,
     )
 
 
-def summarize_prediction(result: PredictionResult, y_true: np.ndarray) -> dict[str, float]:
+def summarize_prediction(
+    result: PredictionResult,
+    y_true: np.ndarray,
+    run: CalibratorRun | None = None,
+) -> dict[str, Any]:
     """Summarize interval validity and empirical performance for one calibrator."""
     width = result.high - result.low
     covered = (result.low <= y_true) & (y_true <= result.high)
     valid = result.low <= result.high
     contains_predict = (result.low <= result.predict) & (result.predict <= result.high)
-    return {
+    summary: dict[str, Any] = {
         "coverage": float(np.mean(covered)),
         "mean_interval_width": float(np.mean(width)),
         "median_interval_width": float(np.median(width)),
@@ -162,6 +193,10 @@ def summarize_prediction(result: PredictionResult, y_true: np.ndarray) -> dict[s
         "contains_predict_rate": float(np.mean(contains_predict)),
         "mean_prediction": float(np.mean(result.predict)),
     }
+    if run is not None:
+        summary["qhat"] = run.qhat
+        summary["n_conformal"] = run.n_conformal
+    return summary
 
 
 def compare_predictions(
@@ -195,7 +230,7 @@ def median_timing(
     *,
     model: RandomForestRegressor,
     data: EvaluationData,
-    interval_plugin: str | IDRRegressionIntervalCalibratorPlugin,
+    interval_plugin: Any,
     low_high_percentiles: tuple[float, float],
     repeats: int,
 ) -> tuple[float, float]:
@@ -215,7 +250,7 @@ def median_timing(
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
-    """Build the complete parity and speed report."""
+    """Build the complete parity and speed report for all calibrators."""
     low_high_percentiles = (float(args.low_percentile), float(args.high_percentile))
     data = make_data(
         random_state=args.random_state,
@@ -226,6 +261,15 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         data,
         random_state=args.random_state,
         n_estimators=args.estimators,
+    )
+
+    conformal_idr_external = ConformalIDRRegressionIntervalCalibratorPlugin(
+        idr_X=data.X_train,
+        idr_y=data.y_train,
+        random_state=args.random_state,
+    )
+    conformal_idr_split = ConformalIDRRegressionIntervalCalibratorPlugin(
+        random_state=args.random_state,
     )
 
     legacy_run = run_calibrator(
@@ -240,6 +284,19 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         interval_plugin=IDRRegressionIntervalCalibratorPlugin(),
         low_high_percentiles=low_high_percentiles,
     )
+    conformal_ext_run = run_calibrator(
+        model=model,
+        data=data,
+        interval_plugin=conformal_idr_external,
+        low_high_percentiles=low_high_percentiles,
+    )
+    conformal_split_run = run_calibrator(
+        model=model,
+        data=data,
+        interval_plugin=conformal_idr_split,
+        low_high_percentiles=low_high_percentiles,
+    )
+
     raw_legacy = legacy_run.wrapper.learner.predict(data.X_eval)
     raw_idr = idr_run.wrapper.learner.predict(data.X_eval)
 
@@ -257,13 +314,37 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         low_high_percentiles=low_high_percentiles,
         repeats=args.repeats,
     )
+    conformal_ext_calibration, conformal_ext_prediction = median_timing(
+        model=model,
+        data=data,
+        interval_plugin=ConformalIDRRegressionIntervalCalibratorPlugin(
+            idr_X=data.X_train,
+            idr_y=data.y_train,
+            random_state=args.random_state,
+        ),
+        low_high_percentiles=low_high_percentiles,
+        repeats=args.repeats,
+    )
+    conformal_split_calibration, conformal_split_prediction = median_timing(
+        model=model,
+        data=data,
+        interval_plugin=ConformalIDRRegressionIntervalCalibratorPlugin(
+            random_state=args.random_state,
+        ),
+        low_high_percentiles=low_high_percentiles,
+        repeats=args.repeats,
+    )
 
     speed = {
         "legacy_cps_calibration_seconds": legacy_calibration,
         "idr_calibration_seconds": idr_calibration,
+        "conformal_idr_external_calibration_seconds": conformal_ext_calibration,
+        "conformal_idr_split_calibration_seconds": conformal_split_calibration,
         "idr_to_legacy_calibration_ratio": idr_calibration / legacy_calibration,
         "legacy_cps_prediction_seconds": legacy_prediction,
         "idr_prediction_seconds": idr_prediction,
+        "conformal_idr_external_prediction_seconds": conformal_ext_prediction,
+        "conformal_idr_split_prediction_seconds": conformal_split_prediction,
         "idr_to_legacy_prediction_ratio": idr_prediction / legacy_prediction,
     }
     return {
@@ -276,9 +357,21 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "low_high_percentiles": low_high_percentiles,
             "legacy_cps_plugin": LEGACY_CPS_ID,
             "idr_plugin": IDR_ID,
+            "conformal_idr_plugin": CONFORMAL_IDR_ID,
+            "note": (
+                "Empirical coverage is a sanity check only; it does not prove conformal validity. "
+                "The marginal guarantee holds under exchangeability of held-out calibration "
+                "and test examples."
+            ),
         },
         "legacy_cps": summarize_prediction(legacy_run.prediction, data.y_eval),
         "idr": summarize_prediction(idr_run.prediction, data.y_eval),
+        "conformal_idr_external": summarize_prediction(
+            conformal_ext_run.prediction, data.y_eval, run=conformal_ext_run
+        ),
+        "conformal_idr_split": summarize_prediction(
+            conformal_split_run.prediction, data.y_eval, run=conformal_split_run
+        ),
         "parity": compare_predictions(
             legacy=legacy_run.prediction,
             idr=idr_run.prediction,
@@ -292,9 +385,16 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 
 def print_report(report: dict[str, Any]) -> None:
     """Print a compact human-readable report."""
-    print("IDR vs default CPS regression interval evaluation")
+    print("IDR, conformal IDR, and default CPS regression interval evaluation")
     print(json.dumps(report["configuration"], indent=2, sort_keys=True))
-    for section in ("legacy_cps", "idr", "parity", "speed"):
+    for section in (
+        "legacy_cps",
+        "idr",
+        "conformal_idr_external",
+        "conformal_idr_split",
+        "parity",
+        "speed",
+    ):
         print(f"\n{section}:")
         for key, value in report[section].items():
             if isinstance(value, float):

@@ -15,6 +15,7 @@ dependencies = [
 
 [project.entry-points."calibrated_explanations.plugins"]
 idr_regression = "ce_calibration_idr.plugin:IDRRegressionIntervalCalibratorPlugin"
+conformal_idr_regression = "ce_calibration_idr.conformal_plugin:ConformalIDRRegressionIntervalCalibratorPlugin"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ce_calibration_idr"]

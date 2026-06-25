@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["IDRRegressionIntervalCalibratorPlugin"]
+__all__ = [
+    "IDRRegressionIntervalCalibratorPlugin",
+    "ConformalIDRRegressionIntervalCalibratorPlugin",
+]
 
 
 def __getattr__(name: str) -> Any:
@@ -13,4 +16,10 @@ def __getattr__(name: str) -> Any:
         from ce_calibration_idr.plugin import IDRRegressionIntervalCalibratorPlugin
 
         return IDRRegressionIntervalCalibratorPlugin
+    if name == "ConformalIDRRegressionIntervalCalibratorPlugin":
+        from ce_calibration_idr.conformal_plugin import (
+            ConformalIDRRegressionIntervalCalibratorPlugin,
+        )
+
+        return ConformalIDRRegressionIntervalCalibratorPlugin
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
