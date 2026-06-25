@@ -14,6 +14,19 @@ from calibrated_explanations.plugins.registry import (
     register_plot_style,
 )
 
+from .alternative_bars import (
+    BUILDER_ID as ALTERNATIVE_BARS_BUILDER_ID,
+)
+from .alternative_bars import (
+    RENDERER_ID as ALTERNATIVE_BARS_RENDERER_ID,
+)
+from .alternative_bars import (
+    STYLE_ID as ALTERNATIVE_BARS_STYLE_ID,
+)
+from .alternative_bars import (
+    LocalAlternativeBarsPlotBuilder,
+    LocalAlternativeBarsPlotRenderer,
+)
 from .alternative_feature_summary import (
     BUILDER_ID as ALTERNATIVE_FEATURE_SUMMARY_BUILDER_ID,
 )
@@ -222,6 +235,31 @@ def register_plotly_visualization_components() -> None:
                 "default_for": (),
             },
         )
+    if find_plot_builder_descriptor(ALTERNATIVE_BARS_BUILDER_ID) is None:
+        register_plot_builder(
+            ALTERNATIVE_BARS_BUILDER_ID,
+            LocalAlternativeBarsPlotBuilder(),
+            source="entrypoint",
+        )
+    if find_plot_renderer_descriptor(ALTERNATIVE_BARS_RENDERER_ID) is None:
+        register_plot_renderer(
+            ALTERNATIVE_BARS_RENDERER_ID,
+            LocalAlternativeBarsPlotRenderer(),
+            source="entrypoint",
+        )
+    if find_plot_style_descriptor(ALTERNATIVE_BARS_STYLE_ID) is None:
+        register_plot_style(
+            ALTERNATIVE_BARS_STYLE_ID,
+            metadata={
+                "style": ALTERNATIVE_BARS_STYLE_ID,
+                "builder_id": ALTERNATIVE_BARS_BUILDER_ID,
+                "renderer_id": ALTERNATIVE_BARS_RENDERER_ID,
+                "fallbacks": (),
+                "legacy_compatible": False,
+                "is_default": False,
+                "default_for": (),
+            },
+        )
     if find_plot_builder_descriptor(INSTANCE_EXPLORER_BUILDER_ID) is None:
         register_plot_builder(
             INSTANCE_EXPLORER_BUILDER_ID,
@@ -274,6 +312,94 @@ def register_plotly_visualization_components() -> None:
         )
     _install_global_instance_explorer_plot_bridge()
     _install_alternative_feature_summary_plot_bridge()
+    _install_alternative_bars_plot_bridge()
+
+
+def _install_alternative_bars_plot_bridge() -> None:
+    """Route explicit alternative-bars style through CE's plugin path.
+
+    AlternativeExplanation.plot() drops kwargs before reaching the dispatcher
+    in some CE versions. This bridge intercepts calls when style=ALTERNATIVE_BARS_STYLE_ID
+    and dispatches directly without altering behavior for any other style.
+    """
+    try:
+        from calibrated_explanations.explanations.explanation import AlternativeExplanation
+    except Exception:  # pragma: no cover - depends on installed CE version
+        return
+
+    if getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False):
+        return
+
+    original_plot = AlternativeExplanation.plot
+
+    @wraps(original_plot)
+    def plot_bridge(self: Any, filter_top: Any = None, **kwargs: Any) -> Any:
+        if kwargs.get("style") != ALTERNATIVE_BARS_STYLE_ID:
+            return original_plot(self, filter_top, **kwargs)
+        return _render_local_alternative_bars(self, kwargs)
+
+    plot_bridge._alternative_bars_bridge = True  # type: ignore[attr-defined]
+    AlternativeExplanation.plot = plot_bridge
+
+
+def _render_local_alternative_bars(explanation: Any, kwargs: dict[str, Any]) -> Any:
+    from calibrated_explanations.plugins import (  # noqa: PLC0415
+        PlotRenderContext,
+        ensure_builtin_plugins,
+    )
+
+    ensure_builtin_plugins()
+
+    container = getattr(explanation, "calibrated_explanations", None)
+    manager = None
+    for candidate in filter(None, [container, getattr(container, "calibrated_explanations", None)]):
+        if hasattr(candidate, "plugin_manager"):
+            manager = getattr(candidate, "plugin_manager", None)
+            break
+
+    resolve_fn = getattr(manager, "resolve_plot_plugin", None)
+    if callable(resolve_fn):
+        plugin, identifier, _ = resolve_fn(
+            explicit_style=ALTERNATIVE_BARS_STYLE_ID,
+            renderer_override=kwargs.get("renderer"),
+        )
+    else:
+        builder_instance = LocalAlternativeBarsPlotBuilder()
+        renderer_instance = LocalAlternativeBarsPlotRenderer()
+
+        class _DirectPlugin:
+            def build(inner_self, ctx: Any) -> Any:  # noqa: N805
+                return builder_instance.build(ctx)
+
+            def render(inner_self, artifact: Any, *, context: Any) -> Any:  # noqa: N805
+                return renderer_instance.render(artifact, context=context)
+
+        plugin = _DirectPlugin()
+        identifier = ALTERNATIVE_BARS_STYLE_ID
+
+    show = bool(kwargs.get("show", True))
+    path = kwargs.get("path")
+    save_ext_value = kwargs.get("save_ext")
+    if isinstance(save_ext_value, (list, tuple)):
+        save_ext_value = tuple(save_ext_value)
+
+    _skip_keys = {"style", "renderer", "show", "path", "save_ext", "use_legacy", "style_override"}
+    option_payload = {key: value for key, value in kwargs.items() if key not in _skip_keys}
+
+    context = PlotRenderContext(
+        explanation=explanation,
+        instance_metadata=MappingProxyType(
+            {"type": "instance", "index": getattr(explanation, "index", None)}
+        ),
+        style=identifier,
+        intent=MappingProxyType({"type": "alternative"}),
+        show=show,
+        path=path,
+        save_ext=save_ext_value,
+        options=MappingProxyType(option_payload),
+    )
+    artifact = plugin.build(context)
+    return plugin.render(artifact, context=context)
 
 
 def _install_alternative_feature_summary_plot_bridge() -> None:

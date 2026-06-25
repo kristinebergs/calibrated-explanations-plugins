@@ -77,14 +77,18 @@ def _install_fake_plotly(monkeypatch):
             self.kwargs = kwargs
 
     class FakeFigure:
-        def __init__(self):
+        def __init__(self, **_kwargs):
             self.traces = []
             self.vlines = []
             self.layout = {}
+            self.xaxes_updates = []
+            self.yaxes_updates = []
             self.shown = False
             self.html_paths = []
 
-        def add_trace(self, trace):
+        def add_trace(self, trace, row=None, col=None):
+            trace.kwargs["_row"] = row
+            trace.kwargs["_col"] = col
             self.traces.append(trace)
 
         def add_vline(self, **kwargs):
@@ -93,20 +97,35 @@ def _install_fake_plotly(monkeypatch):
         def update_layout(self, **kwargs):
             self.layout.update(kwargs)
 
-        def write_html(self, path):
+        def update_xaxes(self, **kwargs):
+            self.xaxes_updates.append(kwargs)
+
+        def update_yaxes(self, **kwargs):
+            self.yaxes_updates.append(kwargs)
+
+        def write_html(self, path, **_kwargs):
             self.html_paths.append(path)
             Path(path).write_text("<html></html>", encoding="utf-8")
 
         def show(self):
             self.shown = True
 
+    def make_subplots(**kwargs):
+        fig = FakeFigure()
+        fig.layout["rows"] = kwargs.get("rows")
+        fig.layout["subplot_titles"] = kwargs.get("subplot_titles")
+        return fig
+
     plotly_mod = types.ModuleType("plotly")
     graph_objects_mod = types.ModuleType("plotly.graph_objects")
+    subplots_mod = types.ModuleType("plotly.subplots")
     graph_objects_mod.Bar = FakeBar
     graph_objects_mod.Scatter = FakeScatter
     graph_objects_mod.Figure = FakeFigure
+    subplots_mod.make_subplots = make_subplots
     monkeypatch.setitem(sys.modules, "plotly", plotly_mod)
     monkeypatch.setitem(sys.modules, "plotly.graph_objects", graph_objects_mod)
+    monkeypatch.setitem(sys.modules, "plotly.subplots", subplots_mod)
     return FakeFigure
 
 
@@ -174,22 +193,40 @@ def test_default_artifact_options_and_hover_uncertainty(monkeypatch):
     assert "Mode: classification" in hover
 
 
-def test_renderer_default_has_bar_trace_no_interval_trace_and_zero_line(monkeypatch):
+def test_renderer_no_header_has_single_bar_trace_and_zero_line(monkeypatch):
+    """With show_prediction_header=False, single-row layout with one bar trace."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
-    context = _context(_dummy_explanation(), sort_by="original")
+    context = _context(_dummy_explanation(), sort_by="original", show_prediction_header=False)
     artifact = plugin.build(context)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = plugin.render(artifact, context=context)
 
-    assert len(result.figure.traces) == 1
-    assert result.figure.traces[0].__class__.__name__ == "FakeBar"
+    bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
+    assert len(bar_traces) == 1
     assert result.figure.vlines[0]["x"] == 0
     assert result.figure is result.extras["figure"]
     assert not [warning for warning in caught if issubclass(warning.category, UserWarning)]
+
+
+def test_renderer_with_prediction_header_uses_subplots(monkeypatch):
+    """With show_prediction_header=True (default), a two-row subplot is created."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_explanation(), sort_by="original", show_prediction_header=True)
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    assert result.figure.layout.get("rows") == 2
+    bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
+    # 2 probability header bars + 1 contribution bar
+    assert len(bar_traces) >= 3
+    assert result.figure is result.extras["figure"]
 
 
 def test_missing_interval_metadata_does_not_crash(monkeypatch):
@@ -214,12 +251,12 @@ def test_show_uncertainty_adds_visible_interval_trace(monkeypatch):
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
-    context = _context(_dummy_explanation(), show_uncertainty=True)
+    context = _context(_dummy_explanation(), show_uncertainty=True, show_prediction_header=False)
     result = plugin.render(plugin.build(context), context=context)
 
-    assert len(result.figure.traces) == 2
-    assert result.figure.traces[1].__class__.__name__ == "FakeScatter"
-    assert result.figure.traces[1].kwargs["name"] == "contribution interval"
+    scatter_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeScatter"]
+    assert len(scatter_traces) == 1
+    assert scatter_traces[0].kwargs["name"] == "contribution interval"
 
 
 def test_filter_top_limits_displayed_bars(monkeypatch):
@@ -322,3 +359,166 @@ def test_factual_regression_smoke_with_calibrated_explainer(monkeypatch):
 
     assert result.artifact["task"] == "regression"
     assert len(result.artifact["items"]) == 3
+
+
+# ── Prediction header tests ───────────────────────────────────────────────────
+
+
+def _dummy_regression_explanation() -> SimpleNamespace:
+    collection = SimpleNamespace(feature_names=["age", "income", "score", "risk"])
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={"predict": 42.5, "low": 38.2, "high": 46.8},
+        rules=_rules(),
+        get_mode=lambda: "regression",
+        is_regression=lambda: True,
+        is_probabilistic=lambda: False,
+        is_alternative=lambda: False,
+    )
+    collection.explanations = [local]
+    collection.batch_metadata = {"task": "regression", "mode": "regression"}
+    return collection
+
+
+def test_probabilistic_artifact_has_two_prediction_header_bars(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_explanation()))
+
+    pred = artifact["prediction"]
+    assert pred["kind"] == "probabilistic"
+    assert len(pred["bars"]) == 2
+    assert pred["x_range"] == [0.0, 1.0]
+    assert pred["x_label"] == "Probability"
+
+
+def test_binary_complement_interval_is_1_minus_reversed(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_explanation()))
+
+    bars = artifact["prediction"]["bars"]
+    target_bar = bars[0]
+    complement_bar = bars[1]
+    # Target: p=0.74, [0.66, 0.81]
+    assert target_bar["value"] == pytest.approx(0.74)
+    assert target_bar["low"] == pytest.approx(0.66)
+    assert target_bar["high"] == pytest.approx(0.81)
+    # Complement: 1-p=0.26, [1-0.81, 1-0.66] = [0.19, 0.34]
+    assert complement_bar["value"] == pytest.approx(0.26)
+    assert complement_bar["low"] == pytest.approx(1.0 - 0.81, abs=1e-6)
+    assert complement_bar["high"] == pytest.approx(1.0 - 0.66, abs=1e-6)
+
+
+def test_regression_artifact_has_one_prediction_header_bar(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_regression_explanation()))
+
+    pred = artifact["prediction"]
+    assert pred["kind"] == "regression"
+    assert len(pred["bars"]) == 1
+    assert pred["bars"][0]["label"] == "prediction"
+    assert pred["bars"][0]["value"] == pytest.approx(42.5)
+    assert pred["bars"][0]["low"] == pytest.approx(38.2)
+    assert pred["bars"][0]["high"] == pytest.approx(46.8)
+    assert pred["x_range"] is None
+    assert pred["x_label"] == "Predicted value"
+
+
+def test_show_prediction_header_false_suppresses_header_traces(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_explanation(), show_prediction_header=False)
+
+    result = plugin.render(plugin.build(context), context=context)
+
+    # No subplots created when header is suppressed
+    assert result.figure.layout.get("rows") is None
+    bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
+    assert len(bar_traces) == 1  # only contribution bars
+
+
+def test_prediction_header_bars_included_in_renderer_output(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_explanation(), show_prediction_header=True)
+
+    result = plugin.render(plugin.build(context), context=context)
+
+    # subplot rows should be 2
+    assert result.figure.layout.get("rows") == 2
+    bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
+    # header: 2 probability bars + 1 contribution bar = 3 total
+    assert len(bar_traces) >= 3
+
+
+def test_regression_header_shows_one_bar_in_renderer(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_regression_explanation(), show_prediction_header=True)
+
+    result = plugin.render(plugin.build(context), context=context)
+
+    assert result.figure.layout.get("rows") == 2
+    bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
+    # header: 1 regression bar + 1 contribution bar = 2
+    assert len(bar_traces) >= 2
+    header_bars = [t for t in bar_traces if t.kwargs.get("_row") == 1]
+    assert len(header_bars) == 1
+
+
+def test_factual_bars_rejects_alternative_explanations(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    collection = SimpleNamespace(feature_names=["a"])
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={},
+        rules={},
+        get_mode=lambda: "classification",
+        is_regression=lambda: False,
+        is_probabilistic=lambda: True,
+        is_alternative=lambda: True,
+    )
+    collection.explanations = [local]
+    collection.batch_metadata = {}
+    ctx = PlotRenderContext(
+        explanation=collection,
+        instance_metadata=MappingProxyType({"type": "instance"}),
+        style=STYLE_ID,
+        intent=MappingProxyType({"type": "factual"}),
+        show=False,
+        path=None,
+        save_ext=None,
+        options=MappingProxyType({}),
+    )
+    with pytest.raises(ValueError, match="alternative"):
+        plugin.build(ctx)
+
+
+def test_contribution_bars_still_render_with_header_enabled(monkeypatch):
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_explanation(), sort_by="original", show_prediction_header=True)
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    # Should have contribution bar traces on row=2
+    contribution_bars = [
+        t for t in result.figure.traces
+        if t.__class__.__name__ == "FakeBar" and t.kwargs.get("_row") == 2
+    ]
+    assert contribution_bars, "No contribution bar traces found on row 2"
+    # The contribution bars use the same item count as the artifact
+    assert len(contribution_bars[0].kwargs["y"]) == len(artifact["items"])

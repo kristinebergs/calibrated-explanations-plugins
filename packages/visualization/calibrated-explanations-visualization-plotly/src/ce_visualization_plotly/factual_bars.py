@@ -136,14 +136,65 @@ def _prediction_header(local_explanation: Any, mode_metadata: dict[str, Any]) ->
         low = getattr(local_explanation, "low", None)
         high = getattr(local_explanation, "high", None)
         label = None
-    return {
-        "value": _as_float(value),
-        "low": _as_float(low),
-        "high": _as_float(high),
+    p = _as_float(value)
+    p_low = _as_float(low)
+    p_high = _as_float(high)
+    result: dict[str, Any] = {
+        "value": p,
+        "low": p_low,
+        "high": p_high,
         "label": None if label is None else str(label),
         "mode": mode_metadata.get("mode"),
         "task": mode_metadata.get("task"),
     }
+
+    # Additive per-bar info for the visual header renderer.
+    task = mode_metadata.get("task")
+    is_probabilistic = mode_metadata.get("is_probabilistic", False)
+    is_regression = mode_metadata.get("is_regression", False)
+
+    if is_probabilistic or task in ("classification",):
+        target_label = str(label) if label is not None else "class 1"
+        complement_label = "class 0"
+        bars: list[dict[str, Any]] = []
+        if p is not None:
+            target_bar: dict[str, Any] = {"label": target_label, "value": p}
+            if p_low is not None:
+                target_bar["low"] = p_low
+            if p_high is not None:
+                target_bar["high"] = p_high
+            bars.append(target_bar)
+
+            complement_bar: dict[str, Any] = {"label": complement_label, "value": 1.0 - p}
+            if p_low is not None and p_high is not None:
+                # Complement interval: [1-high, 1-low] — do not mutate stored values
+                complement_bar["low"] = 1.0 - p_high
+                complement_bar["high"] = 1.0 - p_low
+            bars.append(complement_bar)
+        result["kind"] = "probabilistic"
+        result["bars"] = bars
+        result["x_range"] = [0.0, 1.0]
+        result["x_label"] = "Probability"
+    elif is_regression or task == "regression":
+        bars = []
+        if p is not None:
+            regression_bar: dict[str, Any] = {"label": "prediction", "value": p}
+            if p_low is not None:
+                regression_bar["low"] = p_low
+            if p_high is not None:
+                regression_bar["high"] = p_high
+            bars.append(regression_bar)
+        result["kind"] = "regression"
+        result["bars"] = bars
+        result["x_range"] = None
+        result["x_label"] = "Predicted value"
+    else:
+        result["kind"] = None
+        result["bars"] = []
+        result["x_range"] = None
+        result["x_label"] = None
+
+    return result
 
 
 def _mode_metadata(explanation: Any, local_explanation: Any) -> dict[str, Any]:
@@ -400,7 +451,131 @@ def _title_for(artifact: PlotArtifact, options: dict[str, Any]) -> str:
     return title
 
 
+def _add_contribution_traces(
+    fig: Any,
+    items: list[dict[str, Any]],
+    labels: list[str],
+    values: list[float],
+    colors: list[str],
+    hover_text: list[str],
+    render_options: dict[str, Any],
+    *,
+    row: int | None = None,
+    col: int | None = None,
+) -> None:
+    """Add the main contribution bar trace and optional uncertainty overlay."""
+    import plotly.graph_objects as go  # noqa: PLC0415
+
+    add_kwargs: dict[str, Any] = {}
+    if row is not None:
+        add_kwargs["row"] = row
+        add_kwargs["col"] = col
+
+    fig.add_trace(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker={"color": colors},
+            text=None,
+            hovertext=hover_text,
+            hovertemplate="%{hovertext}<extra></extra>",
+            name="contribution",
+        ),
+        **add_kwargs,
+    )
+    if bool(render_options.get("show_uncertainty", False)):
+        x_unc: list[float | None] = []
+        y_unc: list[str | None] = []
+        for label, item in zip(labels, items, strict=False):
+            low = item.get("contribution_low")
+            high = item.get("contribution_high")
+            if low is None or high is None:
+                continue
+            x_unc.extend([float(low), float(high), None])
+            y_unc.extend([label, label, None])
+        if x_unc:
+            fig.add_trace(
+                go.Scatter(
+                    x=x_unc,
+                    y=y_unc,
+                    mode="lines",
+                    line={"color": _INTERVAL_COLOR, "width": 5},
+                    hoverinfo="skip",
+                    showlegend=False,
+                    name="contribution interval",
+                ),
+                **add_kwargs,
+            )
+
+
+def _add_prediction_header_traces(
+    fig: Any,
+    prediction: dict[str, Any],
+    *,
+    row: int,
+    col: int,
+) -> None:
+    """Add prediction probability/regression bars to the header subplot row."""
+    import plotly.graph_objects as go  # noqa: PLC0415
+
+    bars = list(prediction.get("bars", ()) or [])
+    kind = prediction.get("kind")
+    color = "#2a9d8f" if kind == "probabilistic" else "#5b8dd9"
+
+    for bar in bars:
+        p_val = _as_float(bar.get("value"))
+        p_low = _as_float(bar.get("low"))
+        p_high = _as_float(bar.get("high"))
+        bar_label = str(bar.get("label", "prediction"))
+        if p_val is None:
+            continue
+
+        hover_parts = [f"{bar_label}: {_format_number(p_val)}"]
+        if p_low is not None and p_high is not None:
+            hover_parts.append(
+                f"Interval: [{_format_number(p_low)}, {_format_number(p_high)}]"
+            )
+        else:
+            hover_parts.append("Interval: unavailable")
+        hover = "<br>".join(hover_parts)
+
+        fig.add_trace(
+            go.Bar(
+                x=[p_val],
+                y=[bar_label],
+                orientation="h",
+                marker={"color": color},
+                hovertext=[hover],
+                hovertemplate="%{hovertext}<extra></extra>",
+                showlegend=False,
+                name=f"prediction: {bar_label}",
+            ),
+            row=row,
+            col=col,
+        )
+        if p_low is not None and p_high is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[float(p_low), float(p_high)],
+                    y=[bar_label, bar_label],
+                    mode="lines",
+                    line={"color": _INTERVAL_COLOR, "width": 6},
+                    hoverinfo="skip",
+                    showlegend=False,
+                    name=f"prediction interval: {bar_label}",
+                ),
+                row=row,
+                col=col,
+            )
+
+
 def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
+    """Build Plotly figure for factual contribution bars.
+
+    When show_prediction_header=True and prediction bars are available, renders a
+    two-row subplot with probability/regression bars above the contribution bars.
+    """
     import plotly.graph_objects as go
 
     render_options = dict(artifact.get("options_used", {}) or {})
@@ -414,59 +589,69 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     ]
     hover_text = [str(item.get("hover") or "") for item in items]
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=values,
-            y=labels,
-            orientation="h",
-            marker={"color": colors},
-            text=None,
-            hovertext=hover_text,
-            hovertemplate="%{hovertext}<extra></extra>",
-            name="contribution",
+    show_prediction_header = bool(render_options.get("show_prediction_header", True))
+    prediction = dict(artifact.get("prediction", {}) or {})
+    header_bars = list(prediction.get("bars", ()) or []) if show_prediction_header else []
+
+    axis_meta = dict(artifact.get("axis_metadata", {}) or {})
+    x_label_contribution = axis_meta.get("x_label", "Signed local contribution")
+    y_label_contribution = axis_meta.get("y_label", "Factual rule / feature")
+
+    if show_prediction_header and header_bars:
+        from plotly.subplots import make_subplots  # noqa: PLC0415
+
+        x_range = prediction.get("x_range")
+        header_x_label = prediction.get("x_label") or ""
+        n_header = len(header_bars)
+        row_heights = [max(0.12, 0.10 * n_header), 1.0 - max(0.12, 0.10 * n_header)]
+
+        fig = make_subplots(
+            rows=2,
+            cols=1,
+            row_heights=row_heights,
+            shared_xaxes=False,
+            vertical_spacing=0.08,
+            subplot_titles=["Prediction", "Local factual contributions"],
         )
-    )
-    if bool(render_options.get("show_uncertainty", False)):
-        x_values: list[float | None] = []
-        y_values: list[str | None] = []
-        for label, item in zip(labels, items):
-            low = item.get("contribution_low")
-            high = item.get("contribution_high")
-            if low is None or high is None:
-                continue
-            x_values.extend([float(low), float(high), None])
-            y_values.extend([label, label, None])
-        if x_values:
-            fig.add_trace(
-                go.Scatter(
-                    x=x_values,
-                    y=y_values,
-                    mode="lines",
-                    line={"color": _INTERVAL_COLOR, "width": 5},
-                    hoverinfo="skip",
-                    showlegend=False,
-                    name="contribution interval",
-                )
-            )
-    if dict(artifact.get("axis_metadata", {}) or {}).get("zero_line", True):
-        fig.add_vline(x=0, line_width=1, line_color="#333333")
-    fig.update_layout(
-        template="plotly_white",
-        title=_title_for(artifact, render_options),
-        xaxis_title=dict(artifact.get("axis_metadata", {}) or {}).get(
-            "x_label",
-            "Signed local contribution",
-        ),
-        yaxis_title=dict(artifact.get("axis_metadata", {}) or {}).get(
-            "y_label",
-            "Factual rule / feature",
-        ),
-        yaxis={"autorange": "reversed"},
-        margin={"l": 160, "r": 28, "t": 64, "b": 56},
-        showlegend=False,
-        bargap=0.25,
-    )
+
+        _add_prediction_header_traces(fig, prediction, row=1, col=1)
+        _add_contribution_traces(
+            fig, items, labels, values, colors, hover_text, render_options, row=2, col=1
+        )
+
+        if axis_meta.get("zero_line", True):
+            fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)
+
+        fig.update_layout(
+            template="plotly_white",
+            title=_title_for(artifact, render_options),
+            margin={"l": 160, "r": 28, "t": 64, "b": 56},
+            showlegend=False,
+            bargap=0.25,
+        )
+        if x_range is not None:
+            fig.update_xaxes(range=x_range, row=1, col=1)
+        if header_x_label:
+            fig.update_xaxes(title_text=header_x_label, row=1, col=1)
+        fig.update_yaxes(autorange="reversed", row=1, col=1)
+        fig.update_xaxes(title_text=x_label_contribution, row=2, col=1)
+        fig.update_yaxes(title_text=y_label_contribution, row=2, col=1)
+        fig.update_yaxes(autorange="reversed", row=2, col=1)
+    else:
+        fig = go.Figure()
+        _add_contribution_traces(fig, items, labels, values, colors, hover_text, render_options)
+        if axis_meta.get("zero_line", True):
+            fig.add_vline(x=0, line_width=1, line_color="#333333")
+        fig.update_layout(
+            template="plotly_white",
+            title=_title_for(artifact, render_options),
+            xaxis_title=x_label_contribution,
+            yaxis_title=y_label_contribution,
+            yaxis={"autorange": "reversed"},
+            margin={"l": 160, "r": 28, "t": 64, "b": 56},
+            showlegend=False,
+            bargap=0.25,
+        )
     return fig
 
 
