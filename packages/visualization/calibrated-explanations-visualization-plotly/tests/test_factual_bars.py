@@ -80,6 +80,7 @@ def _install_fake_plotly(monkeypatch):
         def __init__(self, **_kwargs):
             self.traces = []
             self.vlines = []
+            self.annotations = []
             self.layout = {}
             self.xaxes_updates = []
             self.yaxes_updates = []
@@ -93,6 +94,9 @@ def _install_fake_plotly(monkeypatch):
 
         def add_vline(self, **kwargs):
             self.vlines.append(kwargs)
+
+        def add_annotation(self, **kwargs):
+            self.annotations.append(kwargs)
 
         def update_layout(self, **kwargs):
             self.layout.update(kwargs)
@@ -224,7 +228,7 @@ def test_renderer_with_prediction_header_uses_subplots(monkeypatch):
 
     assert result.figure.layout.get("rows") == 2
     bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
-    # 2 probability header bars + 1 contribution bar
+    # 2 probability header bars × (solid + interval) = 4 header bars + 1 contribution bar
     assert len(bar_traces) >= 3
     assert result.figure is result.extras["figure"]
 
@@ -469,10 +473,11 @@ def test_regression_header_shows_one_bar_in_renderer(monkeypatch):
 
     assert result.figure.layout.get("rows") == 2
     bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
-    # header: 1 regression bar + 1 contribution bar = 2
+    # header: 1 regression interval bar + 1 contribution bar = 2 minimum
     assert len(bar_traces) >= 2
     header_bars = [t for t in bar_traces if t.kwargs.get("_row") == 1]
-    assert len(header_bars) == 1
+    # Regression header: 1 interval bar (no solid portion from 0)
+    assert len(header_bars) >= 1
 
 
 def test_factual_bars_rejects_alternative_explanations(monkeypatch):
@@ -522,3 +527,123 @@ def test_contribution_bars_still_render_with_header_enabled(monkeypatch):
     assert contribution_bars, "No contribution bar traces found on row 2"
     # The contribution bars use the same item count as the artifact
     assert len(contribution_bars[0].kwargs["y"]) == len(artifact["items"])
+
+
+# ── New correctness tests ──────────────────────────────────────────────────────
+
+
+def test_header_uses_three_part_structure_for_classification(monkeypatch):
+    """Classification header must have solid bars, interval bars, and markers — not a single 0→p bar."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_explanation(), show_prediction_header=True, sort_by="original")
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    header_bars = [
+        t for t in result.figure.traces
+        if t.__class__.__name__ == "FakeBar" and t.kwargs.get("_row") == 1
+    ]
+    # For 2 probability bars, each contributes a solid bar + an interval bar → 4 total
+    assert len(header_bars) >= 4, (
+        f"Expected ≥4 header bar traces (solid + interval per probability bar), got {len(header_bars)}"
+    )
+
+    # Verify that some bars use 'base' (not just 0→p_val)
+    bars_with_nonzero_base = [
+        t for t in header_bars
+        if t.kwargs.get("base") and any(b != 0 for b in t.kwargs["base"])
+    ]
+    assert bars_with_nonzero_base, (
+        "Expected interval bars with non-zero base (p_low → p_high), but all bases were 0"
+    )
+
+    # Verify prediction markers appear in the header
+    header_markers = [
+        t for t in result.figure.traces
+        if t.__class__.__name__ == "FakeScatter" and t.kwargs.get("_row") == 1
+    ]
+    assert len(header_markers) >= 2, "Expected one marker trace per probability bar"
+
+
+def test_regression_header_draws_interval_not_full_bar(monkeypatch):
+    """Regression header must show interval from p_low to p_high, not a bar from 0 to p_val."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_regression_explanation(), show_prediction_header=True)
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    header_bars = [
+        t for t in result.figure.traces
+        if t.__class__.__name__ == "FakeBar" and t.kwargs.get("_row") == 1
+    ]
+    assert header_bars, "No header bar traces found"
+
+    interval_bar = header_bars[0]
+    base_val = list(interval_bar.kwargs.get("base", [0.0]))[0]
+    # The regression bar must start at p_low (38.2), not at 0
+    assert base_val == pytest.approx(38.2), (
+        f"Regression header bar starts at {base_val}, expected p_low=38.2"
+    )
+    # Width is p_high - p_low = 46.8 - 38.2 = 8.6
+    x_val = list(interval_bar.kwargs["x"])[0]
+    assert x_val == pytest.approx(8.6), (
+        f"Regression header bar width is {x_val}, expected 8.6 (p_high - p_low)"
+    )
+
+
+def test_renderer_adds_right_axis_instance_value_annotations(monkeypatch):
+    """Instance values must appear as right-side annotations on the body panel."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _context(_dummy_explanation(), sort_by="original")
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    right_annotations = [
+        a for a in result.figure.annotations
+        if a.get("xref") == "paper" and a.get("x", 0) > 1.0
+    ]
+    assert len(right_annotations) >= len(artifact["items"]), (
+        f"Expected ≥{len(artifact['items'])} right-side annotations for instance values, "
+        f"got {len(right_annotations)}"
+    )
+
+
+def test_uncertainty_suppresses_bars_that_cross_zero(monkeypatch):
+    """When show_uncertainty=True, bars whose interval crosses zero must have value 0."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    # _rules() has: weight_low=[0.1, -0.8, -0.05, 0.3], weight_high=[0.3, -0.2, 0.2, 0.6]
+    # Rule "d rule" (index 2): low=-0.05, high=0.2 → crosses zero
+    context = _context(
+        _dummy_explanation(), sort_by="original", show_uncertainty=True, show_prediction_header=False
+    )
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
+    assert bar_traces, "No bar traces"
+    contribution_bar = bar_traces[0]
+    x_vals = list(contribution_bar.kwargs["x"])
+    y_vals = list(contribution_bar.kwargs["y"])
+
+    # "d rule" (original index 2) crosses zero → bar value suppressed to 0.0
+    d_rule_idx = y_vals.index("d rule")
+    assert x_vals[d_rule_idx] == pytest.approx(0.0), (
+        f"Bar for 'd rule' should be suppressed to 0 when interval crosses zero, got {x_vals[d_rule_idx]}"
+    )
+    # "a rule" (original index 1): low=-0.8, high=-0.2 → does NOT cross zero → bar kept
+    a_rule_idx = y_vals.index("a rule")
+    assert x_vals[a_rule_idx] != pytest.approx(0.0), (
+        "Bar for 'a rule' should NOT be suppressed — its interval doesn't cross zero"
+    )

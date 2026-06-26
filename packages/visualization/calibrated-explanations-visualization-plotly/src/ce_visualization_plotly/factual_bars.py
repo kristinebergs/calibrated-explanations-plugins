@@ -231,7 +231,7 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     return {
         "filter_top": None if filter_top is None else int(filter_top),
         "sort_by": sort_by,
-        "show_uncertainty": bool(options.get("show_uncertainty", False)),
+        "show_uncertainty": bool(options.get("show_uncertainty", bool(options.get("uncertainty", False)))),
         "hover_uncertainty": bool(options.get("hover_uncertainty", True)),
         "show_prediction_header": bool(options.get("show_prediction_header", True)),
         "hover_detail": hover_detail,
@@ -471,9 +471,20 @@ def _add_contribution_traces(
         add_kwargs["row"] = row
         add_kwargs["col"] = col
 
+    show_uncertainty = bool(render_options.get("show_uncertainty", False))
+
+    # Suppress the solid bar for rules whose interval crosses zero (uncertainty=True only)
+    if show_uncertainty:
+        display_values = [
+            0.0 if item.get("crosses_zero") is True else v
+            for item, v in zip(items, values, strict=False)
+        ]
+    else:
+        display_values = values
+
     fig.add_trace(
         go.Bar(
-            x=values,
+            x=display_values,
             y=labels,
             orientation="h",
             marker={"color": colors},
@@ -484,7 +495,7 @@ def _add_contribution_traces(
         ),
         **add_kwargs,
     )
-    if bool(render_options.get("show_uncertainty", False)):
+    if show_uncertainty:
         x_unc: list[float | None] = []
         y_unc: list[str | None] = []
         for label, item in zip(labels, items, strict=False):
@@ -516,7 +527,13 @@ def _add_prediction_header_traces(
     row: int,
     col: int,
 ) -> None:
-    """Add prediction probability/regression bars to the header subplot row."""
+    """Add prediction probability/regression bars to the header subplot row.
+
+    Probabilistic header: three-part per bar — solid 0→low, translucent low→high,
+    vertical marker at predict.
+
+    Regression header: interval bar low→high, vertical marker at predict.
+    """
     import plotly.graph_objects as go  # noqa: PLC0415
 
     bars = list(prediction.get("bars", ()) or [])
@@ -540,34 +557,99 @@ def _add_prediction_header_traces(
             hover_parts.append("Interval: unavailable")
         hover = "<br>".join(hover_parts)
 
+        if kind == "probabilistic":
+            # ── Solid portion: 0 to p_low (the certain minimum) ──────────────
+            solid_width = float(p_low) if p_low is not None else 0.0
+            if solid_width > 0.0:
+                fig.add_trace(
+                    go.Bar(
+                        x=[solid_width],
+                        y=[bar_label],
+                        base=[0.0],
+                        orientation="h",
+                        marker={"color": color},
+                        hovertext=[hover],
+                        hovertemplate="%{hovertext}<extra></extra>",
+                        showlegend=False,
+                        name=f"solid: {bar_label}",
+                    ),
+                    row=row,
+                    col=col,
+                )
+
+            # ── Translucent interval: p_low to p_high ─────────────────────────
+            if p_low is not None and p_high is not None and p_high > p_low:
+                fig.add_trace(
+                    go.Bar(
+                        x=[float(p_high) - float(p_low)],
+                        y=[bar_label],
+                        base=[float(p_low)],
+                        orientation="h",
+                        marker={"color": color, "opacity": 0.35},
+                        hoverinfo="skip",
+                        showlegend=False,
+                        name=f"interval: {bar_label}",
+                    ),
+                    row=row,
+                    col=col,
+                )
+            elif p_low is None or p_high is None:
+                # No interval — fall back to full bar from 0 to p_val
+                fig.add_trace(
+                    go.Bar(
+                        x=[max(0.0, float(p_val))],
+                        y=[bar_label],
+                        base=[0.0],
+                        orientation="h",
+                        marker={"color": color},
+                        hovertext=[hover],
+                        hovertemplate="%{hovertext}<extra></extra>",
+                        showlegend=False,
+                        name=f"prediction: {bar_label}",
+                    ),
+                    row=row,
+                    col=col,
+                )
+
+        else:
+            # ── Regression: interval bar from p_low to p_high ─────────────────
+            if p_low is not None and p_high is not None:
+                fig.add_trace(
+                    go.Bar(
+                        x=[float(p_high) - float(p_low)],
+                        y=[bar_label],
+                        base=[float(p_low)],
+                        orientation="h",
+                        marker={"color": color, "opacity": 0.5},
+                        hovertext=[hover],
+                        hovertemplate="%{hovertext}<extra></extra>",
+                        showlegend=False,
+                        name=f"prediction: {bar_label}",
+                    ),
+                    row=row,
+                    col=col,
+                )
+
+        # ── Prediction point marker at p_val (all kinds) ──────────────────────
         fig.add_trace(
-            go.Bar(
-                x=[p_val],
+            go.Scatter(
+                x=[float(p_val)],
                 y=[bar_label],
-                orientation="h",
-                marker={"color": color},
+                mode="markers",
+                marker={
+                    "symbol": "line-ns-open",
+                    "size": 12,
+                    "color": color,
+                    "line": {"width": 2.5, "color": color},
+                },
                 hovertext=[hover],
                 hovertemplate="%{hovertext}<extra></extra>",
                 showlegend=False,
-                name=f"prediction: {bar_label}",
+                name=f"marker: {bar_label}",
             ),
             row=row,
             col=col,
         )
-        if p_low is not None and p_high is not None:
-            fig.add_trace(
-                go.Scatter(
-                    x=[float(p_low), float(p_high)],
-                    y=[bar_label, bar_label],
-                    mode="lines",
-                    line={"color": _INTERVAL_COLOR, "width": 6},
-                    hoverinfo="skip",
-                    showlegend=False,
-                    name=f"prediction interval: {bar_label}",
-                ),
-                row=row,
-                col=col,
-            )
 
 
 def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
@@ -597,6 +679,9 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     x_label_contribution = axis_meta.get("x_label", "Signed local contribution")
     y_label_contribution = axis_meta.get("y_label", "Factual rule / feature")
 
+    # Right-axis instance values (displayed as paper-anchored annotations)
+    instance_values = [_display_value(item.get("instance_value")) for item in items]
+
     if show_prediction_header and header_bars:
         from plotly.subplots import make_subplots  # noqa: PLC0415
 
@@ -619,13 +704,27 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             fig, items, labels, values, colors, hover_text, render_options, row=2, col=1
         )
 
+        # Instance values on the right of the body panel (body = row 2 → yaxis2)
+        for y_label, val_text in zip(labels, instance_values, strict=False):
+            fig.add_annotation(
+                x=1.01,
+                y=y_label,
+                text=val_text,
+                xref="paper",
+                yref="y2",
+                showarrow=False,
+                xanchor="left",
+                font={"size": 10, "color": "#64748b"},
+                align="left",
+            )
+
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)
 
         fig.update_layout(
             template="plotly_white",
             title=_title_for(artifact, render_options),
-            margin={"l": 160, "r": 28, "t": 64, "b": 56},
+            margin={"l": 160, "r": 200, "t": 64, "b": 56},
             showlegend=False,
             bargap=0.25,
         )
@@ -640,6 +739,21 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     else:
         fig = go.Figure()
         _add_contribution_traces(fig, items, labels, values, colors, hover_text, render_options)
+
+        # Instance values on the right of the single-panel body (yaxis = "y")
+        for y_label, val_text in zip(labels, instance_values, strict=False):
+            fig.add_annotation(
+                x=1.01,
+                y=y_label,
+                text=val_text,
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                xanchor="left",
+                font={"size": 10, "color": "#64748b"},
+                align="left",
+            )
+
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333")
         fig.update_layout(
@@ -648,7 +762,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             xaxis_title=x_label_contribution,
             yaxis_title=y_label_contribution,
             yaxis={"autorange": "reversed"},
-            margin={"l": 160, "r": 28, "t": 64, "b": 56},
+            margin={"l": 160, "r": 200, "t": 64, "b": 56},
             showlegend=False,
             bargap=0.25,
         )

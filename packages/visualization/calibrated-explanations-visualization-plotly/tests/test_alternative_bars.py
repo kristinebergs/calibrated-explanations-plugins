@@ -16,8 +16,6 @@ BUILDER_ID = "official.visualization.plotly.local.alternative_bars.builder"
 RENDERER_ID = "official.visualization.plotly.local.alternative_bars.renderer"
 BOOTSTRAP_ID = "official.visualization.plotly.bootstrap"
 
-FACTUAL_STYLE_ID = "plotly.local.factual_bars"
-
 
 def _reset_registry_state() -> None:
     reset_catalog = getattr(registry, "reset_plugin_catalog", None)
@@ -80,11 +78,9 @@ def _install_fake_plotly(monkeypatch):
         def __init__(self, **_kwargs):
             self.traces = []
             self.vlines = []
-            self.vline_kwargs = []
+            self.vrects = []
             self.annotations = []
             self.layout = {}
-            self.xaxes_updates = []
-            self.yaxes_updates = []
             self.shown = False
             self.html_paths = []
 
@@ -100,6 +96,9 @@ def _install_fake_plotly(monkeypatch):
         def add_vline(self, **kwargs):
             self.vlines.append(kwargs)
 
+        def add_vrect(self, **kwargs):
+            self.vrects.append(kwargs)
+
         def add_annotation(self, **kwargs):
             self.annotations.append(kwargs)
 
@@ -107,10 +106,10 @@ def _install_fake_plotly(monkeypatch):
             self.layout.update(kwargs)
 
         def update_xaxes(self, **kwargs):
-            self.xaxes_updates.append(kwargs)
+            pass
 
         def update_yaxes(self, **kwargs):
-            self.yaxes_updates.append(kwargs)
+            pass
 
         def write_html(self, path, **_kwargs):
             self.html_paths.append(path)
@@ -119,20 +118,13 @@ def _install_fake_plotly(monkeypatch):
         def show(self):
             self.shown = True
 
-    def make_subplots(**kwargs):
-        fig = FakeFigure()
-        fig.layout["rows"] = kwargs.get("rows")
-        fig.layout["subplot_titles"] = kwargs.get("subplot_titles")
-        fig.layout["row_heights"] = kwargs.get("row_heights")
-        return fig
-
     plotly_mod = types.ModuleType("plotly")
     graph_objects_mod = types.ModuleType("plotly.graph_objects")
     subplots_mod = types.ModuleType("plotly.subplots")
     graph_objects_mod.Bar = FakeBar
     graph_objects_mod.Scatter = FakeScatter
     graph_objects_mod.Figure = FakeFigure
-    subplots_mod.make_subplots = make_subplots
+    subplots_mod.make_subplots = lambda **kw: FakeFigure()
     monkeypatch.setitem(sys.modules, "plotly", plotly_mod)
     monkeypatch.setitem(sys.modules, "plotly.graph_objects", graph_objects_mod)
     monkeypatch.setitem(sys.modules, "plotly.subplots", subplots_mod)
@@ -141,21 +133,17 @@ def _install_fake_plotly(monkeypatch):
 
 def _alt_rules() -> dict:
     return {
-        "feature": [0, 1, 2, [0, 2], 3],
-        "feature_value": [10, 20, 30, [10, 30], 40],
+        "feature": [0, 1, 2, 3],
+        "value": [10, 20, 30, 40],
         "rule": [
-            "f0 <= 10",
-            "f1 <= 20",
-            "f2 > 30",
-            "f0 <= 10 AND f2 > 30",
-            "f3 > 40",
+            "feat0 <= 10",
+            "feat1 > 20",
+            "feat2 <= 30",
+            "feat3 > 40",
         ],
-        "predict": [0.20, 0.85, 0.30, 0.15, 0.70],
-        "predict_low": [0.10, 0.75, 0.20, 0.05, 0.60],
-        "predict_high": [0.30, 0.95, 0.40, 0.25, 0.80],
-        "primary_role": ["counter", "super", "counter", "counter", None],
-        "is_ensured": [True, False, False, True, False],
-        "is_pareto": [False, True, False, False, False],
+        "predict": [0.20, 0.85, 0.30, 0.70],
+        "predict_low": [0.10, 0.75, 0.20, 0.60],
+        "predict_high": [0.30, 0.95, 0.40, 0.80],
     }
 
 
@@ -170,8 +158,6 @@ def _dummy_alternative_explanation(*, rules: dict | None = None) -> SimpleNamesp
         calibrated_explanations=collection,
         prediction={"predict": 0.75, "low": 0.66, "high": 0.84},
         rules=payload,
-        conjunctive_rules=None,
-        has_conjunctive_rules=False,
         get_rules=lambda: payload,
         get_mode=lambda: "classification",
         is_probabilistic=lambda: True,
@@ -238,225 +224,295 @@ def test_builder_accepts_alternative_explanation(monkeypatch):
     artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
 
     assert artifact["artifact_type"] == STYLE_ID
-    assert artifact["artifact_version"] == "0.1.0"
+    assert artifact["artifact_version"] == "0.2.0"
     assert artifact["metadata"]["created_by"] == STYLE_ID
     assert artifact["items"]
 
 
-def test_alternatives_are_separate_records_not_merged(monkeypatch):
+def test_builder_items_store_absolute_predictions(monkeypatch):
+    """Items must carry absolute predicted values, not deltas from base."""
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    artifact = plugin.build(_alt_context(_dummy_alternative_explanation(), sort_by="original"))
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
 
-    # 5 alternatives + 2 component subbars for the conjunctive rule (index 3)
-    main_items = [item for item in artifact["items"] if not item["is_component"]]
-    assert len(main_items) == 5
-    # Each has a distinct original_index
-    original_indices = [item["original_index"] for item in main_items]
-    assert len(set(original_indices)) == len(original_indices)
+    for item in artifact["items"]:
+        pred = item["predict"]
+        assert pred is not None
+        # Must be an absolute probability, not a delta (deltas would be negative here)
+        assert 0.0 <= pred <= 1.0, f"predict={pred} is not a probability — looks like a delta"
 
 
-def test_conjunctive_rule_produces_component_subbars(monkeypatch):
+def test_builder_base_prediction_is_dict(monkeypatch):
+    """base_prediction must be a mapping with predict/low/high keys."""
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    artifact = plugin.build(
-        _alt_context(_dummy_alternative_explanation(), include_conjunctive_components=True)
-    )
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
 
-    comp_items = [item for item in artifact["items"] if item["is_component"]]
-    assert len(comp_items) == 2  # "f0 <= 10 AND f2 > 30" → 2 features
-    for comp in comp_items:
-        assert comp["original_index"] == 3  # all belong to the conjunctive alt
-        assert "└" in comp["y_label"]
+    bp = artifact["base_prediction"]
+    assert isinstance(bp, dict)
+    assert bp["predict"] == pytest.approx(0.75)
+    assert bp["low"] == pytest.approx(0.66)
+    assert bp["high"] == pytest.approx(0.84)
 
 
-def test_filter_top_limits_alternatives_not_merged(monkeypatch):
+def test_builder_classification_axis_metadata(monkeypatch):
+    """Classification explanations must set pivot=0.5 and xlim=[0,1]."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
+
+    meta = artifact["axis_metadata"]
+    assert meta["pivot"] == pytest.approx(0.5)
+    assert meta["xlim"] == pytest.approx([0.0, 1.0])
+    assert meta["xticks"] is not None
+    assert len(meta["xticks"]) == 11  # 0.0 … 1.0 in steps of 0.1
+
+
+def test_builder_items_carry_instance_values_for_right_axis(monkeypatch):
+    """Each item must carry the current feature value for the right y-axis."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
+
+    for item in artifact["items"]:
+        assert "value" in item  # current feature value for right annotation
+
+
+def test_builder_hover_contains_rule_and_prediction_info(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
+
+    for item in artifact["items"]:
+        hover = item["hover"]
+        assert "Rule:" in hover
+        assert "Alt prediction:" in hover
+        assert "Base prediction:" in hover
+        assert "Interval:" in hover
+
+
+def test_builder_hover_shows_delta_vs_base(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
+
+    # First rule: predict=0.20, base=0.75 → delta = -0.55
+    first = artifact["items"][0]
+    assert "Prediction delta:" in first["hover"]
+
+
+def test_filter_top_limits_number_of_items(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
     artifact = plugin.build(_alt_context(_dummy_alternative_explanation(), filter_top=2))
 
-    main_items = [item for item in artifact["items"] if not item["is_component"]]
-    assert len(main_items) == 2
-    # They are separate, not merged into one bar
-    assert main_items[0]["original_index"] != main_items[1]["original_index"]
+    assert len(artifact["items"]) == 2
 
 
-def test_missing_uncertainty_does_not_crash(monkeypatch):
+def test_items_identical_to_base_are_excluded(monkeypatch):
+    """Alternatives whose prediction and interval match the base must be dropped."""
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
     rules = {
         "feature": [0, 1],
+        "value": [10, 20],
+        "rule": ["f0 <= 5", "f1 > 3"],
+        # first rule is identical to base prediction
+        "predict": [0.75, 0.40],
+        "predict_low": [0.66, 0.30],
+        "predict_high": [0.84, 0.50],
+    }
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation(rules=rules)))
+
+    rules_in_output = [item["rule"] for item in artifact["items"]]
+    assert "f0 <= 5" not in rules_in_output  # identical to base — must be excluded
+    assert "f1 > 3" in rules_in_output
+
+
+def test_missing_intervals_do_not_crash_builder(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = {
+        "feature": [0, 1],
+        "value": [5, 10],
         "rule": ["f0 <= 5", "f1 > 3"],
         "predict": [0.3, 0.8],
-        "is_ensured": [False, False],
+        # no predict_low / predict_high
     }
 
     artifact = plugin.build(_alt_context(_dummy_alternative_explanation(rules=rules)))
 
-    assert artifact["metadata"]["num_missing_intervals"] == 2
-    for item in artifact["items"]:
-        if not item["is_component"]:
-            assert "Interval: unavailable" in item["hover"]
+    assert artifact["items"]
 
 
-def test_role_quality_metadata_preserved(monkeypatch):
+def test_regression_explanation_sets_no_pivot(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    artifact = plugin.build(_alt_context(_dummy_alternative_explanation(), sort_by="original"))
-
-    main_items = [item for item in artifact["items"] if not item["is_component"]]
-    first = main_items[0]
-    assert first["primary_role"] == "counter"
-    assert first["is_ensured"] is True
-    assert first["role_quality_key"] == "counter__ensured"
-
-
-def test_bar_value_is_prediction_delta_when_base_available(monkeypatch):
-    _load_plugin(monkeypatch)
-    plugin = registry.find_plot_plugin(STYLE_ID)
-
-    artifact = plugin.build(_alt_context(_dummy_alternative_explanation(), sort_by="original"))
-
-    assert artifact["base_prediction"] == pytest.approx(0.75)
-    first_main = next(item for item in artifact["items"] if not item["is_component"])
-    # alt predict=0.20, base=0.75 → delta = -0.55
-    assert first_main["bar_value"] == pytest.approx(0.20 - 0.75)
-    assert first_main["bar_value_kind"] == "prediction_delta"
-
-
-def test_bar_value_is_raw_prediction_when_no_base(monkeypatch):
-    _load_plugin(monkeypatch)
-    plugin = registry.find_plot_plugin(STYLE_ID)
-    rules = {
+    payload = {
         "feature": [0],
-        "rule": ["f0 <= 5"],
-        "predict": [0.3],
+        "value": [5.0],
+        "rule": ["x0 <= 5"],
+        "predict": [12.5],
+        "predict_low": [10.0],
+        "predict_high": [15.0],
     }
     collection = SimpleNamespace(
-        feature_names=["feat0"],
-        batch_metadata={"task": "classification", "mode": "classification"},
+        feature_names=["x0"],
+        batch_metadata={"task": "regression", "mode": "regression"},
+        y_minmax=[0.0, 30.0],
     )
     local = SimpleNamespace(
         index=0,
         calibrated_explanations=collection,
-        prediction={},  # no base prediction
-        rules=rules,
-        conjunctive_rules=None,
-        has_conjunctive_rules=False,
-        get_rules=lambda: rules,
-        get_mode=lambda: "classification",
-        is_probabilistic=lambda: True,
-        is_regression=lambda: False,
+        prediction={"predict": 10.0, "low": 8.0, "high": 12.0},
+        rules=payload,
+        get_rules=lambda: payload,
+        get_mode=lambda: "regression",
+        is_probabilistic=lambda: False,
+        is_regression=lambda: True,
         is_alternative=lambda: True,
     )
     collection.explanations = [local]
 
     artifact = plugin.build(_alt_context(collection))
 
-    assert artifact["base_prediction"] is None
-    items = [i for i in artifact["items"] if not i["is_component"]]
-    assert items[0]["bar_value"] == pytest.approx(0.3)
-    assert items[0]["bar_value_kind"] == "prediction"
-
-
-@pytest.mark.parametrize(
-    "sort_by",
-    ["original", "prediction_delta", "interval_width", "role", "feature"],
-)
-def test_sort_by_modes_are_accepted(monkeypatch, sort_by):
-    _load_plugin(monkeypatch)
-    plugin = registry.find_plot_plugin(STYLE_ID)
-
-    artifact = plugin.build(_alt_context(_dummy_alternative_explanation(), sort_by=sort_by))
-
-    assert artifact["items"]
-
-
-def test_sort_by_invalid_raises_value_error(monkeypatch):
-    _load_plugin(monkeypatch)
-    plugin = registry.find_plot_plugin(STYLE_ID)
-    with pytest.raises(ValueError, match="sort_by must be one of"):
-        plugin.build(_alt_context(_dummy_alternative_explanation(), sort_by="bad_value"))
-
-
-def test_unknown_policy_hide_filters_unknown_roles(monkeypatch):
-    _load_plugin(monkeypatch)
-    plugin = registry.find_plot_plugin(STYLE_ID)
-
-    artifact_show = plugin.build(
-        _alt_context(_dummy_alternative_explanation(), unknown_policy="show")
-    )
-    artifact_hide = plugin.build(
-        _alt_context(_dummy_alternative_explanation(), unknown_policy="hide")
-    )
-
-    main_show = [i for i in artifact_show["items"] if not i["is_component"]]
-    main_hide = [i for i in artifact_hide["items"] if not i["is_component"]]
-    assert len(main_hide) < len(main_show)
-    assert all(i["primary_role"] != "unknown" for i in main_hide)
+    meta = artifact["axis_metadata"]
+    assert meta["pivot"] is None
+    assert "confidence" in meta["x_label"].lower()
+    assert artifact["metadata"]["is_regression"] is True
 
 
 # ── Renderer ──────────────────────────────────────────────────────────────────
 
 
-def test_renderer_has_distinct_traces_per_alternative(monkeypatch):
+def test_renderer_has_bar_trace_for_intervals(monkeypatch):
+    """Renderer must emit a horizontal Bar trace representing the prediction interval."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
-    context = _alt_context(_dummy_alternative_explanation(), show_prediction_header=False)
+    context = _alt_context(_dummy_alternative_explanation())
     artifact = plugin.build(context)
 
     result = plugin.render(artifact, context=context)
 
     bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
-    assert bar_traces, "No bar traces found"
-    all_y_labels = bar_traces[0].kwargs["y"]
-    unique_labels = set(all_y_labels)
-    # All y-labels should be distinct
-    assert len(unique_labels) == len(all_y_labels)
+    assert bar_traces, "Expected at least one Bar trace for prediction intervals"
+    # Bars must use absolute x-positions (base= and x= for widths), not deltas
+    bar = bar_traces[0]
+    assert "base" in bar.kwargs, "Bar must set 'base' to predict_low — not a delta from zero"
+    bases = list(bar.kwargs["base"])
+    widths = list(bar.kwargs["x"])
+    assert any(b > 0 for b in bases), "All bases are 0 — bars look like deltas, not intervals"
+    assert all(w >= 0 for w in widths), "Interval widths must be non-negative"
 
 
-def test_renderer_with_prediction_header_uses_subplots(monkeypatch):
+def test_renderer_has_scatter_trace_for_prediction_markers(monkeypatch):
+    """Renderer must emit a Scatter trace marking the predicted value in each row."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
-    context = _alt_context(_dummy_alternative_explanation(), show_prediction_header=True)
-    artifact = plugin.build(context)
-
-    result = plugin.render(artifact, context=context)
-
-    assert result.figure.layout.get("rows") == 2
-
-
-def test_renderer_prediction_header_false_uses_single_row(monkeypatch):
-    _install_fake_plotly(monkeypatch)
-    _load_plugin(monkeypatch)
-    plugin = registry.find_plot_plugin(STYLE_ID)
-    context = _alt_context(_dummy_alternative_explanation(), show_prediction_header=False)
-    artifact = plugin.build(context)
-
-    result = plugin.render(artifact, context=context)
-
-    assert result.figure.layout.get("rows") is None  # no subplot
-
-
-def test_renderer_show_uncertainty_adds_scatter_traces(monkeypatch):
-    _install_fake_plotly(monkeypatch)
-    _load_plugin(monkeypatch)
-    plugin = registry.find_plot_plugin(STYLE_ID)
-    context = _alt_context(
-        _dummy_alternative_explanation(), show_prediction_header=False, show_uncertainty=True
-    )
+    context = _alt_context(_dummy_alternative_explanation())
     artifact = plugin.build(context)
 
     result = plugin.render(artifact, context=context)
 
     scatter_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeScatter"]
-    assert scatter_traces, "Expected uncertainty interval scatter traces"
+    assert scatter_traces, "Expected a Scatter trace for prediction markers"
+
+
+def test_renderer_adds_vrect_for_base_interval(monkeypatch):
+    """Base prediction interval must be rendered as a background shape, not a bar."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _alt_context(_dummy_alternative_explanation())
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    assert result.figure.vrects, "Expected add_vrect call(s) for the base interval background"
+
+
+def test_renderer_adds_right_axis_annotations(monkeypatch):
+    """Current feature values must appear as right-side annotations."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _alt_context(_dummy_alternative_explanation())
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    # One annotation per item placed to the right (paper x > 1)
+    right_annotations = [a for a in result.figure.annotations if a.get("xref") == "paper"]
+    assert len(right_annotations) >= len(artifact["items"]), (
+        "Expected one right-side annotation per alternative for instance values"
+    )
+
+
+def test_renderer_does_not_use_subplots(monkeypatch):
+    """Alternative bars use a single panel — no prediction-header subplot."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _alt_context(_dummy_alternative_explanation())
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    assert result.figure.layout.get("rows") is None
+
+
+def test_renderer_classification_sets_x_range_0_1(monkeypatch):
+    """Classification layout must lock x-range to [0, 1]."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _alt_context(_dummy_alternative_explanation())
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    xaxis = result.figure.layout.get("xaxis", {})
+    assert xaxis.get("range") == pytest.approx([0.0, 1.0])
+
+
+def test_renderer_adds_pivot_vline_for_classification(monkeypatch):
+    """A dotted vertical line must mark the 0.5 decision boundary."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _alt_context(_dummy_alternative_explanation())
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    pivot_lines = [v for v in result.figure.vlines if v.get("x") == pytest.approx(0.5)]
+    assert pivot_lines, "Expected a vline at pivot=0.5 for classification"
+
+
+def test_renderer_y_labels_match_rule_text(monkeypatch):
+    """Y-axis labels must be the alternative rule strings."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    context = _alt_context(_dummy_alternative_explanation())
+    artifact = plugin.build(context)
+
+    result = plugin.render(artifact, context=context)
+
+    bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
+    y_labels = list(bar_traces[0].kwargs["y"])
+    expected_rules = [item["rule"] for item in artifact["items"]]
+    assert y_labels == expected_rules
 
 
 def test_renderer_no_warnings_on_valid_artifact(monkeypatch):
@@ -523,12 +579,7 @@ def test_bridge_passes_non_alternative_bars_styles_through(monkeypatch):
     except ImportError:
         pytest.skip("AlternativeExplanation not accessible in this CE version")
 
-    original_plot = AlternativeExplanation.plot.__wrapped__ if hasattr(
-        AlternativeExplanation.plot, "__wrapped__"
-    ) else None
-
-    if original_plot is None:
+    if not hasattr(AlternativeExplanation.plot, "__wrapped__"):
         pytest.skip("Cannot test bridge pass-through without access to wrapped function")
 
-    # Just verify the bridge attribute is present and routes correctly (no crash)
     assert getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False)
