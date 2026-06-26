@@ -1,5 +1,11 @@
 # calibrated-explanations-visualization-plotly
 
+Family: `visualization`
+
+Purpose: Plotly visualization plugin layouts for calibrated-explanations, providing interactive local and global explanation plots.
+
+Compatibility: `calibrated-explanations>=0.11`
+
 Plotly visualization layouts for `calibrated-explanations`.
 
 The package registers `plotly.local.uncertainty_quadrant`, a local factual
