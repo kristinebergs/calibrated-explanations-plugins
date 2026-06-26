@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import warnings
 from pathlib import Path
@@ -22,6 +23,8 @@ _LOGGER = logging.getLogger(__name__)
 _POSITIVE_COLOR = "#2a9d8f"
 _NEGATIVE_COLOR = "#b84a51"
 _INTERVAL_COLOR = "rgba(45, 55, 72, 0.45)"
+_INTERVAL_NEG_COLOR = "rgba(184, 74, 81, 0.65)"
+_INTERVAL_POS_COLOR = "rgba(42, 157, 143, 0.65)"
 
 
 def _warn_fallback(reason: str) -> None:
@@ -154,8 +157,34 @@ def _prediction_header(local_explanation: Any, mode_metadata: dict[str, Any]) ->
     is_regression = mode_metadata.get("is_regression", False)
 
     if is_probabilistic or task in ("classification",):
-        target_label = str(label) if label is not None else "class 1"
-        complement_label = "class 0"
+        # Attempt class-label resolution in preference order:
+        # 1. CE collection-level get_class_labels()
+        # 2. prediction["classes"/"class"/"label"] from the artifact
+        # 3. threshold labels if explanation is thresholded
+        # 4. generic fallback
+        collection = _collection_for(local_explanation)
+        get_cls_fn = getattr(local_explanation, "get_class_labels", None) or getattr(
+            collection, "get_class_labels", None
+        )
+        class_labels = None
+        if callable(get_cls_fn):
+            with contextlib.suppress(Exception):
+                class_labels = get_cls_fn()
+        if class_labels is not None and len(class_labels) >= 2:
+            target_label = str(class_labels[1])
+            complement_label = str(class_labels[0])
+        elif label is not None:
+            target_label = str(label)
+            complement_label = "complement"
+        else:
+            is_thresholded_fn = getattr(local_explanation, "is_thresholded", None)
+            threshold_val = getattr(local_explanation, "threshold", None)
+            if callable(is_thresholded_fn) and is_thresholded_fn() and threshold_val is not None:
+                target_label = f"P(y > {threshold_val})"
+                complement_label = f"P(y ≤ {threshold_val})"
+            else:
+                target_label = "class 1"
+                complement_label = "class 0"
         bars: list[dict[str, Any]] = []
         if p is not None:
             target_bar: dict[str, Any] = {"label": target_label, "value": p}
@@ -216,7 +245,7 @@ def _mode_metadata(explanation: Any, local_explanation: Any) -> dict[str, Any]:
 
 
 def _default_options(options: dict[str, Any]) -> dict[str, Any]:
-    sort_by = str(options.get("sort_by", "abs"))
+    sort_by = str(options.get("sort_by", "original"))
     if sort_by not in {"abs", "value", "interval_width", "label", "original"}:
         raise ValueError(
             "sort_by must be one of abs, value, interval_width, label, or original."
@@ -231,7 +260,9 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     return {
         "filter_top": None if filter_top is None else int(filter_top),
         "sort_by": sort_by,
-        "show_uncertainty": bool(options.get("show_uncertainty", bool(options.get("uncertainty", False)))),
+        "show_uncertainty": bool(
+            options.get("show_uncertainty", bool(options.get("uncertainty", False)))
+        ),
         "hover_uncertainty": bool(options.get("hover_uncertainty", True)),
         "show_prediction_header": bool(options.get("show_prediction_header", True)),
         "hover_detail": hover_detail,
@@ -395,6 +426,20 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
         if _is_alternative_explanation(local_explanation):
             raise ValueError("plotly.local.factual_bars does not support alternative explanations.")
 
+        # Guard: one-sided explanations have no contribution intervals
+        if options["show_uncertainty"]:
+            is_one_sided_fn = getattr(local_explanation, "is_one_sided", None)
+            if callable(is_one_sided_fn):
+                with contextlib.suppress(Exception):
+                    if is_one_sided_fn():
+                        warnings.warn(
+                            "Interval plot is not supported for one-sided explanations; "
+                            "show_uncertainty disabled.",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                        options["show_uncertainty"] = False
+
         mode_metadata = _mode_metadata(context.explanation, local_explanation)
         prediction = _prediction_header(local_explanation, mode_metadata)
         items, missing_intervals = _extract_items(local_explanation, prediction, options)
@@ -496,25 +541,52 @@ def _add_contribution_traces(
         **add_kwargs,
     )
     if show_uncertainty:
-        x_unc: list[float | None] = []
-        y_unc: list[str | None] = []
+        is_classification = bool(render_options.get("is_classification", False))
+        x_neutral: list[float | None] = []
+        y_neutral: list[str | None] = []
+        x_neg: list[float | None] = []
+        y_neg: list[str | None] = []
+        x_pos: list[float | None] = []
+        y_pos: list[str | None] = []
         for label, item in zip(labels, items, strict=False):
             low = item.get("contribution_low")
             high = item.get("contribution_high")
             if low is None or high is None:
                 continue
-            x_unc.extend([float(low), float(high), None])
-            y_unc.extend([label, label, None])
-        if x_unc:
+            low_f, high_f = float(low), float(high)
+            if is_classification and item.get("crosses_zero") and low_f < 0.0 < high_f:
+                # Sign-split: negative half in red, positive half in teal
+                x_neg.extend([low_f, 0.0, None])
+                y_neg.extend([label, label, None])
+                x_pos.extend([0.0, high_f, None])
+                y_pos.extend([label, label, None])
+            else:
+                x_neutral.extend([low_f, high_f, None])
+                y_neutral.extend([label, label, None])
+        if x_neutral:
             fig.add_trace(
                 go.Scatter(
-                    x=x_unc,
-                    y=y_unc,
-                    mode="lines",
+                    x=x_neutral, y=y_neutral, mode="lines",
                     line={"color": _INTERVAL_COLOR, "width": 5},
-                    hoverinfo="skip",
-                    showlegend=False,
-                    name="contribution interval",
+                    hoverinfo="skip", showlegend=False, name="contribution interval",
+                ),
+                **add_kwargs,
+            )
+        if x_neg:
+            fig.add_trace(
+                go.Scatter(
+                    x=x_neg, y=y_neg, mode="lines",
+                    line={"color": _INTERVAL_NEG_COLOR, "width": 5},
+                    hoverinfo="skip", showlegend=False, name="negative interval",
+                ),
+                **add_kwargs,
+            )
+        if x_pos:
+            fig.add_trace(
+                go.Scatter(
+                    x=x_pos, y=y_pos, mode="lines",
+                    line={"color": _INTERVAL_POS_COLOR, "width": 5},
+                    hoverinfo="skip", showlegend=False, name="positive interval",
                 ),
                 **add_kwargs,
             )
@@ -674,6 +746,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     show_prediction_header = bool(render_options.get("show_prediction_header", True))
     prediction = dict(artifact.get("prediction", {}) or {})
     header_bars = list(prediction.get("bars", ()) or []) if show_prediction_header else []
+    render_options["is_classification"] = prediction.get("kind") == "probabilistic"
 
     axis_meta = dict(artifact.get("axis_metadata", {}) or {})
     x_label_contribution = axis_meta.get("x_label", "Signed local contribution")
@@ -718,6 +791,22 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 align="left",
             )
 
+        # Base prediction uncertainty band in contribution space
+        if render_options.get("show_uncertainty"):
+            _p_val = _as_float(prediction.get("value"))
+            _p_lo = _as_float(prediction.get("low"))
+            _p_hi = _as_float(prediction.get("high"))
+            if _p_val is not None and _p_lo is not None and _p_hi is not None:
+                _band_lo = _p_lo - _p_val
+                _band_hi = _p_hi - _p_val
+                if _band_lo < _band_hi:
+                    fig.add_vrect(
+                        x0=_band_lo, x1=_band_hi,
+                        fillcolor="rgba(0,0,0,0.08)",
+                        layer="below", line_width=0,
+                        row=2, col=1,
+                    )
+
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)
 
@@ -753,6 +842,21 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 font={"size": 10, "color": "#64748b"},
                 align="left",
             )
+
+        # Base prediction uncertainty band in contribution space
+        if render_options.get("show_uncertainty"):
+            _p_val = _as_float(prediction.get("value"))
+            _p_lo = _as_float(prediction.get("low"))
+            _p_hi = _as_float(prediction.get("high"))
+            if _p_val is not None and _p_lo is not None and _p_hi is not None:
+                _band_lo = _p_lo - _p_val
+                _band_hi = _p_hi - _p_val
+                if _band_lo < _band_hi:
+                    fig.add_vrect(
+                        x0=_band_lo, x1=_band_hi,
+                        fillcolor="rgba(0,0,0,0.08)",
+                        layer="below", line_width=0,
+                    )
 
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333")

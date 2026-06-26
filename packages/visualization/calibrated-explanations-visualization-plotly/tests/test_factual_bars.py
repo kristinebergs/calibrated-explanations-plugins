@@ -95,6 +95,9 @@ def _install_fake_plotly(monkeypatch):
         def add_vline(self, **kwargs):
             self.vlines.append(kwargs)
 
+        def add_vrect(self, **kwargs):
+            self.vlines.append(kwargs)  # reuse vlines list; distinguishable via "x0"/"x1" keys
+
         def add_annotation(self, **kwargs):
             self.annotations.append(kwargs)
 
@@ -258,9 +261,14 @@ def test_show_uncertainty_adds_visible_interval_trace(monkeypatch):
     context = _context(_dummy_explanation(), show_uncertainty=True, show_prediction_header=False)
     result = plugin.render(plugin.build(context), context=context)
 
-    scatter_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeScatter"]
-    assert len(scatter_traces) == 1
-    assert scatter_traces[0].kwargs["name"] == "contribution interval"
+    # Classification with a crossing-zero rule produces up to 3 interval traces
+    # (neutral, negative half, positive half); at least one must be present.
+    _interval_names = {"contribution interval", "negative interval", "positive interval"}
+    interval_traces = [
+        t for t in result.figure.traces
+        if t.__class__.__name__ == "FakeScatter" and t.kwargs.get("name") in _interval_names
+    ]
+    assert len(interval_traces) >= 1
 
 
 def test_filter_top_limits_displayed_bars(monkeypatch):

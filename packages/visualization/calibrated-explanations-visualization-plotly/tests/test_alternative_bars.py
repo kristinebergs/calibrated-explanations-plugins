@@ -583,3 +583,79 @@ def test_bridge_passes_non_alternative_bars_styles_through(monkeypatch):
         pytest.skip("Cannot test bridge pass-through without access to wrapped function")
 
     assert getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False)
+
+
+# ── Ranking ───────────────────────────────────────────────────────────────────
+
+
+def test_default_ranking_is_ensured_metric(monkeypatch):
+    """Default rnk_metric='ensured' ranks by rnk_weight*predict + (1-rnk_weight)*width."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    # base_predict=0.75 (>= 0.5), all items: width=0.20 each
+    # scores with rnk_weight=0.5: 0.5*predict + 0.5*0.20
+    # predict: [0.20, 0.85, 0.30, 0.70] → scores [0.20, 0.525, 0.25, 0.45]
+    # expected order (descending): feat1 > 20, feat3 > 40, feat2 <= 30, feat0 <= 10
+    artifact = plugin.build(_alt_context(_dummy_alternative_explanation()))
+
+    rules = [item["rule"] for item in artifact["items"]]
+    assert rules[0] == "feat1 > 20", f"Highest-score alt should be first; got {rules}"
+    assert rules[-1] == "feat0 <= 10", f"Lowest-score alt should be last; got {rules}"
+    assert artifact["options_used"]["rnk_metric"] == "ensured"
+
+
+def test_feature_weight_ranking(monkeypatch):
+    """rnk_metric='feature_weight' ranks by |predict - base_predict| descending."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    # base_predict=0.75; deltas: [0.55, 0.10, 0.45, 0.05]
+    # expected order: feat0 <= 10, feat2 <= 30, feat1 > 20, feat3 > 40
+    artifact = plugin.build(
+        _alt_context(_dummy_alternative_explanation(), rnk_metric="feature_weight")
+    )
+
+    rules = [item["rule"] for item in artifact["items"]]
+    assert rules[0] == "feat0 <= 10", f"Largest delta alt should be first; got {rules}"
+    assert rules[-1] == "feat3 > 40", f"Smallest delta alt should be last; got {rules}"
+
+
+def test_rnk_weight_zero_ranks_by_interval_width_only(monkeypatch):
+    """rnk_weight=0 reduces 'ensured' to pure interval-width ranking."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    # All widths are 0.20, so order is stable (all equal, no change expected from original)
+    artifact = plugin.build(
+        _alt_context(_dummy_alternative_explanation(), rnk_weight=0.0)
+    )
+
+    # All scores equal (same width) → just verify no crash and items are present
+    assert len(artifact["items"]) == 4
+
+
+def test_filter_top_applies_after_ranking(monkeypatch):
+    """filter_top slices after ranking, so the top-k by score are kept."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    # With default "ensured" ranking, top item is "feat1 > 20" (score 0.525)
+    artifact = plugin.build(
+        _alt_context(_dummy_alternative_explanation(), filter_top=1)
+    )
+
+    assert len(artifact["items"]) == 1
+    assert artifact["items"][0]["rule"] == "feat1 > 20"
+
+
+def test_rnk_metric_stored_in_options_used(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(
+        _alt_context(_dummy_alternative_explanation(), rnk_metric="feature_weight", rnk_weight=0.3)
+    )
+
+    assert artifact["options_used"]["rnk_metric"] == "feature_weight"
+    assert artifact["options_used"]["rnk_weight"] == pytest.approx(0.3)

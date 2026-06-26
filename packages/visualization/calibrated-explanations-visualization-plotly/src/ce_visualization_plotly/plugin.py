@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from functools import wraps
+from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
@@ -336,6 +337,10 @@ def _install_alternative_bars_plot_bridge() -> None:
     def plot_bridge(self: Any, filter_top: Any = None, **kwargs: Any) -> Any:
         if kwargs.get("style") != ALTERNATIVE_BARS_STYLE_ID:
             return original_plot(self, filter_top, **kwargs)
+        # filter_top is a positional arg in CE's .plot() API; inject it into kwargs
+        # so the builder can read it from context.options["filter_top"].
+        if filter_top is not None:
+            kwargs = {**kwargs, "filter_top": filter_top}
         return _render_local_alternative_bars(self, kwargs)
 
     plot_bridge._alternative_bars_bridge = True  # type: ignore[attr-defined]
@@ -379,11 +384,22 @@ def _render_local_alternative_bars(explanation: Any, kwargs: dict[str, Any]) -> 
 
     show = bool(kwargs.get("show", True))
     path = kwargs.get("path")
+    # Translate CE's filename= kwarg to path=, coercing the suffix to .html
+    if path is None and kwargs.get("filename") is not None:
+        _fname = Path(str(kwargs["filename"]))
+        if _fname.suffix.lower() != ".html":
+            _fname = _fname.with_suffix(".html")
+        path = str(_fname)
+        if "show" not in kwargs:
+            show = False  # Match CE convention: don't auto-show when saving to file
     save_ext_value = kwargs.get("save_ext")
     if isinstance(save_ext_value, (list, tuple)):
         save_ext_value = tuple(save_ext_value)
 
-    _skip_keys = {"style", "renderer", "show", "path", "save_ext", "use_legacy", "style_override"}
+    _skip_keys = {
+        "style", "renderer", "show", "path", "filename",
+        "save_ext", "use_legacy", "style_override",
+    }
     option_payload = {key: value for key, value in kwargs.items() if key not in _skip_keys}
 
     context = PlotRenderContext(

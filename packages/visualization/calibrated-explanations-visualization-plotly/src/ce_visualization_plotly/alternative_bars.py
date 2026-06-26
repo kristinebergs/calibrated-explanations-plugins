@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import warnings
@@ -83,11 +84,61 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     hover_detail = str(options.get("hover_detail", "compact"))
     if hover_detail not in {"compact", "full"}:
         raise ValueError("hover_detail must be 'compact' or 'full'.")
+    rnk_metric = str(options.get("rnk_metric", "ensured"))
+    if rnk_metric not in {"ensured", "feature_weight"}:
+        raise ValueError("rnk_metric must be 'ensured' or 'feature_weight'.")
+    rnk_weight_raw = options.get("rnk_weight", 0.5)
+    rnk_weight = float(rnk_weight_raw)
+    if not 0.0 <= rnk_weight <= 1.0:
+        raise ValueError("rnk_weight must be in [0.0, 1.0].")
     return {
         "filter_top": None if filter_top is None else int(filter_top),
         "show_uncertainty": bool(options.get("show_uncertainty", True)),
         "hover_detail": hover_detail,
+        "rnk_metric": rnk_metric,
+        "rnk_weight": rnk_weight,
     }
+
+
+def _rank_items(
+    items: list[dict[str, Any]],
+    *,
+    rnk_metric: str,
+    rnk_weight: float,
+    base_predict: float | None,
+    is_classification: bool,
+) -> list[dict[str, Any]]:
+    """Rank items to match CE's rnk_metric/rnk_weight ranking for alternatives.
+
+    "ensured" (default): score = rnk_weight * effective_predict + (1-rnk_weight) * interval_width
+      where effective_predict is flipped (1-p) for classification when base_predict < 0.5.
+    "feature_weight": score = |predict - base_predict| (delta magnitude from base).
+
+    Items are returned sorted descending (highest score → top row).
+    """
+    flip = is_classification and base_predict is not None and base_predict < 0.5
+
+    if rnk_metric == "feature_weight":
+        def _key(item: dict[str, Any]) -> float:
+            p = _as_float(item.get("predict"))
+            if p is None or base_predict is None:
+                return 0.0
+            return abs(p - base_predict)
+    else:
+        def _key(item: dict[str, Any]) -> float:
+            p = _as_float(item.get("predict"))
+            lo = _as_float(item.get("predict_low"))
+            hi = _as_float(item.get("predict_high"))
+            width = (hi - lo) if (lo is not None and hi is not None) else 0.0
+            if p is None:
+                eff_p = 0.0
+            elif flip:
+                eff_p = 1.0 - p
+            else:
+                eff_p = p
+            return rnk_weight * eff_p + (1.0 - rnk_weight) * width
+
+    return sorted(items, key=_key, reverse=True)
 
 
 def _build_hover(
@@ -266,15 +317,37 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
             except (TypeError, IndexError, ValueError):
                 y_minmax = None
 
-        # Confidence level for regression axis label
+        # Confidence level for regression axis label — try attribute access then get_confidence()
         conf_raw = getattr(collection, "confidence_level", None) or getattr(
             collection, "confidence", None
         )
+        if conf_raw is None:
+            get_conf_fn = getattr(collection, "get_confidence", None)
+            if callable(get_conf_fn):
+                with contextlib.suppress(Exception):
+                    conf_raw = get_conf_fn()
         confidence_pct = 95
         if conf_raw is not None:
             f_conf = _as_float(conf_raw)
             if f_conf is not None:
                 confidence_pct = round(f_conf * 100) if f_conf <= 1.0 else int(f_conf)
+
+        # Class label for classification x-axis label
+        pred_label = None
+        if not is_regression:
+            pred_header_dict = dict(getattr(local_explanation, "prediction", {}) or {})
+            pred_label = pred_header_dict.get(
+                "classes", pred_header_dict.get("class", pred_header_dict.get("label"))
+            )
+            if pred_label is None:
+                get_cls_fn = getattr(local_explanation, "get_class_labels", None) or getattr(
+                    collection, "get_class_labels", None
+                )
+                if callable(get_cls_fn):
+                    with contextlib.suppress(Exception):
+                        _raw_cls = get_cls_fn()
+                        if isinstance(_raw_cls, (list, tuple)) and len(_raw_cls) >= 2:
+                            pred_label = _raw_cls[1]
 
         items = _extract_items(
             local_explanation,
@@ -284,6 +357,14 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
             base_high=base_high,
         )
 
+        # Rank items to match CE's rnk_metric/rnk_weight semantics, then slice
+        items = _rank_items(
+            items,
+            rnk_metric=str(options["rnk_metric"]),
+            rnk_weight=float(options["rnk_weight"]),
+            base_predict=base_predict,
+            is_classification=not is_regression,
+        )
         if options["filter_top"] is not None:
             items = items[: int(options["filter_top"])]
 
@@ -326,7 +407,11 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
         else:
             xlim = [0.0, 1.0]
             pivot = 0.5
-            x_label = "Probability"
+            x_label = (
+                f"Probability for class '{pred_label}'"
+                if pred_label is not None
+                else "Probability"
+            )
             xticks = [round(i * 0.1, 1) for i in range(11)]
 
         return {
@@ -352,6 +437,8 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
                 "filter_top": options["filter_top"],
                 "show_uncertainty": options["show_uncertainty"],
                 "hover_detail": options["hover_detail"],
+                "rnk_metric": options["rnk_metric"],
+                "rnk_weight": options["rnk_weight"],
             },
             "metadata": {
                 "num_alternatives": len(items),
