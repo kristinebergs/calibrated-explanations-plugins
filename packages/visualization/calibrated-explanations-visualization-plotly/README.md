@@ -1,5 +1,11 @@
 # calibrated-explanations-visualization-plotly
 
+Family: `visualization`
+
+Purpose: Plotly visualization plugin layouts for calibrated-explanations, providing interactive local and global explanation plots.
+
+Compatibility: `calibrated-explanations>=0.11`
+
 Plotly visualization layouts for `calibrated-explanations`.
 
 The package registers `plotly.local.uncertainty_quadrant`, a local factual
@@ -13,24 +19,121 @@ simple factual contribution view used with `uncertainty=False`: one horizontal
 bar per local factual rule or feature, signed around a zero reference line, with
 positive and negative contributions colored distinctly.
 
-Although interval marks are hidden by default, each bar hover includes the
-calibrated contribution interval, interval width, zero-crossing status, current
-feature value when available, and prediction interval metadata when available.
-Set `show_uncertainty=True` to add visible contribution interval overlays while
-keeping the same hover details. Classification and regression factual
-explanations are both supported.
+When `show_prediction_header=True` (the default), a visual prediction header is
+displayed above the contribution bars using Plotly subplots:
+
+- **Probabilistic explanations** (classification): two horizontal bars showing
+  target-class probability and its complement, each with calibrated interval
+  overlays. The x-axis is fixed to `[0, 1]`. The complement interval is
+  computed as `[1 − high, 1 − low]` so both bars span the full probability
+  simplex.
+- **Regression explanations**: one horizontal bar showing the prediction value
+  with its conformal interval overlay. The x-axis uses the data range.
+
+Although contribution interval marks are hidden by default, each bar hover
+includes the calibrated contribution interval, interval width, zero-crossing
+status, current feature value when available, and prediction interval metadata
+when available. Set `show_uncertainty=True` to add visible contribution interval
+overlays while keeping the same hover details. Classification and regression
+factual explanations are both supported.
 
 Factual bars examples:
 
 ```python
+# Default: prediction header shown above contribution bars
 factual[0].plot(style="plotly.local.factual_bars", show=True)
 
+# Show contribution uncertainty intervals as well
 factual[0].plot(
     style="plotly.local.factual_bars",
     show=True,
     show_uncertainty=True,
 )
+
+# Suppress the prediction header (classic single-panel view)
+factual[0].plot(
+    style="plotly.local.factual_bars",
+    show=True,
+    show_prediction_header=False,
+)
 ```
+
+Interpretation note: the prediction header bars and the contribution bars use
+independent x-axis scales. The header shows the actual prediction value (or
+probability), while the contribution bars show signed local feature effects.
+Do not compare their bar widths directly.
+
+The package also registers `plotly.local.alternative_bars`, a Plotly local bar
+plot for alternative (counterfactual/semifactual/superfactual) explanations.
+
+**Interpretation**: each bar in `plotly.local.alternative_bars` is an
+**independent candidate explanation** — not a contribution to a shared total.
+Alternative 1 says "if condition A holds, the prediction would be X." Alternative
+2 says "if condition B holds, the prediction would be Y." These are separate
+candidate scenarios; their bar values must not be summed or stacked.
+
+Design:
+- horizontal layout, one bar per alternative rule
+- bar value = prediction delta (`predict_alt − predict_base`) when a base
+  prediction is available; raw prediction value otherwise
+- colors encode the alternative role: blue = counter (counterfactual),
+  green = super (superfactual), amber = semi (semifactual), slate = unknown
+- conjunctive rules are followed by indented component sub-bars (one per
+  feature) when `include_conjunctive_components=True`; all components share
+  the same prediction delta because we do not have per-feature decomposition
+  for conjunctive alternatives
+- when `show_prediction_header=True` (default) and a base prediction is
+  available, the base prediction is shown above the alternative bars in a
+  separate sub-panel so the user can orient the delta scale
+
+Alternative bars example:
+
+```python
+alternatives = explainer.explore_alternatives(X_query)
+
+# Single instance
+alternatives[0].plot(
+    style="plotly.local.alternative_bars",
+    show=True,
+)
+
+# Filter to top 10, sort by prediction movement
+alternatives[0].plot(
+    style="plotly.local.alternative_bars",
+    filter_top=10,
+    sort_by="prediction_delta",
+    show=True,
+)
+
+# Hide unknown-role alternatives
+alternatives[0].plot(
+    style="plotly.local.alternative_bars",
+    unknown_policy="hide",
+    show=True,
+)
+
+# Suppress conjunctive component expansion
+alternatives[0].plot(
+    style="plotly.local.alternative_bars",
+    include_conjunctive_components=False,
+    show=True,
+)
+```
+
+Supported alternative-bars options:
+
+- `filter_top: int | None` — maximum number of alternatives after sorting
+- `sort_by` — `"original"` (default), `"prediction_delta"`,
+  `"interval_width"`, `"role"`, or `"feature"`
+- `show_uncertainty` (default `True`) — show calibrated prediction interval
+  overlays per alternative
+- `hover_uncertainty` (default `True`) — include interval in hover text
+- `show_prediction_header` (default `True`) — show base prediction sub-panel
+- `hover_detail` — `"compact"` (default) or `"full"`; full adds ensured/pareto
+  flags and conjunction details to hover
+- `include_conjunctive_components` (default `True`) — expand conjunctive
+  rules into per-feature sub-bars
+- `unknown_policy` — `"show"` (default) or `"hide"`
 
 The package also registers `plotly.local.ensured`, a Plotly version of CE's
 existing ensured local alternative plot. It preserves the current semantics:
@@ -306,7 +409,9 @@ See `examples/local_ensured_plotly.ipynb` for a
 `WrapCalibratedExplainer` classification and regression ensured walkthrough and
 `examples/local_uncertainty_quadrant.ipynb` for the local uncertainty quadrant
 example. See `examples/local_factual_bars.ipynb` for classification,
-regression, visible interval, and HTML export factual-bar examples. See
+regression, visible interval, prediction header, and HTML export factual-bar
+examples. See `examples/local_alternative_bars.ipynb` for an alternative bars
+walkthrough showing independent candidate explanations as separate rows. See
 `examples/local_alternative_feature_summary.ipynb` for the local alternative
 feature summary example and `examples/global_instance_explorer.ipynb` for a
 three-section batch instance explorer walkthrough.
