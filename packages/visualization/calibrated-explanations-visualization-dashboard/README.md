@@ -1,5 +1,11 @@
 # calibrated-explanations-visualization-dashboard
 
+Family: `visualization`
+
+Purpose: Multi-panel dashboard visualization plugin that combines any number of registered CE plot plugins with a narrative text panel into a single interactive Plotly figure.
+
+Compatibility: `calibrated-explanations[viz]>=0.11`
+
 Dashboard visualization plugin for [calibrated-explanations](https://github.com/Healthy-AI/calibrated-explanations).
 
 Combines any number of registered plot plugins and a narrative text panel into a single

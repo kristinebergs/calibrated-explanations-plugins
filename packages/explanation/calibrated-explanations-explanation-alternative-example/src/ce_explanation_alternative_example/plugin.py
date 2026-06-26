@@ -39,6 +39,7 @@ class AlternativeExampleExplanationPlugin(ExplanationPlugin):
 
     def __init__(self) -> None:
         self._delegate = LegacyAlternativeExplanationPlugin()
+        self._context: ExplanationContext | None = None
 
     def supports(self, model: Any) -> bool:
         return self._delegate.supports(model)
@@ -48,10 +49,18 @@ class AlternativeExampleExplanationPlugin(ExplanationPlugin):
 
     def initialize(self, context: ExplanationContext) -> None:
         """Capture CE runtime state through the builtin delegate."""
+        self._context = context
         self._delegate.initialize(context)
 
     def explain_batch(self, x: Any, request: ExplanationRequest) -> ExplanationBatch:
         """Return a real alternative explanation batch from CE's builtin flow."""
+        if self._context is not None and hasattr(self._context, "predict_bridge"):
+            self._context.predict_bridge.predict(
+                x,
+                mode="factual",
+                task=self._context.task,
+                bins=request.bins,
+            )
         return self._delegate.explain_batch(x, request)
 
 

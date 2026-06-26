@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization-dashboard"
-version = "0.1.0"
+version = "0.1.1"
 description = "Official dashboard visualization plugin for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.10"
