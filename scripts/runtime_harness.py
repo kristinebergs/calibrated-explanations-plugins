@@ -256,7 +256,8 @@ def validate_calibration_runtime(package_path: Path) -> None:
         prediction = explainer.predict(x_test, calibrated=True)
         if np.asarray(prediction).shape[0] != x_test.shape[0]:
             raise RuntimeError(f"Unexpected calibrated prediction shape for task {task!r}")
-        if explainer.interval_plugin_identifiers.get("default") != plugin_id:
+        id_map = getattr(explainer, "interval_plugin_identifiers", None) or getattr(explainer, "_interval_plugin_identifiers", {})
+        if id_map.get("default") != plugin_id:
             raise RuntimeError(f"CE did not select {plugin_id!r} as the active interval plugin")
 
 
