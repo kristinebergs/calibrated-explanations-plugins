@@ -115,6 +115,16 @@ def check_plugin_docstrings(package_path: Path) -> None:
         )
 
 
+def collect_optional_extras(package_path: Path) -> list[str]:
+    with (package_path / "pyproject.toml").open("rb") as handle:
+        data = tomllib.load(handle)
+    optional_deps = data.get("project", {}).get("optional-dependencies", {})
+    all_packages: list[str] = []
+    for deps in optional_deps.values():
+        all_packages.extend(deps)
+    return all_packages
+
+
 def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool) -> None:
     with tempfile.TemporaryDirectory(prefix="ce-plugin-runtime-") as tmp_dir:
         tmp_path = Path(tmp_dir)
@@ -138,6 +148,9 @@ def outer_check(package_path: Path, artifact_dir: Path | None, run_pytest: bool)
             ]
         )
         run_checked([str(python_bin), "-m", "pip", "install", str(wheel_path)])
+        optional_extras = collect_optional_extras(package_path)
+        if optional_extras:
+            run_checked([str(python_bin), "-m", "pip", "install", *optional_extras])
         if run_pytest:
             run_checked([str(python_bin), "-m", "pip", "install", "pytest", "pytest-cov"])
 
