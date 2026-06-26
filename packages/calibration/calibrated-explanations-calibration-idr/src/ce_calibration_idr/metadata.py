@@ -18,3 +18,23 @@ PLUGIN_META = {
     "data_modalities": ("tabular",),
     "plugin_api_version": "1.0",
 }
+
+CONFORMAL_PLUGIN_META = {
+    "schema_version": 1,
+    "name": "official.calibration.conformal_idr_regression",
+    "version": "0.1.0",
+    "provider": "official",
+    "capabilities": ["interval:regression"],
+    "modes": ("regression",),
+    "dependencies": ("official.calibration.idr_regression", "core.interval.venn_abers"),
+    "requires_probability_interval_calibrator": True,
+    "default_probability_interval_calibrator": "official.calibration.venn_abers",
+    "threshold_probability_calibrator_role": "binary_event_probability_interval",
+    "trusted": False,
+    "confidence_source": "conformal-idr+venn-abers",
+    "requires_bins": False,
+    "fast_compatible": False,
+    "coverage_type": "split_conformal_marginal",
+    "data_modalities": ("tabular",),
+    "plugin_api_version": "1.0",
+}
