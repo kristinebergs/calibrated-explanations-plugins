@@ -513,16 +513,8 @@ def _marker_color(predict: float | None, pivot: float | None) -> str:
 
 
 def _title_for(artifact: PlotArtifact, options: dict[str, Any]) -> str:
-    n_alts = int((artifact.get("metadata") or {}).get("num_alternatives", 0))
-    task = artifact.get("task") or ""
-    base_pred = dict(artifact.get("base_prediction", {}) or {})
-    base = _as_float(base_pred.get("predict"))
-    parts = [f"Alternative explanations ({n_alts} independent scenarios)"]
-    if task:
-        parts[0] += f" — {task}"
-    if base is not None:
-        parts.append(f"Base prediction: {_fmt(base)}")
-    return " | ".join(parts)
+    # No title for parity with CE legacy/PlotSpec behaviour (axis labels only).
+    return ""
 
 
 def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
@@ -673,7 +665,8 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 "color": marker_colors_list,
                 "line": {"width": 2.5, "color": marker_colors_list},
             },
-            hoverinfo="skip",
+            hovertext=hover_texts,
+            hovertemplate="%{hovertext}<extra></extra>",
             showlegend=False,
             name="prediction",
         )

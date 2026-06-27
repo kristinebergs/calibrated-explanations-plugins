@@ -262,12 +262,11 @@ def test_show_uncertainty_adds_visible_interval_trace(monkeypatch):
     context = _context(_dummy_explanation(), show_uncertainty=True, show_prediction_header=False)
     result = plugin.render(plugin.build(context), context=context)
 
-    # Classification with a crossing-zero rule produces up to 3 interval traces
-    # (neutral, negative half, positive half); at least one must be present.
-    _interval_names = {"contribution interval", "negative interval", "positive interval"}
+    # Uncertainty intervals are now filled Bar traces (not Scatter lines).
+    # Classification with a crossing-zero rule produces multiple color-grouped interval bars.
     interval_traces = [
         t for t in result.figure.traces
-        if t.__class__.__name__ == "FakeScatter" and t.kwargs.get("name") in _interval_names
+        if t.__class__.__name__ == "FakeBar" and t.kwargs.get("name") == "contribution interval"
     ]
     assert len(interval_traces) >= 1
 

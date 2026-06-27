@@ -513,10 +513,7 @@ def _extract_items(
     include_missing = bool(options.get("include_missing_interval_items", True))
 
     # Determine which indices to visit, in display order
-    if indices is not None:
-        index_iter = indices
-    else:
-        index_iter = list(range(len(weights)))
+    index_iter = indices if indices is not None else list(range(len(weights)))
 
     items: list[dict[str, Any]] = []
     missing_intervals = 0
@@ -615,14 +612,18 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
 
         # Guard: one-sided explanations have no contribution intervals.
         # Match CE core behaviour: raise Warning (same class as core does).
+        # Note: Warning is a subclass of Exception, so contextlib.suppress(Exception) must NOT
+        # wrap the raise — only the is_one_sided() call gets suppressed on error.
         if options["show_uncertainty"]:
             is_one_sided_fn = getattr(local_explanation, "is_one_sided", None)
             if callable(is_one_sided_fn):
+                _is_one_sided = False
                 with contextlib.suppress(Exception):
-                    if is_one_sided_fn():
-                        raise Warning(
-                            "Interval plot is not supported for one-sided explanations."
-                        )
+                    _is_one_sided = bool(is_one_sided_fn())
+                if _is_one_sided:
+                    raise Warning(
+                        "Interval plot is not supported for one-sided explanations."
+                    )
 
         mode_metadata = _mode_metadata(context.explanation, local_explanation)
         collection = _collection_for(local_explanation)
@@ -725,6 +726,60 @@ def _interval_color_for(
     return _REG_POS_INTERVAL if side == "positive" else _REG_NEG_INTERVAL
 
 
+def _compute_body_xrange(
+    items: list[dict[str, Any]],
+    render_options: dict[str, Any],
+    prediction: dict[str, Any],
+    *,
+    is_dual_header: bool,
+) -> list[float] | None:
+    """Derive body x-axis range from all body primitives, mirroring PlotSpec adapter logic."""
+    show_uncertainty = bool(render_options.get("show_uncertainty", False))
+    vals: list[float] = [0.0]
+
+    for item in items:
+        contribution = _as_float(item.get("contribution"))
+        if contribution is None:
+            continue
+        if show_uncertainty and item.get("crosses_zero"):
+            vals.append(0.0)
+        else:
+            vals.append(contribution)
+        if show_uncertainty:
+            low = _as_float(item.get("contribution_low"))
+            high = _as_float(item.get("contribution_high"))
+            if low is not None:
+                vals.append(low)
+            if high is not None:
+                vals.append(high)
+
+    if is_dual_header and show_uncertainty:
+        p_val = _as_float(prediction.get("value"))
+        p_lo = _as_float(prediction.get("low"))
+        p_hi = _as_float(prediction.get("high"))
+        if p_val is not None and p_lo is not None and p_hi is not None:
+            vals.append(p_lo - p_val)
+            vals.append(p_hi - p_val)
+
+    if not vals:
+        return None
+
+    x_min = min(vals)
+    x_max = max(vals)
+
+    if x_min == x_max:
+        x_min -= 0.1
+        x_max += 0.1
+
+    if is_dual_header:
+        span = x_max - x_min
+        padding = span * 0.05
+        x_min -= padding
+        x_max += padding
+
+    return [x_min, x_max]
+
+
 def _add_contribution_traces(
     fig: Any,
     items: list[dict[str, Any]],
@@ -771,15 +826,10 @@ def _add_contribution_traces(
         **add_kwargs,
     )
     if show_uncertainty:
-        # Collect crossing-zero and non-crossing intervals into per-color groups
-        # to match CE's fill_betweenx colour convention at alpha 0.2.
-        interval_groups: dict[str, tuple[list[float | None], list[str | None]]] = {}
-
-        def _add_to_group(color: str, xs: list[float | None], ys: list[str | None]) -> None:
-            if color not in interval_groups:
-                interval_groups[color] = ([], [])
-            interval_groups[color][0].extend(xs)
-            interval_groups[color][1].extend(ys)
+        # Build per-entry list of (y_label, base, width, color, hover).
+        # For crossing-zero intervals, emit two entries (negative side and positive side).
+        # Per-color bar traces render as filled horizontal bands that shadow the solid bars.
+        bar_entries: list[tuple[str, float, float, str, str]] = []
 
         for label, item in zip(labels, items, strict=False):
             low = item.get("contribution_low")
@@ -788,6 +838,7 @@ def _add_contribution_traces(
                 continue
             low_f, high_f = float(low), float(high)
             direction = item.get("direction", "positive")
+            hover = str(item.get("hover", ""))
             if item.get("crosses_zero") and low_f < 0.0 < high_f:
                 neg_color = _interval_color_for(
                     direction, is_classification=is_classification, crossing_side="negative"
@@ -795,20 +846,32 @@ def _add_contribution_traces(
                 pos_color = _interval_color_for(
                     direction, is_classification=is_classification, crossing_side="positive"
                 )
-                _add_to_group(neg_color, [low_f, 0.0, None], [label, label, None])
-                _add_to_group(pos_color, [0.0, high_f, None], [label, label, None])
+                bar_entries.append((label, low_f, -low_f, neg_color, hover))
+                bar_entries.append((label, 0.0, high_f, pos_color, hover))
             else:
                 interval_color = _interval_color_for(
                     direction, is_classification=is_classification
                 )
-                _add_to_group(interval_color, [low_f, high_f, None], [label, label, None])
+                bar_entries.append((label, low_f, high_f - low_f, interval_color, hover))
 
-        for color, (x_vals, y_vals) in interval_groups.items():
+        color_groups: dict[str, list[tuple[str, float, float, str]]] = {}
+        for y_label, base, width, color, hover in bar_entries:
+            if color not in color_groups:
+                color_groups[color] = []
+            color_groups[color].append((y_label, base, width, hover))
+
+        for color, entries in color_groups.items():
             fig.add_trace(
-                go.Scatter(
-                    x=x_vals, y=y_vals, mode="lines",
-                    line={"color": color, "width": 5},
-                    hoverinfo="skip", showlegend=False, name="contribution interval",
+                go.Bar(
+                    x=[e[2] for e in entries],
+                    y=[e[0] for e in entries],
+                    base=[e[1] for e in entries],
+                    orientation="h",
+                    marker={"color": color},
+                    hovertext=[e[3] for e in entries],
+                    hovertemplate="%{hovertext}<extra></extra>",
+                    showlegend=False,
+                    name="contribution interval",
                 ),
                 **add_kwargs,
             )
@@ -884,7 +947,8 @@ def _add_prediction_header_traces(
                         base=[float(p_low)],
                         orientation="h",
                         marker={"color": bar_color, "opacity": 0.35},
-                        hoverinfo="skip",
+                        hovertext=[hover],
+                        hovertemplate="%{hovertext}<extra></extra>",
                         showlegend=False,
                         name=f"interval: {bar_label}",
                     ),
@@ -1060,6 +1124,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             margin={"l": 160, "r": 200, "t": 64, "b": 56},
             showlegend=False,
             bargap=0.25,
+            barmode="overlay",
         )
         if x_range is not None:
             fig.update_xaxes(range=x_range, row=1, col=1)
@@ -1069,6 +1134,9 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         fig.update_xaxes(title_text=x_label_contribution, row=2, col=1)
         fig.update_yaxes(title_text=y_label_contribution, row=2, col=1)
         fig.update_yaxes(autorange="reversed", row=2, col=1)
+        body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=True)
+        if body_range is not None:
+            fig.update_xaxes(range=body_range, row=2, col=1)
     else:
         fig = go.Figure()
         _add_contribution_traces(fig, items, labels, values, colors, hover_text, render_options)
@@ -1113,7 +1181,11 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             margin={"l": 160, "r": 200, "t": 64, "b": 56},
             showlegend=False,
             bargap=0.25,
+            barmode="overlay",
         )
+        body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=False)
+        if body_range is not None:
+            fig.update_xaxes(range=body_range)
     return fig
 
 
@@ -1170,4 +1242,5 @@ __all__ = [
     "LocalFactualBarsPlotBuilder",
     "LocalFactualBarsPlotRenderer",
     "build_figure",
+    "_compute_body_xrange",
 ]
