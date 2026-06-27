@@ -440,7 +440,10 @@ def test_regression_artifact_has_one_prediction_header_bar(monkeypatch):
     assert pred["bars"][0]["low"] == pytest.approx(38.2)
     assert pred["bars"][0]["high"] == pytest.approx(46.8)
     assert pred["x_range"] is None
-    assert pred["x_label"] == "Predicted value"
+    # CE parity: regression header uses "Prediction interval [with X% confidence]"
+    assert pred["x_label"].startswith("Prediction interval"), (
+        f"Expected x_label to start with 'Prediction interval', got '{pred['x_label']}'"
+    )
 
 
 def test_show_prediction_header_false_suppresses_header_traces(monkeypatch):
@@ -665,3 +668,165 @@ def test_uncertainty_suppresses_bars_that_cross_zero(monkeypatch):
     assert x_vals[a_rule_idx] != pytest.approx(0.0), (
         "Bar for 'a rule' should NOT be suppressed — its interval doesn't cross zero"
     )
+
+
+# ── CE core ranking parity ────────────────────────────────────────────────────
+
+
+def test_default_ranking_uses_ce_feature_weight_order(monkeypatch):
+    """Without explicit sort_by, builder must rank by abs(weight) with width tie-break
+    — matching CE's rank_features(feature_weights, width=width) convention."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    # _rules(): weights=[0.2, -0.5, 0.1, 0.4], widths=[0.2, 0.6, 0.25, 0.3]
+    # (|w|, width) pairs: (0.2,0.2), (0.5,0.6), (0.1,0.25), (0.4,0.3)
+    # ascending sort: idx2, idx0, idx3, idx1 → reversed for display: [1,3,0,2]
+    # rules at those indices: "a rule", "c rule", "b rule", "d rule"
+    artifact = plugin.build(_context(_dummy_explanation()))
+
+    rules_order = [item["rule"] for item in artifact["items"]]
+    assert rules_order == ["a rule", "c rule", "b rule", "d rule"], (
+        f"Expected CE feature_weight ranking order, got {rules_order}"
+    )
+
+
+def test_rnk_metric_and_rnk_weight_stored_in_options_used(monkeypatch):
+    """rnk_metric and rnk_weight must appear in artifact options_used."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_explanation(), rnk_metric="feature_weight", rnk_weight=0.3))
+
+    assert artifact["options_used"]["rnk_metric"] == "feature_weight"
+    assert artifact["options_used"]["rnk_weight"] == pytest.approx(0.3)
+
+
+def test_uncertainty_rnk_metric_normalised_to_ensured(monkeypatch):
+    """rnk_metric='uncertainty' must be normalised to 'ensured' with rnk_weight=1.0."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_explanation(), rnk_metric="uncertainty"))
+
+    assert artifact["options_used"]["rnk_metric"] == "ensured"
+    assert artifact["options_used"]["rnk_weight"] == pytest.approx(1.0)
+
+
+def test_explicit_sort_by_overrides_ce_ranking(monkeypatch):
+    """Explicit sort_by must bypass CE ranking so legacy tests remain valid."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_explanation(), sort_by="original"))
+
+    rules_order = [item["rule"] for item in artifact["items"]]
+    assert rules_order == ["b rule", "a rule", "d rule", "c rule"], (
+        f"sort_by='original' must preserve insertion order, got {rules_order}"
+    )
+
+
+def test_filter_top_applies_to_ce_ranking(monkeypatch):
+    """filter_top slices after CE ranking so the top-k by importance are kept."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    # Default CE ranking: ["a rule", "c rule", "b rule", "d rule"]
+    # filter_top=2 keeps the first two: ["a rule", "c rule"]
+    artifact = plugin.build(_context(_dummy_explanation(), filter_top=2))
+
+    rules_order = [item["rule"] for item in artifact["items"]]
+    assert len(rules_order) == 2
+    assert rules_order == ["a rule", "c rule"], (
+        f"filter_top=2 with CE ranking must keep top-2 by importance, got {rules_order}"
+    )
+
+
+# ── One-sided uncertainty guard ───────────────────────────────────────────────
+
+
+def test_one_sided_explanation_raises_warning_when_uncertainty_requested(monkeypatch):
+    """Requesting show_uncertainty=True on a one-sided explanation must raise Warning,
+    matching CE core behaviour (raise Warning(...))."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    collection = SimpleNamespace(feature_names=["a", "b"])
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={"predict": 0.74, "low": 0.66, "high": 0.81},
+        rules=_rules(),
+        get_mode=lambda: "classification",
+        is_regression=lambda: False,
+        is_probabilistic=lambda: True,
+        is_alternative=lambda: False,
+        is_one_sided=lambda: True,
+    )
+    collection.explanations = [local]
+    collection.batch_metadata = {"task": "classification", "mode": "classification"}
+
+    with pytest.raises(Warning, match="one-sided"):
+        plugin.build(_context(collection, show_uncertainty=True))
+
+
+def test_one_sided_explanation_without_uncertainty_does_not_raise(monkeypatch):
+    """One-sided explanation without show_uncertainty must build without error."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    collection = SimpleNamespace(feature_names=["a", "b"])
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={"predict": 0.74, "low": 0.66, "high": 0.81},
+        rules=_rules(),
+        get_mode=lambda: "classification",
+        is_regression=lambda: False,
+        is_probabilistic=lambda: True,
+        is_alternative=lambda: False,
+        is_one_sided=lambda: True,
+    )
+    collection.explanations = [local]
+    collection.batch_metadata = {"task": "classification", "mode": "classification"}
+
+    artifact = plugin.build(_context(collection, show_uncertainty=False))
+
+    assert artifact["artifact_type"] == STYLE_ID
+
+
+# ── Regression confidence label ───────────────────────────────────────────────
+
+
+def test_regression_header_label_uses_confidence_when_available(monkeypatch):
+    """Regression header x_label must use 'Prediction interval with X% confidence'
+    when get_confidence() is available on the collection."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    collection = SimpleNamespace(
+        feature_names=["age", "income", "score", "risk"],
+        get_confidence=lambda: 90,
+    )
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={"predict": 42.5, "low": 38.2, "high": 46.8},
+        rules=_rules(),
+        get_mode=lambda: "regression",
+        is_regression=lambda: True,
+        is_probabilistic=lambda: False,
+        is_alternative=lambda: False,
+    )
+    collection.explanations = [local]
+    collection.batch_metadata = {"task": "regression", "mode": "regression"}
+
+    artifact = plugin.build(_context(collection))
+
+    assert artifact["prediction"]["x_label"] == "Prediction interval with 90% confidence"
+
+
+def test_regression_header_label_fallback_without_confidence(monkeypatch):
+    """Without get_confidence, regression header x_label must be 'Prediction interval'."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_regression_explanation()))
+
+    assert artifact["prediction"]["x_label"] == "Prediction interval"

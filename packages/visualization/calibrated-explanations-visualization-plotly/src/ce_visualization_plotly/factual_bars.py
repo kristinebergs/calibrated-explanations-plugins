@@ -21,16 +21,20 @@ RENDERER_ID = "official.visualization.plotly.local.factual_bars.renderer"
 ARTIFACT_VERSION = "0.1.0"
 
 _LOGGER = logging.getLogger(__name__)
-# Task-specific bar colors matching matplotlib tab palette for visual parity
-# Classification: positive contribution → red, negative → blue (CE default)
-# Regression: positive contribution → blue, negative → red (CE default)
+# Task-specific bar colors matching matplotlib tab palette for visual parity.
+# Classification: positive contribution → red, negative → blue (CE default).
+# Regression: positive contribution → blue, negative → red (CE default).
 _CLF_POS_COLOR = "#d62728"   # tab:red
 _CLF_NEG_COLOR = "#1f77b4"   # tab:blue
 _REG_POS_COLOR = "#1f77b4"   # tab:blue
 _REG_NEG_COLOR = "#d62728"   # tab:red
-_INTERVAL_COLOR = "rgba(45, 55, 72, 0.45)"
-_INTERVAL_NEG_COLOR = "rgba(184, 74, 81, 0.65)"
-_INTERVAL_POS_COLOR = "rgba(42, 157, 143, 0.65)"
+# Body interval overlay colors — parity with CE matplotlib fill_betweenx at alpha 0.2.
+# Classification body: positive contribution range → red alpha 0.2, negative → blue alpha 0.2.
+# Regression body: positive → blue alpha 0.2, negative → red alpha 0.2.
+_CLF_POS_INTERVAL = "rgba(214, 39, 40, 0.20)"   # red, alpha 0.2
+_CLF_NEG_INTERVAL = "rgba(31, 119, 180, 0.20)"  # blue, alpha 0.2
+_REG_POS_INTERVAL = "rgba(31, 119, 180, 0.20)"  # blue, alpha 0.2
+_REG_NEG_INTERVAL = "rgba(214, 39, 40, 0.20)"   # red, alpha 0.2
 
 
 def _warn_fallback(reason: str) -> None:
@@ -133,6 +137,118 @@ def _resolve_rules(local_explanation: Any) -> dict[str, Any]:
     return rules
 
 
+def _compute_ranking(
+    local_explanation: Any,
+    rules: dict[str, Any],
+    options: dict[str, Any],
+) -> list[int] | None:
+    """Return display-ordered indices using CE core ranking semantics.
+
+    When sort_by is explicitly set, returns None so the caller falls back to
+    _sort_items. Otherwise returns a list of original rule indices ordered from
+    most important (index 0) to least important, matching CE's rank_features
+    ascending-then-reversed convention.
+    """
+    if options.get("sort_by") is not None:
+        return None
+
+    weights = list(rules.get("weight", ()))
+    n = len(weights)
+    if n == 0:
+        return []
+
+    filter_top = options.get("filter_top")
+    if filter_top is None:
+        filter_top = n
+    filter_top = min(n, max(0, int(filter_top)))
+    if filter_top <= 0:
+        return []
+
+    rnk_metric = str(options.get("rnk_metric", "feature_weight"))
+    rnk_weight = float(options.get("rnk_weight", 0.5))
+
+    import numpy as np  # noqa: PLC0415 — conditional import for non-plotting code path
+
+    fw = np.nan_to_num(
+        np.array([_as_float(w) or 0.0 for w in weights]),
+        nan=0.0,
+        posinf=np.finfo(float).max,
+        neginf=-np.finfo(float).max,
+    )
+
+    # Compute weight-interval width for tie-breaking / ensured ranking
+    lows = list(rules.get("weight_low", rules.get("low", [])))
+    highs = list(rules.get("weight_high", rules.get("high", [])))
+    width: Any = None
+    if len(lows) == n and len(highs) == n:
+        with contextlib.suppress(Exception):
+            low_arr = np.array([_as_float(v) or 0.0 for v in lows])
+            high_arr = np.array([_as_float(v) or 0.0 for v in highs])
+            width = np.nan_to_num(high_arr - low_arr, nan=0.0)
+
+    rank_fn = getattr(local_explanation, "rank_features", None)
+
+    if rnk_metric == "feature_weight":
+        if callable(rank_fn):
+            with contextlib.suppress(Exception):
+                raw = rank_fn(fw, width=width, num_to_show=filter_top)
+                indices = list(raw.tolist() if hasattr(raw, "tolist") else list(raw))
+                return list(reversed(indices))
+        # Fallback: replicate CE rank_features logic inline
+        if width is not None:
+            paired = list(zip(np.abs(fw), width, strict=False))
+            sorted_idx = sorted(range(n), key=lambda i: (paired[i][0], paired[i][1]))
+        else:
+            sorted_idx = sorted(range(n), key=lambda i: float(np.abs(fw[i])))
+        top_k = sorted_idx[-filter_top:]
+        return list(reversed(top_k))
+
+    # Non-feature_weight: try calculate_metrics (CE ensured/uncertainty path)
+    with contextlib.suppress(Exception):
+        from calibrated_explanations.utils.metrics import calculate_metrics  # noqa: PLC0415
+
+        predict_lows = list(rules.get("predict_low", []))
+        predict_highs = list(rules.get("predict_high", []))
+        predict_vals = list(rules.get("predict", []))
+
+        uncertainty_vals: list[float] = []
+        for i in range(n):
+            pl = _as_float(_sequence_get(predict_lows, i))
+            ph = _as_float(_sequence_get(predict_highs, i))
+            if pl is not None and ph is not None:
+                uncertainty_vals.append(float(ph) - float(pl))
+            elif width is not None and i < len(width):
+                uncertainty_vals.append(float(width[i]))
+            else:
+                uncertainty_vals.append(0.0)
+
+        prediction_vals = (
+            [_as_float(v) or 0.0 for v in predict_vals]
+            if predict_vals
+            else [float(fw[i]) for i in range(n)]
+        )
+
+        ranking = calculate_metrics(
+            uncertainty=uncertainty_vals,
+            prediction=prediction_vals,
+            w=rnk_weight,
+            metric=rnk_metric,
+        )
+        rank_arr = np.nan_to_num(np.array(ranking, dtype=float), nan=0.0)
+        if callable(rank_fn):
+            raw = rank_fn(width=rank_arr, num_to_show=filter_top)
+            indices = list(raw.tolist() if hasattr(raw, "tolist") else list(raw))
+            return list(reversed(indices))
+        sorted_idx = sorted(range(n), key=lambda i: float(rank_arr[i]))
+        top_k = sorted_idx[-filter_top:]
+        return list(reversed(top_k))
+
+    # Final fallback: sort by abs weight
+    sorted_idx = sorted(range(n), key=lambda i: float(np.abs(fw[i])))
+    top_k = sorted_idx[-filter_top:]
+    return list(reversed(top_k))
+
+
 def _prediction_header(
     local_explanation: Any,
     mode_metadata: dict[str, Any],
@@ -162,16 +278,15 @@ def _prediction_header(
         "task": mode_metadata.get("task"),
     }
 
-    # Additive per-bar info for the visual header renderer.
     task = mode_metadata.get("task")
     is_probabilistic = mode_metadata.get("is_probabilistic", False)
     is_regression = mode_metadata.get("is_regression", False)
 
     if is_probabilistic or task in ("classification",):
-        # Attempt class-label resolution in preference order:
-        # 1. CE collection-level get_class_labels()
-        # 2. prediction["classes"/"class"/"label"] from the artifact
-        # 3. threshold labels if explanation is thresholded
+        # Class-label resolution in preference order:
+        # 1. get_class_labels() on collection (CE canonical)
+        # 2. prediction["classes"/"class"/"label"] from artifact
+        # 3. threshold labels for thresholded explanations
         # 4. generic fallback
         collection = _collection_for(local_explanation)
         get_cls_fn = getattr(local_explanation, "get_class_labels", None) or getattr(
@@ -181,9 +296,22 @@ def _prediction_header(
         if callable(get_cls_fn):
             with contextlib.suppress(Exception):
                 class_labels = get_cls_fn()
+
+        # Determine predicted class for multiclass: use prediction["classes"] if present
+        predicted_class = None
+        if isinstance(prediction, dict):
+            predicted_class = prediction.get("classes", prediction.get("class"))
+
         if class_labels is not None and len(class_labels) >= 2:
-            target_label = str(class_labels[1])
-            complement_label = str(class_labels[0])
+            # For multiclass: use the predicted class index to identify target vs complement
+            if predicted_class is not None:
+                with contextlib.suppress(Exception):
+                    cls_idx = int(predicted_class)
+                    target_label = str(class_labels[cls_idx])
+                    complement_label = f"P(y!={class_labels[cls_idx]})"
+            else:
+                target_label = str(class_labels[1])
+                complement_label = str(class_labels[0])
         elif label is not None:
             target_label = str(label)
             complement_label = "complement"
@@ -192,7 +320,7 @@ def _prediction_header(
             threshold_val = getattr(local_explanation, "threshold", None)
             if callable(is_thresholded_fn) and is_thresholded_fn() and threshold_val is not None:
                 target_label = f"P(y > {threshold_val})"
-                complement_label = f"P(y ≤ {threshold_val})"
+                complement_label = f"P(y <= {threshold_val})"
             else:
                 target_label = "class 1"
                 complement_label = "class 0"
@@ -207,7 +335,6 @@ def _prediction_header(
 
             complement_bar: dict[str, Any] = {"label": complement_label, "value": 1.0 - p}
             if p_low is not None and p_high is not None:
-                # Complement interval: [1-high, 1-low] — do not mutate stored values
                 complement_bar["low"] = 1.0 - p_high
                 complement_bar["high"] = 1.0 - p_low
             bars.append(complement_bar)
@@ -226,9 +353,6 @@ def _prediction_header(
             bars.append(regression_bar)
         result["kind"] = "regression"
         result["bars"] = bars
-        # x-range anchored to the calibration set output range so the bar can be read
-        # in the context of previously seen values (matches plotspec default behaviour).
-        # p_low/p_high are used only to extend the range in case of extrapolation.
         x_range: list[float] | None = None
         if y_minmax is not None:
             with contextlib.suppress(Exception):
@@ -241,7 +365,17 @@ def _prediction_header(
                 if lo < hi:
                     x_range = [lo, hi]
         result["x_range"] = x_range
-        result["x_label"] = "Predicted value"
+        # Match CE core: "Prediction interval with {confidence}% confidence"
+        collection = _collection_for(local_explanation)
+        confidence = None
+        get_conf = getattr(collection, "get_confidence", None)
+        if callable(get_conf):
+            with contextlib.suppress(Exception):
+                confidence = get_conf()
+        if confidence is not None:
+            result["x_label"] = f"Prediction interval with {confidence}% confidence"
+        else:
+            result["x_label"] = "Prediction interval"
     else:
         result["kind"] = None
         result["bars"] = []
@@ -270,11 +404,14 @@ def _mode_metadata(explanation: Any, local_explanation: Any) -> dict[str, Any]:
 
 
 def _default_options(options: dict[str, Any]) -> dict[str, Any]:
-    sort_by = str(options.get("sort_by", "original"))
-    if sort_by not in {"abs", "value", "interval_width", "label", "original"}:
-        raise ValueError(
-            "sort_by must be one of abs, value, interval_width, label, or original."
-        )
+    # sort_by is an explicit override; None means use CE core ranking (rnk_metric/rnk_weight)
+    sort_by = options.get("sort_by")
+    if sort_by is not None:
+        sort_by = str(sort_by)
+        if sort_by not in {"abs", "value", "interval_width", "label", "original"}:
+            raise ValueError(
+                "sort_by must be one of abs, value, interval_width, label, or original."
+            )
     orientation = str(options.get("orientation", "horizontal"))
     if orientation != "horizontal":
         raise ValueError("plotly.local.factual_bars supports orientation='horizontal' only.")
@@ -282,9 +419,17 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     if hover_detail not in {"compact", "full"}:
         raise ValueError("hover_detail must be compact or full.")
     filter_top = options.get("filter_top")
+    rnk_metric = str(options.get("rnk_metric", "feature_weight"))
+    if rnk_metric == "uncertainty":
+        rnk_metric = "ensured"
+        rnk_weight = 1.0
+    else:
+        rnk_weight = float(options.get("rnk_weight", 0.5))
     return {
         "filter_top": None if filter_top is None else int(filter_top),
         "sort_by": sort_by,
+        "rnk_metric": rnk_metric,
+        "rnk_weight": rnk_weight,
         "show_uncertainty": bool(
             options.get("show_uncertainty", bool(options.get("uncertainty", False)))
         ),
@@ -306,17 +451,6 @@ def _decimal_places_in_rule(rule_str: str) -> int:
     """Return the maximum number of decimal places used in any numeric threshold in a rule."""
     parts = re.findall(r"\d+\.(\d+)", str(rule_str))
     return max((len(p) for p in parts), default=0)
-
-
-def _format_instance_value(value: Any, rule_str: str) -> str:
-    """Format an instance value with one more decimal place than the rule threshold uses."""
-    if value is None:
-        return "unavailable"
-    f = _as_float(value)
-    if f is None:
-        return _display_value(value)
-    n = _decimal_places_in_rule(rule_str) + 1
-    return f"{f:.{n}f}"
 
 
 def _build_hover(item: dict[str, Any], prediction: dict[str, Any], options: dict[str, Any]) -> str:
@@ -363,7 +497,10 @@ def _extract_items(
     local_explanation: Any,
     prediction: dict[str, Any],
     options: dict[str, Any],
+    *,
+    indices: list[int] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
+    """Extract rule items, optionally restricted to the given original-index list."""
     rules = _resolve_rules(local_explanation)
     weights = list(rules.get("weight", ()))
     lows = list(rules.get("weight_low", rules.get("low", ())))
@@ -374,10 +511,18 @@ def _extract_items(
     feature_values = list(rules.get("feature_value", ()))
     collection = _collection_for(local_explanation)
     include_missing = bool(options.get("include_missing_interval_items", True))
+
+    # Determine which indices to visit, in display order
+    if indices is not None:
+        index_iter = indices
+    else:
+        index_iter = list(range(len(weights)))
+
     items: list[dict[str, Any]] = []
     missing_intervals = 0
 
-    for original_index, raw_weight in enumerate(weights):
+    for original_index in index_iter:
+        raw_weight = _sequence_get(weights, original_index)
         contribution = _as_float(raw_weight)
         if contribution is None:
             continue
@@ -395,7 +540,7 @@ def _extract_items(
         feature = _sequence_get(features, original_index)
         item = {
             "id": f"rule-{original_index}",
-            "rank": original_index,
+            "rank": len(items),
             "feature_index": feature,
             "feature_name": _feature_name(collection, feature),
             "rule": str(_sequence_get(labels, original_index, f"rule {original_index}")),
@@ -468,26 +613,22 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
         if _is_alternative_explanation(local_explanation):
             raise ValueError("plotly.local.factual_bars does not support alternative explanations.")
 
-        # Guard: one-sided explanations have no contribution intervals
+        # Guard: one-sided explanations have no contribution intervals.
+        # Match CE core behaviour: raise Warning (same class as core does).
         if options["show_uncertainty"]:
             is_one_sided_fn = getattr(local_explanation, "is_one_sided", None)
             if callable(is_one_sided_fn):
                 with contextlib.suppress(Exception):
                     if is_one_sided_fn():
-                        warnings.warn(
-                            "Interval plot is not supported for one-sided explanations; "
-                            "show_uncertainty disabled.",
-                            UserWarning,
-                            stacklevel=2,
+                        raise Warning(
+                            "Interval plot is not supported for one-sided explanations."
                         )
-                        options["show_uncertainty"] = False
 
         mode_metadata = _mode_metadata(context.explanation, local_explanation)
         collection = _collection_for(local_explanation)
         is_regression = bool(mode_metadata.get("is_regression", False))
         y_minmax: list[float] | None = None
         if is_regression:
-            # Try the pre-computed attribute first, then derive from calibration labels
             y_minmax_raw = getattr(collection, "y_minmax", None)
             if y_minmax_raw is not None:
                 with contextlib.suppress(Exception):
@@ -502,14 +643,29 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
                                 y_minmax = [float(min(_arr)), float(max(_arr))]
                                 break
         prediction = _prediction_header(local_explanation, mode_metadata, y_minmax=y_minmax)
-        items, missing_intervals = _extract_items(local_explanation, prediction, options)
+
+        # Determine display order using CE core ranking, unless sort_by is explicit
+        rules = _resolve_rules(local_explanation)
+        ranking_indices = _compute_ranking(local_explanation, rules, options)
+
+        if ranking_indices is not None:
+            # CE-ranked path: items are already ordered by _compute_ranking
+            items, missing_intervals = _extract_items(
+                local_explanation, prediction, options, indices=ranking_indices
+            )
+        else:
+            # sort_by explicit override path
+            items, missing_intervals = _extract_items(local_explanation, prediction, options)
+            sort_by = str(options["sort_by"])
+            items = _sort_items(items, sort_by)
+            filter_top = options["filter_top"]
+            if filter_top is not None:
+                items = items[: int(filter_top)]
+
         if not items:
             raise ValueError("No factual rule contributions were available for plotting.")
 
-        sorted_items = _sort_items(items, str(options["sort_by"]))
-        if options["filter_top"] is not None:
-            sorted_items = sorted_items[: int(options["filter_top"])]
-        for rank, item in enumerate(sorted_items):
+        for rank, item in enumerate(items):
             item["rank"] = rank
 
         return {
@@ -519,7 +675,7 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
             "mode": mode_metadata.get("mode"),
             "task": mode_metadata.get("task"),
             "prediction": prediction,
-            "items": sorted_items,
+            "items": items,
             "axis_metadata": {
                 "x_label": "Feature weights",
                 "y_label": "Rules" if mode_metadata.get("task") == "regression" else "Features",
@@ -528,13 +684,15 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
             "options_used": {
                 "filter_top": options["filter_top"],
                 "sort_by": options["sort_by"],
+                "rnk_metric": options["rnk_metric"],
+                "rnk_weight": options["rnk_weight"],
                 "show_uncertainty": options["show_uncertainty"],
                 "hover_uncertainty": options["hover_uncertainty"],
                 "show_prediction_header": options["show_prediction_header"],
                 "hover_detail": options["hover_detail"],
             },
             "metadata": {
-                "num_items": len(sorted_items),
+                "num_items": len(items),
                 "num_missing_intervals": missing_intervals,
                 "created_by": STYLE_ID,
                 "instance_index": getattr(local_explanation, "index", None),
@@ -543,17 +701,28 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
 
 
 def _title_for(artifact: PlotArtifact, options: dict[str, Any]) -> str:
-    if not bool(options.get("show_prediction_header", True)):
-        return "Local factual contributions"
-    prediction = dict(artifact.get("prediction", {}) or {})
-    value = _format_number(prediction.get("value"))
-    title = f"Local factual contributions - prediction {value}"
-    if prediction.get("low") is not None and prediction.get("high") is not None:
-        title += (
-            f" [{_format_number(prediction.get('low'))}, "
-            f"{_format_number(prediction.get('high'))}]"
-        )
-    return title
+    # Default to no title for strict parity with CE legacy/PlotSpec behaviour.
+    # CE core plots do not set a visible figure title; they use axis labels only.
+    return ""
+
+
+def _interval_color_for(
+    direction: str,
+    *,
+    is_classification: bool,
+    crossing_side: str | None = None,
+) -> str:
+    """Return the legacy-parity interval overlay color for a contribution bar.
+
+    For crossing-zero rules, crossing_side is 'negative' or 'positive'.
+    For non-crossing rules, direction determines the color.
+    Classification: positive → red alpha 0.2, negative → blue alpha 0.2.
+    Regression: positive → blue alpha 0.2, negative → red alpha 0.2.
+    """
+    side = crossing_side if crossing_side is not None else direction
+    if is_classification:
+        return _CLF_POS_INTERVAL if side == "positive" else _CLF_NEG_INTERVAL
+    return _REG_POS_INTERVAL if side == "positive" else _REG_NEG_INTERVAL
 
 
 def _add_contribution_traces(
@@ -577,6 +746,7 @@ def _add_contribution_traces(
         add_kwargs["col"] = col
 
     show_uncertainty = bool(render_options.get("show_uncertainty", False))
+    is_classification = bool(render_options.get("is_classification", False))
 
     # Suppress the solid bar for rules whose interval crosses zero (uncertainty=True only)
     if show_uncertainty:
@@ -601,52 +771,44 @@ def _add_contribution_traces(
         **add_kwargs,
     )
     if show_uncertainty:
-        is_classification = bool(render_options.get("is_classification", False))
-        x_neutral: list[float | None] = []
-        y_neutral: list[str | None] = []
-        x_neg: list[float | None] = []
-        y_neg: list[str | None] = []
-        x_pos: list[float | None] = []
-        y_pos: list[str | None] = []
+        # Collect crossing-zero and non-crossing intervals into per-color groups
+        # to match CE's fill_betweenx colour convention at alpha 0.2.
+        interval_groups: dict[str, tuple[list[float | None], list[str | None]]] = {}
+
+        def _add_to_group(color: str, xs: list[float | None], ys: list[str | None]) -> None:
+            if color not in interval_groups:
+                interval_groups[color] = ([], [])
+            interval_groups[color][0].extend(xs)
+            interval_groups[color][1].extend(ys)
+
         for label, item in zip(labels, items, strict=False):
             low = item.get("contribution_low")
             high = item.get("contribution_high")
             if low is None or high is None:
                 continue
             low_f, high_f = float(low), float(high)
-            if is_classification and item.get("crosses_zero") and low_f < 0.0 < high_f:
-                # Sign-split: negative half in red, positive half in teal
-                x_neg.extend([low_f, 0.0, None])
-                y_neg.extend([label, label, None])
-                x_pos.extend([0.0, high_f, None])
-                y_pos.extend([label, label, None])
+            direction = item.get("direction", "positive")
+            if item.get("crosses_zero") and low_f < 0.0 < high_f:
+                neg_color = _interval_color_for(
+                    direction, is_classification=is_classification, crossing_side="negative"
+                )
+                pos_color = _interval_color_for(
+                    direction, is_classification=is_classification, crossing_side="positive"
+                )
+                _add_to_group(neg_color, [low_f, 0.0, None], [label, label, None])
+                _add_to_group(pos_color, [0.0, high_f, None], [label, label, None])
             else:
-                x_neutral.extend([low_f, high_f, None])
-                y_neutral.extend([label, label, None])
-        if x_neutral:
+                interval_color = _interval_color_for(
+                    direction, is_classification=is_classification
+                )
+                _add_to_group(interval_color, [low_f, high_f, None], [label, label, None])
+
+        for color, (x_vals, y_vals) in interval_groups.items():
             fig.add_trace(
                 go.Scatter(
-                    x=x_neutral, y=y_neutral, mode="lines",
-                    line={"color": _INTERVAL_COLOR, "width": 5},
+                    x=x_vals, y=y_vals, mode="lines",
+                    line={"color": color, "width": 5},
                     hoverinfo="skip", showlegend=False, name="contribution interval",
-                ),
-                **add_kwargs,
-            )
-        if x_neg:
-            fig.add_trace(
-                go.Scatter(
-                    x=x_neg, y=y_neg, mode="lines",
-                    line={"color": _INTERVAL_NEG_COLOR, "width": 5},
-                    hoverinfo="skip", showlegend=False, name="negative interval",
-                ),
-                **add_kwargs,
-            )
-        if x_pos:
-            fig.add_trace(
-                go.Scatter(
-                    x=x_pos, y=y_pos, mode="lines",
-                    line={"color": _INTERVAL_POS_COLOR, "width": 5},
-                    hoverinfo="skip", showlegend=False, name="positive interval",
                 ),
                 **add_kwargs,
             )
@@ -671,7 +833,9 @@ def _add_prediction_header_traces(
 
     bars = list(prediction.get("bars", ()) or [])
     kind = prediction.get("kind")
-    _default_color = "#2a9d8f" if kind == "probabilistic" else "#5b8dd9"
+    # Regression header uses red to match CE legacy (fill_betweenx color="r").
+    # Probabilistic header uses teal for probability bars.
+    _default_color = "#2a9d8f" if kind == "probabilistic" else "#d62728"
     bar_color = color if color is not None else _default_color
 
     for bar in bars:
@@ -818,7 +982,8 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             _REG_POS_COLOR if item.get("direction") == "positive" else _REG_NEG_COLOR
             for item in items
         ]
-        header_bar_colors = [_REG_POS_COLOR]
+        # Regression header uses red to match CE legacy fill_betweenx color="r"
+        header_bar_colors = ["#d62728"]
 
     header_bars = list(prediction.get("bars", ()) or []) if show_prediction_header else []
 
@@ -826,20 +991,14 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     x_label_contribution = axis_meta.get("x_label", "Feature weights")
     y_label_contribution = axis_meta.get("y_label", "Features")
 
-    # Right-axis instance values: one more decimal than the rule threshold for numeric values
-    instance_values = [
-        _format_instance_value(item.get("instance_value"), item.get("rule", ""))
-        for item in items
-    ]
+    # Right-axis instance values: use str() for parity with CE legacy y-axis labels
+    instance_values = [_display_value(item.get("instance_value")) for item in items]
 
     if show_prediction_header and header_bars:
         from plotly.subplots import make_subplots  # noqa: PLC0415
 
         x_range = prediction.get("x_range")
         header_x_label = prediction.get("x_label") or ""
-        # Header row contains all header bars; body is row 2.
-        # vertical_spacing must be large enough that the header x-axis title does not
-        # overlap with the top body bars, but the header bars themselves stay adjacent.
         n_header = len(header_bars)
         header_fraction = max(0.12, 0.10 * n_header)
         row_heights = [header_fraction, 1.0 - header_fraction]
