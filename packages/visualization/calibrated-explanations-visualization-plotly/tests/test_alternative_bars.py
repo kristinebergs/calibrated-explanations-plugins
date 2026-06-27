@@ -606,7 +606,7 @@ def test_default_ranking_is_ensured_metric(monkeypatch):
 
 
 def test_feature_weight_ranking(monkeypatch):
-    """rnk_metric='feature_weight' ranks by |predict - base_predict| descending."""
+    """rnk_metric='feature_weight' falls back to |predict - base_predict| when weight absent."""
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
@@ -659,3 +659,115 @@ def test_rnk_metric_stored_in_options_used(monkeypatch):
 
     assert artifact["options_used"]["rnk_metric"] == "feature_weight"
     assert artifact["options_used"]["rnk_weight"] == pytest.approx(0.3)
+
+
+def test_rnk_metric_uncertainty_is_accepted(monkeypatch):
+    """rnk_metric='uncertainty' must not raise; it normalises to 'ensured' with rnk_weight=1.0."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(
+        _alt_context(_dummy_alternative_explanation(), rnk_metric="uncertainty")
+    )
+
+    # Normalised values are stored in options_used
+    assert artifact["options_used"]["rnk_metric"] == "ensured"
+    assert artifact["options_used"]["rnk_weight"] == pytest.approx(1.0)
+    assert artifact["items"]
+
+
+def test_feature_weight_ranking_uses_weight_field_when_available(monkeypatch):
+    """rnk_metric='feature_weight' must prefer rules['weight'] over prediction delta."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    # weight field values: [0.01, 0.80, 0.05, 0.50] — feature 1 (weight=0.80) should rank first
+    # prediction deltas would give a different order: [0.55, 0.10, 0.45, 0.05]
+    rules = {
+        "feature": [0, 1, 2, 3],
+        "value": [10, 20, 30, 40],
+        "rule": ["feat0 <= 10", "feat1 > 20", "feat2 <= 30", "feat3 > 40"],
+        "predict": [0.20, 0.85, 0.30, 0.70],
+        "predict_low": [0.10, 0.75, 0.20, 0.60],
+        "predict_high": [0.30, 0.95, 0.40, 0.80],
+        "weight": [0.01, 0.80, 0.05, 0.50],
+    }
+    artifact = plugin.build(
+        _alt_context(_dummy_alternative_explanation(rules=rules), rnk_metric="feature_weight")
+    )
+
+    ranked_rules = [item["rule"] for item in artifact["items"]]
+    assert ranked_rules[0] == "feat1 > 20", (
+        f"Weight-field ranking should put feat1 (weight=0.80) first; got {ranked_rules}"
+    )
+    assert ranked_rules[-1] == "feat0 <= 10", (
+        f"Weight-field ranking should put feat0 (weight=0.01) last; got {ranked_rules}"
+    )
+
+
+def test_thresholded_regression_renders_as_probabilistic(monkeypatch):
+    """A thresholded regression explanation must use pivot=0.5 and xlim=[0,1]."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    payload = {
+        "feature": [0],
+        "value": [5.0],
+        "rule": ["x0 <= 5"],
+        "predict": [0.35],
+        "predict_low": [0.20],
+        "predict_high": [0.50],
+    }
+    collection = SimpleNamespace(
+        feature_names=["x0"],
+        batch_metadata={"task": "regression", "mode": "regression"},
+        y_minmax=[0.0, 30.0],
+    )
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={"predict": 0.60, "low": 0.45, "high": 0.75},
+        rules=payload,
+        get_rules=lambda: payload,
+        get_mode=lambda: "regression",
+        is_probabilistic=lambda: False,
+        is_regression=lambda: True,
+        is_thresholded=lambda: True,
+        threshold=5.0,
+        is_alternative=lambda: True,
+    )
+    collection.explanations = [local]
+
+    artifact = plugin.build(_alt_context(collection))
+
+    meta = artifact["axis_metadata"]
+    assert meta["pivot"] == pytest.approx(0.5), "Thresholded regression must use pivot=0.5"
+    assert meta["xlim"] == pytest.approx([0.0, 1.0]), "Thresholded regression must use xlim=[0,1]"
+    assert artifact["metadata"]["is_regression"] is False
+    assert "5.0" in meta["x_label"], "Threshold value must appear in x_label"
+
+
+def test_identical_to_base_filtered_after_ranking_and_filter_top(monkeypatch):
+    """Identical-to-base filtering happens after ranking and filter_top (CE core order)."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    # 3 rules: first (highest ensured score) is identical to base; second is not
+    # With filter_top=2: rank → [rule_a(0.75), rule_b(0.85), rule_c(0.20)]
+    #                    slice → [rule_a, rule_b]
+    #                    filter identical → [rule_b] (rule_a dropped as identical)
+    rules = {
+        "feature": [0, 1, 2],
+        "value": [10, 20, 30],
+        "rule": ["identical", "good_alt", "low_score"],
+        "predict": [0.75, 0.85, 0.20],
+        "predict_low": [0.66, 0.75, 0.10],
+        "predict_high": [0.84, 0.95, 0.30],
+    }
+    artifact = plugin.build(
+        _alt_context(_dummy_alternative_explanation(rules=rules), filter_top=2)
+    )
+
+    rule_names = [item["rule"] for item in artifact["items"]]
+    assert "identical" not in rule_names, "Identical-to-base rule must be filtered"
+    assert "good_alt" in rule_names, "Non-identical rule within filter_top must be kept"

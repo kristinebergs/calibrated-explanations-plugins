@@ -85,12 +85,16 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     if hover_detail not in {"compact", "full"}:
         raise ValueError("hover_detail must be 'compact' or 'full'.")
     rnk_metric = str(options.get("rnk_metric", "ensured"))
-    if rnk_metric not in {"ensured", "feature_weight"}:
-        raise ValueError("rnk_metric must be 'ensured' or 'feature_weight'.")
+    if rnk_metric not in {"ensured", "feature_weight", "uncertainty"}:
+        raise ValueError("rnk_metric must be 'ensured', 'feature_weight', or 'uncertainty'.")
     rnk_weight_raw = options.get("rnk_weight", 0.5)
     rnk_weight = float(rnk_weight_raw)
     if not 0.0 <= rnk_weight <= 1.0:
         raise ValueError("rnk_weight must be in [0.0, 1.0].")
+    # CE core maps "uncertainty" to "ensured" with rnk_weight=1.0
+    if rnk_metric == "uncertainty":
+        rnk_metric = "ensured"
+        rnk_weight = 1.0
     return {
         "filter_top": None if filter_top is None else int(filter_top),
         "show_uncertainty": bool(options.get("show_uncertainty", True)),
@@ -120,6 +124,10 @@ def _rank_items(
 
     if rnk_metric == "feature_weight":
         def _key(item: dict[str, Any]) -> float:
+            w = _as_float(item.get("weight"))
+            if w is not None:
+                return abs(w)
+            # Fallback when weight field absent: use |predict - base_predict|
             p = _as_float(item.get("predict"))
             if p is None or base_predict is None:
                 return 0.0
@@ -178,10 +186,6 @@ def _build_hover(
 def _extract_items(
     local_explanation: Any,
     rules: dict[str, Any],
-    *,
-    base_predict: float | None,
-    base_low: float | None,
-    base_high: float | None,
 ) -> list[dict[str, Any]]:
     collection = _collection_for(local_explanation)
     rule_labels = list(rules.get("rule", ()))
@@ -215,19 +219,9 @@ def _extract_items(
                 if predict_high is not None:
                     break
 
-        # Skip alternatives identical to the base prediction (matches CE built-in behaviour)
-        if (
-            predict is not None
-            and base_predict is not None
-            and predict_low is not None
-            and predict_high is not None
-            and base_low is not None
-            and base_high is not None
-            and abs(predict - base_predict) < 1e-10
-            and abs(predict_low - base_low) < 1e-10
-            and abs(predict_high - base_high) < 1e-10
-        ):
-            continue
+        weight = _as_float(_sequence_get(rules.get("weight", ()), i))
+        weight_low = _as_float(_sequence_get(rules.get("weight_low", ()), i))
+        weight_high = _as_float(_sequence_get(rules.get("weight_high", ()), i))
 
         raw_value = _sequence_get(
             rules.get("feature_value", ()),
@@ -248,6 +242,9 @@ def _extract_items(
                 "predict": predict,
                 "predict_low": predict_low,
                 "predict_high": predict_high,
+                "weight": weight,
+                "weight_low": weight_low,
+                "weight_high": weight_high,
                 "value": raw_value,
                 "feature_names": feature_names,
                 "feature_values": feature_values,
@@ -255,6 +252,36 @@ def _extract_items(
         )
 
     return items
+
+
+def _filter_identical_to_base(
+    items: list[dict[str, Any]],
+    base_predict: float | None,
+    base_low: float | None,
+    base_high: float | None,
+) -> list[dict[str, Any]]:
+    """Remove alternatives whose prediction+interval exactly match the base.
+
+    Called after ranking and filter_top slicing to mirror CE core's order of operations:
+    rank → filter_top → drop identical-to-base rows.
+    """
+    if base_predict is None or base_low is None or base_high is None:
+        return list(items)
+    result = []
+    for item in items:
+        predict = _as_float(item.get("predict"))
+        low = _as_float(item.get("predict_low"))
+        high = _as_float(item.get("predict_high"))
+        if (
+            predict is None
+            or low is None
+            or high is None
+            or abs(predict - base_predict) >= 1e-10
+            or abs(low - base_low) >= 1e-10
+            or abs(high - base_high) >= 1e-10
+        ):
+            result.append(item)
+    return result
 
 
 class LocalAlternativeBarsPlotBuilder(PlotBuilder):
@@ -301,6 +328,12 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
         mode_metadata = _mode_metadata(context.explanation, local_explanation)
         is_regression = bool(mode_metadata.get("is_regression", False))
 
+        # Thresholded regression renders as probabilistic in CE core (pivot=0.5, xlim=[0,1])
+        is_thresholded_fn = getattr(local_explanation, "is_thresholded", None)
+        is_thresholded = bool(is_thresholded_fn() if callable(is_thresholded_fn) else False)
+        if is_regression and is_thresholded:
+            is_regression = False
+
         pred_header = dict(getattr(local_explanation, "prediction", {}) or {})
         base_predict = _as_float(pred_header.get("predict", pred_header.get("prediction")))
         base_low = _as_float(pred_header.get("low", pred_header.get("predict_low")))
@@ -332,9 +365,10 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
             if f_conf is not None:
                 confidence_pct = round(f_conf * 100) if f_conf <= 1.0 else int(f_conf)
 
-        # Class label for classification x-axis label
+        # Class label / threshold label for probabilistic x-axis label
         pred_label = None
-        if not is_regression:
+        threshold_val = getattr(local_explanation, "threshold", None)
+        if not is_regression and not is_thresholded:
             pred_header_dict = dict(getattr(local_explanation, "prediction", {}) or {})
             pred_label = pred_header_dict.get(
                 "classes", pred_header_dict.get("class", pred_header_dict.get("label"))
@@ -349,15 +383,9 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
                         if isinstance(_raw_cls, (list, tuple)) and len(_raw_cls) >= 2:
                             pred_label = _raw_cls[1]
 
-        items = _extract_items(
-            local_explanation,
-            rules,
-            base_predict=base_predict,
-            base_low=base_low,
-            base_high=base_high,
-        )
+        items = _extract_items(local_explanation, rules)
 
-        # Rank items to match CE's rnk_metric/rnk_weight semantics, then slice
+        # Rank, slice to filter_top, then drop identical-to-base (matches CE core order)
         items = _rank_items(
             items,
             rnk_metric=str(options["rnk_metric"]),
@@ -367,6 +395,7 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
         )
         if options["filter_top"] is not None:
             items = items[: int(options["filter_top"])]
+        items = _filter_identical_to_base(items, base_predict, base_low, base_high)
 
         # Attach hover text now that final display ranks are known
         for rank, item in enumerate(items):
@@ -407,11 +436,18 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
         else:
             xlim = [0.0, 1.0]
             pivot = 0.5
-            x_label = (
-                f"Probability for class '{pred_label}'"
-                if pred_label is not None
-                else "Probability"
-            )
+            if is_thresholded and threshold_val is not None:
+                if isinstance(threshold_val, (list, tuple)) and len(threshold_val) == 2:
+                    x_label = (
+                        f"Probability of target being between "
+                        f"{threshold_val[0]} and {threshold_val[1]}"
+                    )
+                else:
+                    x_label = f"Probability of target being below {threshold_val}"
+            elif pred_label is not None:
+                x_label = f"Probability for class '{pred_label}'"
+            else:
+                x_label = "Probability"
             xticks = [round(i * 0.1, 1) for i in range(11)]
 
         return {
