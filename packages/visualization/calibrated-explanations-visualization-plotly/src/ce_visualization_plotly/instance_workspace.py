@@ -26,8 +26,8 @@ from .dashboard_cards import (
     iter_dashboard_cards,
 )
 from .ensured import LocalEnsuredPlotBuilder, LocalEnsuredPlotRenderer
-from .factual_bars import LocalFactualBarsPlotBuilder, LocalFactualBarsPlotRenderer
 from .factual_bars import STYLE_ID as FACTUAL_BARS_STYLE_ID
+from .factual_bars import LocalFactualBarsPlotBuilder, LocalFactualBarsPlotRenderer
 from .instance_explorer import (
     GlobalInstanceExplorerPlotBuilder,
 )

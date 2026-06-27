@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import warnings
 from pathlib import Path
 from typing import Any
@@ -20,8 +21,13 @@ RENDERER_ID = "official.visualization.plotly.local.factual_bars.renderer"
 ARTIFACT_VERSION = "0.1.0"
 
 _LOGGER = logging.getLogger(__name__)
-_POSITIVE_COLOR = "#2a9d8f"
-_NEGATIVE_COLOR = "#b84a51"
+# Task-specific bar colors matching matplotlib tab palette for visual parity
+# Classification: positive contribution → red, negative → blue (CE default)
+# Regression: positive contribution → blue, negative → red (CE default)
+_CLF_POS_COLOR = "#d62728"   # tab:red
+_CLF_NEG_COLOR = "#1f77b4"   # tab:blue
+_REG_POS_COLOR = "#1f77b4"   # tab:blue
+_REG_NEG_COLOR = "#d62728"   # tab:red
 _INTERVAL_COLOR = "rgba(45, 55, 72, 0.45)"
 _INTERVAL_NEG_COLOR = "rgba(184, 74, 81, 0.65)"
 _INTERVAL_POS_COLOR = "rgba(42, 157, 143, 0.65)"
@@ -127,7 +133,12 @@ def _resolve_rules(local_explanation: Any) -> dict[str, Any]:
     return rules
 
 
-def _prediction_header(local_explanation: Any, mode_metadata: dict[str, Any]) -> dict[str, Any]:
+def _prediction_header(
+    local_explanation: Any,
+    mode_metadata: dict[str, Any],
+    *,
+    y_minmax: list[float] | None = None,
+) -> dict[str, Any]:
     prediction = getattr(local_explanation, "prediction", None)
     if isinstance(prediction, dict):
         value = prediction.get("predict", prediction.get("prediction"))
@@ -215,7 +226,21 @@ def _prediction_header(local_explanation: Any, mode_metadata: dict[str, Any]) ->
             bars.append(regression_bar)
         result["kind"] = "regression"
         result["bars"] = bars
-        result["x_range"] = None
+        # x-range anchored to the calibration set output range so the bar can be read
+        # in the context of previously seen values (matches plotspec default behaviour).
+        # p_low/p_high are used only to extend the range in case of extrapolation.
+        x_range: list[float] | None = None
+        if y_minmax is not None:
+            with contextlib.suppress(Exception):
+                lo = float(y_minmax[0])
+                hi = float(y_minmax[1])
+                if p_low is not None:
+                    lo = min(lo, float(p_low))
+                if p_high is not None:
+                    hi = max(hi, float(p_high))
+                if lo < hi:
+                    x_range = [lo, hi]
+        result["x_range"] = x_range
         result["x_label"] = "Predicted value"
     else:
         result["kind"] = None
@@ -275,6 +300,23 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
 
 def _direction_for(contribution: float) -> str:
     return "positive" if contribution >= 0.0 else "negative"
+
+
+def _decimal_places_in_rule(rule_str: str) -> int:
+    """Return the maximum number of decimal places used in any numeric threshold in a rule."""
+    parts = re.findall(r"\d+\.(\d+)", str(rule_str))
+    return max((len(p) for p in parts), default=0)
+
+
+def _format_instance_value(value: Any, rule_str: str) -> str:
+    """Format an instance value with one more decimal place than the rule threshold uses."""
+    if value is None:
+        return "unavailable"
+    f = _as_float(value)
+    if f is None:
+        return _display_value(value)
+    n = _decimal_places_in_rule(rule_str) + 1
+    return f"{f:.{n}f}"
 
 
 def _build_hover(item: dict[str, Any], prediction: dict[str, Any], options: dict[str, Any]) -> str:
@@ -441,7 +483,25 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
                         options["show_uncertainty"] = False
 
         mode_metadata = _mode_metadata(context.explanation, local_explanation)
-        prediction = _prediction_header(local_explanation, mode_metadata)
+        collection = _collection_for(local_explanation)
+        is_regression = bool(mode_metadata.get("is_regression", False))
+        y_minmax: list[float] | None = None
+        if is_regression:
+            # Try the pre-computed attribute first, then derive from calibration labels
+            y_minmax_raw = getattr(collection, "y_minmax", None)
+            if y_minmax_raw is not None:
+                with contextlib.suppress(Exception):
+                    y_minmax = [float(y_minmax_raw[0]), float(y_minmax_raw[1])]
+            if y_minmax is None:
+                for _cal_attr in ("y_cal", "y"):
+                    _y = getattr(collection, _cal_attr, None)
+                    if _y is not None:
+                        with contextlib.suppress(Exception):
+                            _arr = list(_y)
+                            if _arr:
+                                y_minmax = [float(min(_arr)), float(max(_arr))]
+                                break
+        prediction = _prediction_header(local_explanation, mode_metadata, y_minmax=y_minmax)
         items, missing_intervals = _extract_items(local_explanation, prediction, options)
         if not items:
             raise ValueError("No factual rule contributions were available for plotting.")
@@ -461,8 +521,8 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
             "prediction": prediction,
             "items": sorted_items,
             "axis_metadata": {
-                "x_label": "Signed local contribution",
-                "y_label": "Factual rule / feature",
+                "x_label": "Feature weights",
+                "y_label": "Rules" if mode_metadata.get("task") == "regression" else "Features",
                 "zero_line": True,
             },
             "options_used": {
@@ -598,6 +658,7 @@ def _add_prediction_header_traces(
     *,
     row: int,
     col: int,
+    color: str | None = None,
 ) -> None:
     """Add prediction probability/regression bars to the header subplot row.
 
@@ -610,7 +671,8 @@ def _add_prediction_header_traces(
 
     bars = list(prediction.get("bars", ()) or [])
     kind = prediction.get("kind")
-    color = "#2a9d8f" if kind == "probabilistic" else "#5b8dd9"
+    _default_color = "#2a9d8f" if kind == "probabilistic" else "#5b8dd9"
+    bar_color = color if color is not None else _default_color
 
     for bar in bars:
         p_val = _as_float(bar.get("value"))
@@ -639,7 +701,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[0.0],
                         orientation="h",
-                        marker={"color": color},
+                        marker={"color": bar_color},
                         hovertext=[hover],
                         hovertemplate="%{hovertext}<extra></extra>",
                         showlegend=False,
@@ -657,7 +719,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[float(p_low)],
                         orientation="h",
-                        marker={"color": color, "opacity": 0.35},
+                        marker={"color": bar_color, "opacity": 0.35},
                         hoverinfo="skip",
                         showlegend=False,
                         name=f"interval: {bar_label}",
@@ -673,7 +735,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[0.0],
                         orientation="h",
-                        marker={"color": color},
+                        marker={"color": bar_color},
                         hovertext=[hover],
                         hovertemplate="%{hovertext}<extra></extra>",
                         showlegend=False,
@@ -692,7 +754,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[float(p_low)],
                         orientation="h",
-                        marker={"color": color, "opacity": 0.5},
+                        marker={"color": bar_color, "opacity": 0.5},
                         hovertext=[hover],
                         hovertemplate="%{hovertext}<extra></extra>",
                         showlegend=False,
@@ -711,8 +773,8 @@ def _add_prediction_header_traces(
                 marker={
                     "symbol": "line-ns-open",
                     "size": 12,
-                    "color": color,
-                    "line": {"width": 2.5, "color": color},
+                    "color": bar_color,
+                    "line": {"width": 2.5, "color": bar_color},
                 },
                 hovertext=[hover],
                 hovertemplate="%{hovertext}<extra></extra>",
@@ -737,47 +799,70 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     items = list(artifact.get("items", ()))
     labels = [str(item.get("rule") or item.get("feature_name") or item.get("id")) for item in items]
     values = [float(item.get("contribution", 0.0)) for item in items]
-    colors = [
-        _POSITIVE_COLOR if item.get("direction") == "positive" else _NEGATIVE_COLOR
-        for item in items
-    ]
     hover_text = [str(item.get("hover") or "") for item in items]
 
     show_prediction_header = bool(render_options.get("show_prediction_header", True))
     prediction = dict(artifact.get("prediction", {}) or {})
+    is_classification = prediction.get("kind") == "probabilistic"
+    render_options["is_classification"] = is_classification
+
+    # Task-specific body bar colors: classification pos=red/neg=blue, regression pos=blue/neg=red
+    if is_classification:
+        colors = [
+            _CLF_POS_COLOR if item.get("direction") == "positive" else _CLF_NEG_COLOR
+            for item in items
+        ]
+        header_bar_colors = [_CLF_POS_COLOR, _CLF_NEG_COLOR]
+    else:
+        colors = [
+            _REG_POS_COLOR if item.get("direction") == "positive" else _REG_NEG_COLOR
+            for item in items
+        ]
+        header_bar_colors = [_REG_POS_COLOR]
+
     header_bars = list(prediction.get("bars", ()) or []) if show_prediction_header else []
-    render_options["is_classification"] = prediction.get("kind") == "probabilistic"
 
     axis_meta = dict(artifact.get("axis_metadata", {}) or {})
-    x_label_contribution = axis_meta.get("x_label", "Signed local contribution")
-    y_label_contribution = axis_meta.get("y_label", "Factual rule / feature")
+    x_label_contribution = axis_meta.get("x_label", "Feature weights")
+    y_label_contribution = axis_meta.get("y_label", "Features")
 
-    # Right-axis instance values (displayed as paper-anchored annotations)
-    instance_values = [_display_value(item.get("instance_value")) for item in items]
+    # Right-axis instance values: one more decimal than the rule threshold for numeric values
+    instance_values = [
+        _format_instance_value(item.get("instance_value"), item.get("rule", ""))
+        for item in items
+    ]
 
     if show_prediction_header and header_bars:
         from plotly.subplots import make_subplots  # noqa: PLC0415
 
         x_range = prediction.get("x_range")
         header_x_label = prediction.get("x_label") or ""
+        # Header row contains all header bars; body is row 2.
+        # vertical_spacing must be large enough that the header x-axis title does not
+        # overlap with the top body bars, but the header bars themselves stay adjacent.
         n_header = len(header_bars)
-        row_heights = [max(0.12, 0.10 * n_header), 1.0 - max(0.12, 0.10 * n_header)]
+        header_fraction = max(0.12, 0.10 * n_header)
+        row_heights = [header_fraction, 1.0 - header_fraction]
 
         fig = make_subplots(
             rows=2,
             cols=1,
             row_heights=row_heights,
             shared_xaxes=False,
-            vertical_spacing=0.08,
-            subplot_titles=["Prediction", "Local factual contributions"],
+            vertical_spacing=0.14,
         )
 
-        _add_prediction_header_traces(fig, prediction, row=1, col=1)
+        # All header bars in row 1, each with its task-specific color
+        for bar, hdr_color in zip(header_bars, header_bar_colors, strict=False):
+            _add_prediction_header_traces(
+                fig, {**prediction, "bars": [bar]}, row=1, col=1, color=hdr_color
+            )
+
         _add_contribution_traces(
             fig, items, labels, values, colors, hover_text, render_options, row=2, col=1
         )
 
-        # Instance values on the right of the body panel (body = row 2 → yaxis2)
+        # Instance values anchored to the body panel (row 2 → yaxis2)
         for y_label, val_text in zip(labels, instance_values, strict=False):
             fig.add_annotation(
                 x=1.01,
@@ -791,7 +876,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 align="left",
             )
 
-        # Base prediction uncertainty band in contribution space
+        # Base prediction uncertainty band in contribution space (alpha matches CE's 0.20)
         if render_options.get("show_uncertainty"):
             _p_val = _as_float(prediction.get("value"))
             _p_lo = _as_float(prediction.get("low"))
@@ -802,13 +887,13 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 if _band_lo < _band_hi:
                     fig.add_vrect(
                         x0=_band_lo, x1=_band_hi,
-                        fillcolor="rgba(0,0,0,0.08)",
+                        fillcolor="rgba(0,0,0,0.20)",
                         layer="below", line_width=0,
-                        row=2, col=1,
+                        row=2, col=1,  # type: ignore[arg-type]
                     )
 
         if axis_meta.get("zero_line", True):
-            fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)
+            fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)  # type: ignore[arg-type]
 
         fig.update_layout(
             template="plotly_white",
@@ -843,7 +928,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 align="left",
             )
 
-        # Base prediction uncertainty band in contribution space
+        # Base prediction uncertainty band in contribution space (alpha matches CE's 0.20)
         if render_options.get("show_uncertainty"):
             _p_val = _as_float(prediction.get("value"))
             _p_lo = _as_float(prediction.get("low"))
@@ -854,7 +939,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 if _band_lo < _band_hi:
                     fig.add_vrect(
                         x0=_band_lo, x1=_band_hi,
-                        fillcolor="rgba(0,0,0,0.08)",
+                        fillcolor="rgba(0,0,0,0.20)",
                         layer="below", line_width=0,
                     )
 

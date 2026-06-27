@@ -220,7 +220,7 @@ def test_renderer_no_header_has_single_bar_trace_and_zero_line(monkeypatch):
 
 
 def test_renderer_with_prediction_header_uses_subplots(monkeypatch):
-    """With show_prediction_header=True (default), a two-row subplot is created."""
+    """With show_prediction_header=True, a two-row subplot is created (header + body)."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
@@ -229,6 +229,7 @@ def test_renderer_with_prediction_header_uses_subplots(monkeypatch):
 
     result = plugin.render(artifact, context=context)
 
+    # Header row (all prediction bars) + body row = 2 total
     assert result.figure.layout.get("rows") == 2
     bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
     # 2 probability header bars × (solid + interval) = 4 header bars + 1 contribution bar
@@ -464,10 +465,10 @@ def test_prediction_header_bars_included_in_renderer_output(monkeypatch):
 
     result = plugin.render(plugin.build(context), context=context)
 
-    # subplot rows should be 2
+    # Header row (both probability bars together) + body row = 2 total
     assert result.figure.layout.get("rows") == 2
     bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
-    # header: 2 probability bars + 1 contribution bar = 3 total
+    # header: 2 probability bars (×2 traces each) + 1 contribution bar = ≥5
     assert len(bar_traces) >= 3
 
 
@@ -527,7 +528,7 @@ def test_contribution_bars_still_render_with_header_enabled(monkeypatch):
 
     result = plugin.render(artifact, context=context)
 
-    # Should have contribution bar traces on row=2
+    # Body is row 2 (header row 1 + body row 2)
     contribution_bars = [
         t for t in result.figure.traces
         if t.__class__.__name__ == "FakeBar" and t.kwargs.get("_row") == 2
@@ -541,7 +542,7 @@ def test_contribution_bars_still_render_with_header_enabled(monkeypatch):
 
 
 def test_header_uses_three_part_structure_for_classification(monkeypatch):
-    """Classification header must have solid bars, interval bars, and markers — not a single 0→p bar."""
+    """Classification header must have solid + interval bars and markers, not a single 0→p bar."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
@@ -550,16 +551,17 @@ def test_header_uses_three_part_structure_for_classification(monkeypatch):
 
     result = plugin.render(artifact, context=context)
 
+    # Both probability bars are in row 1; each contributes solid + interval → ≥4 bar traces
     header_bars = [
         t for t in result.figure.traces
         if t.__class__.__name__ == "FakeBar" and t.kwargs.get("_row") == 1
     ]
-    # For 2 probability bars, each contributes a solid bar + an interval bar → 4 total
     assert len(header_bars) >= 4, (
-        f"Expected ≥4 header bar traces (solid + interval per probability bar), got {len(header_bars)}"
+        f"Expected ≥4 header bar traces in row 1 (solid + interval per probability bar), "
+        f"got {len(header_bars)}"
     )
 
-    # Verify that some bars use 'base' (not just 0→p_val)
+    # Verify that some bars use 'base' (interval bars have non-zero base = p_low)
     bars_with_nonzero_base = [
         t for t in header_bars
         if t.kwargs.get("base") and any(b != 0 for b in t.kwargs["base"])
@@ -568,7 +570,7 @@ def test_header_uses_three_part_structure_for_classification(monkeypatch):
         "Expected interval bars with non-zero base (p_low → p_high), but all bases were 0"
     )
 
-    # Verify prediction markers appear in the header
+    # Verify prediction markers appear in the header row
     header_markers = [
         t for t in result.figure.traces
         if t.__class__.__name__ == "FakeScatter" and t.kwargs.get("_row") == 1
@@ -623,6 +625,10 @@ def test_renderer_adds_right_axis_instance_value_annotations(monkeypatch):
         f"Expected ≥{len(artifact['items'])} right-side annotations for instance values, "
         f"got {len(right_annotations)}"
     )
+    # Body is row 2 → annotations use yref="y2"
+    assert any(a.get("yref") == "y2" for a in right_annotations), (
+        "Body annotations should reference yref='y2' (body row) in 2-row layout"
+    )
 
 
 def test_uncertainty_suppresses_bars_that_cross_zero(monkeypatch):
@@ -633,7 +639,10 @@ def test_uncertainty_suppresses_bars_that_cross_zero(monkeypatch):
     # _rules() has: weight_low=[0.1, -0.8, -0.05, 0.3], weight_high=[0.3, -0.2, 0.2, 0.6]
     # Rule "d rule" (index 2): low=-0.05, high=0.2 → crosses zero
     context = _context(
-        _dummy_explanation(), sort_by="original", show_uncertainty=True, show_prediction_header=False
+        _dummy_explanation(),
+        sort_by="original",
+        show_uncertainty=True,
+        show_prediction_header=False,
     )
     artifact = plugin.build(context)
 
@@ -648,7 +657,8 @@ def test_uncertainty_suppresses_bars_that_cross_zero(monkeypatch):
     # "d rule" (original index 2) crosses zero → bar value suppressed to 0.0
     d_rule_idx = y_vals.index("d rule")
     assert x_vals[d_rule_idx] == pytest.approx(0.0), (
-        f"Bar for 'd rule' should be suppressed to 0 when interval crosses zero, got {x_vals[d_rule_idx]}"
+        f"Bar for 'd rule' should be suppressed to 0 when interval crosses zero, "
+        f"got {x_vals[d_rule_idx]}"
     )
     # "a rule" (original index 1): low=-0.8, high=-0.2 → does NOT cross zero → bar kept
     a_rule_idx = y_vals.index("a rule")
