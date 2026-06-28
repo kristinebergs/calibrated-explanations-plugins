@@ -35,12 +35,53 @@ ARTIFACT_VERSION = "0.2.0"
 
 _LOGGER = logging.getLogger(__name__)
 
-# RGB triples for probabilistic / regression coloring
-_POS_CLASS_RGB = (37, 99, 235)   # blue  — positive class (predict ≥ pivot)
-_NEG_CLASS_RGB = (220, 38, 38)   # red   — negative class (predict < pivot)
-_REGRESSION_RGB = (229, 89, 52)  # red-orange — regression
-_BASE_INTERVAL_ALPHA = 0.12      # background band opacity
-_BAR_ALPHA = 0.55                # interval bar fill opacity
+# Legacy color functions imported from CE core for exact visual parity.
+# Falls back to an inline copy when the private import path is unavailable.
+try:
+    from calibrated_explanations.viz.builders import (  # type: ignore[import]  # noqa: I001
+        REGRESSION_BAR_COLOR as _REGRESSION_BAR_COLOR,
+        REGRESSION_BASE_COLOR as _REGRESSION_BASE_COLOR,
+        _legacy_get_fill_color as _ce_fill_color,
+    )
+except Exception:  # pragma: no cover — fallback for environments without full CE install
+    import math as _math_fb
+
+    import numpy as _np_fb
+
+    def _ce_brew2() -> list[tuple[int, int, int]]:
+        color_list: list[tuple[int, int, int]] = []
+        s, v = 0.75, 0.9
+        c, m = s * v, v - s * v
+        for h in _np_fb.arange(5, 385, 245).astype(int):
+            h_bar = h / 60.0
+            x = c * (1 - abs((h_bar % 2) - 1))
+            rgb_lut = [
+                (c, x, 0), (x, c, 0), (0, c, x), (0, x, c),
+                (x, 0, c), (c, 0, x), (c, x, 0),
+            ]
+            r, g, b = rgb_lut[int(h_bar)]
+            color_list.append((int(255 * (r + m)), int(255 * (g + m)), int(255 * (b + m))))
+        color_list.reverse()
+        return color_list
+
+    def _ce_fill_color(probability: float, reduction: float = 1.0) -> str:  # type: ignore[misc]
+        colors = _ce_brew2()
+        winner = int(probability >= 0.5)
+        color = colors[winner]
+        alpha = probability if winner == 1 else 1.0 - probability
+        alpha = ((alpha - 0.5) / 0.5) * 0.75 + 0.25
+        if reduction != 1.0:
+            alpha = reduction
+        blended = [int(round(alpha * c + (1 - alpha) * 255)) for c in color]
+        close = _math_fb.isfinite(probability) and _math_fb.isclose(
+            probability, 1.0, rel_tol=1e-9, abs_tol=1e-12
+        )
+        if reduction == 1.0 and close:
+            return "#ff0000"
+        return "#{:02x}{:02x}{:02x}".format(*blended)
+
+    _REGRESSION_BAR_COLOR: str = _ce_fill_color(1.0, 1.0)   # "#ff0000"
+    _REGRESSION_BASE_COLOR: str = _ce_fill_color(1.0, 0.15)
 
 
 def _warn_fallback(reason: str) -> None:
@@ -73,10 +114,6 @@ def _fmt(value: Any, *, signed: bool = False) -> str:
     if signed:
         return f"{numeric:+.4g}"
     return f"{numeric:.4g}"
-
-
-def _rgba(rgb: tuple[int, int, int], alpha: float) -> str:
-    return f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{alpha:.2f})"
 
 
 def _default_options(options: dict[str, Any]) -> dict[str, Any]:
@@ -415,19 +452,17 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
             if y_minmax is not None:
                 xlim = y_minmax
             else:
-                finite_vals = [
-                    v
-                    for item in items
-                    for v in (item["predict_low"], item["predict_high"])
+                # Match PlotSpec build_alternative_regression_spec: use base prediction interval
+                # bounds only; do not derive range from item intervals or add extra margin.
+                base_bounds = [
+                    v for v in (base_low, base_high)
                     if v is not None and math.isfinite(v)
                 ]
-                for v in (base_low, base_high, base_predict):
-                    if v is not None and math.isfinite(v):
-                        finite_vals.append(v)
-                if finite_vals:
-                    span = max(finite_vals) - min(finite_vals)
-                    margin = span * 0.05 or 0.1
-                    xlim = [min(finite_vals) - margin, max(finite_vals) + margin]
+                if base_bounds:
+                    lo_b, hi_b = min(base_bounds), max(base_bounds)
+                    if math.isclose(lo_b, hi_b, rel_tol=1e-9):
+                        hi_b = lo_b + 1.0
+                    xlim = [lo_b, hi_b]
                 else:
                     xlim = [0.0, 1.0]
             pivot = None
@@ -438,12 +473,21 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
             pivot = 0.5
             if is_thresholded and threshold_val is not None:
                 if isinstance(threshold_val, (list, tuple)) and len(threshold_val) == 2:
+                    t0, t1 = float(threshold_val[0]), float(threshold_val[1])
                     x_label = (
-                        f"Probability of target being between "
-                        f"{threshold_val[0]} and {threshold_val[1]}"
+                        f"Probability of target being between {t0:.3f} and {t1:.3f}"
                     )
                 else:
-                    x_label = f"Probability of target being below {threshold_val}"
+                    thr_scalar = (
+                        _as_float(threshold_val)
+                        if not isinstance(threshold_val, (list, tuple))
+                        else None
+                    )
+                    x_label = (
+                        f"Probability of target being below {thr_scalar:.2f}"
+                        if thr_scalar is not None
+                        else f"Probability of target being below {threshold_val}"
+                    )
             elif pred_label is not None:
                 x_label = f"Probability for class '{pred_label}'"
             else:
@@ -488,28 +532,30 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
 # ── Renderer helpers ────────────────────────────────────────────────────────
 
 
-def _bar_color(predict: float | None, pivot: float | None) -> str:
-    """Interval bar fill color: intensity scales with distance from the pivot."""
-    if predict is None:
-        return _rgba((100, 116, 139), _BAR_ALPHA)
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha:.2f})"
+
+
+def _bar_color(predict: float | None, pivot: float | None, *, reduction: float = 0.99) -> str:
+    """Interval bar fill color using the same legacy CE color function as PlotSpec/matplotlib."""
     if pivot is None:
-        return _rgba(_REGRESSION_RGB, _BAR_ALPHA)
-    dist = abs(predict - pivot)
-    intensity = min(1.0, 0.35 + 0.65 * (dist / 0.5))
-    rgb = _POS_CLASS_RGB if predict >= pivot else _NEG_CLASS_RGB
-    return _rgba(rgb, intensity * _BAR_ALPHA)
+        # Regression: PlotSpec renders IntervalSegment with alpha=0.4 → light-pink fill.
+        # The full-opacity median marker must contrast against this background.
+        return _hex_to_rgba(_REGRESSION_BAR_COLOR, 0.4)
+    if predict is None:
+        return _ce_fill_color(0.5, reduction)
+    return _ce_fill_color(predict, reduction)
 
 
 def _marker_color(predict: float | None, pivot: float | None) -> str:
-    """Solid colour for the prediction-point marker."""
+    """Solid marker color for the prediction-point marker, full opacity."""
     if predict is None:
-        return _rgba((100, 116, 139), 1.0)
+        return _ce_fill_color(0.5, 1.0)
     if pivot is None:
-        return _rgba(_REGRESSION_RGB, 1.0)
-    dist = abs(predict - pivot)
-    intensity = min(1.0, 0.5 + 0.5 * (dist / 0.5))
-    rgb = _POS_CLASS_RGB if predict >= pivot else _NEG_CLASS_RGB
-    return _rgba(rgb, intensity)
+        return _REGRESSION_BAR_COLOR
+    return _ce_fill_color(predict, 1.0)
 
 
 def _title_for(artifact: PlotArtifact, options: dict[str, Any]) -> str:
@@ -553,17 +599,18 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     x_lo, x_hi = float(xlim[0]), float(xlim[1])
 
     # Pre-compute per-item plotting values
-    bar_bases: list[float] = []
-    bar_widths: list[float] = []
     predict_xs: list[float | None] = []
-    bar_colors: list[str] = []
     marker_colors_list: list[str] = []
-    hover_texts: list[str] = []
 
-    for item in items:
+    # Segment data for interval bars (split at pivot when crossing, for probabilistic)
+    # Each entry: (y_label, base, width, color, hover_text)
+    seg_entries: list[tuple[str, float, float, str, str]] = []
+
+    for y_label_item, item in zip(y_labels, items, strict=False):
         pred = _as_float(item.get("predict"))
         lo = _as_float(item.get("predict_low"))
         hi = _as_float(item.get("predict_high"))
+        hover = str(item.get("hover", ""))
 
         # Replace infinities, then clamp to x-range
         if lo is not None:
@@ -571,15 +618,22 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         if hi is not None:
             hi = x_hi if not math.isfinite(hi) else max(x_lo, min(x_hi, hi))
 
-        base_val = lo if lo is not None else (pred if pred is not None else x_lo)
-        width = (hi - lo) if (lo is not None and hi is not None) else 0.0
-
-        bar_bases.append(base_val)
-        bar_widths.append(width)
         predict_xs.append(pred)
-        bar_colors.append(_bar_color(pred, pivot))
         marker_colors_list.append(_marker_color(pred, pivot))
-        hover_texts.append(str(item.get("hover", "")))
+
+        if lo is None or hi is None:
+            # No interval data — draw a zero-width bar at the prediction point
+            p_x = pred if pred is not None else x_lo
+            seg_entries.append((y_label_item, p_x, 0.0, _bar_color(pred, pivot), hover))
+            continue
+
+        if pivot is not None and lo < pivot < hi:
+            # Split at the decision boundary: left side (pred < pivot) and right side
+            seg_entries.append((y_label_item, lo, pivot - lo, _ce_fill_color(lo, 0.99), hover))
+            seg_entries.append((y_label_item, pivot, hi - pivot, _ce_fill_color(hi, 0.99), hover))
+        else:
+            center = pred if pred is not None else (lo + hi) / 2
+            seg_entries.append((y_label_item, lo, hi - lo, _bar_color(center, pivot), hover))
 
     fig = go.Figure()
 
@@ -589,43 +643,37 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         eff_hi = x_hi if not math.isfinite(base_high) else min(x_hi, base_high)
         if eff_lo < eff_hi:
             if pivot is not None and eff_lo < pivot < eff_hi:
-                # Split at the decision boundary
+                # Split at the decision boundary using legacy CE colors (reduction=0.15)
                 fig.add_vrect(
-                    x0=eff_lo,
-                    x1=pivot,
-                    fillcolor=_rgba(_NEG_CLASS_RGB, _BASE_INTERVAL_ALPHA),
-                    layer="below",
-                    line_width=0,
+                    x0=eff_lo, x1=pivot,
+                    fillcolor=_ce_fill_color(eff_lo, 0.15),
+                    layer="below", line_width=0,
                 )
                 fig.add_vrect(
-                    x0=pivot,
-                    x1=eff_hi,
-                    fillcolor=_rgba(_POS_CLASS_RGB, _BASE_INTERVAL_ALPHA),
-                    layer="below",
-                    line_width=0,
+                    x0=pivot, x1=eff_hi,
+                    fillcolor=_ce_fill_color(eff_hi, 0.15),
+                    layer="below", line_width=0,
                 )
             else:
                 if is_regression:
-                    rgb: tuple[int, int, int] = (100, 116, 139)
-                elif base_predict is not None and base_predict >= (pivot or 0.5):
-                    rgb = _POS_CLASS_RGB
+                    band_color = _REGRESSION_BASE_COLOR
                 else:
-                    rgb = _NEG_CLASS_RGB
+                    center = base_predict if base_predict is not None else (eff_lo + eff_hi) / 2
+                    band_color = _ce_fill_color(center, 0.15)
                 fig.add_vrect(
-                    x0=eff_lo,
-                    x1=eff_hi,
-                    fillcolor=_rgba(rgb, _BASE_INTERVAL_ALPHA),
-                    layer="below",
-                    line_width=0,
+                    x0=eff_lo, x1=eff_hi,
+                    fillcolor=band_color,
+                    layer="below", line_width=0,
                 )
 
-    # ── 2. Regression: dashed vertical line at base prediction ──────────────
+    # ── 2. Regression: solid vertical line at base prediction (matching PlotSpec) ──────────────
     if is_regression and base_predict is not None:
         fig.add_vline(
             x=base_predict,
-            line_width=1.5,
-            line_color="rgba(100,116,139,0.5)",
-            line_dash="dash",
+            line_width=2,
+            line_color=_REGRESSION_BAR_COLOR,
+            line_dash="solid",
+            opacity=0.3,
         )
 
     # ── 3. Classification: dotted pivot line at 0.5 ─────────────────────────
@@ -637,21 +685,31 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             line_dash="dot",
         )
 
-    # ── 4. Interval bars: go.Bar with base=predict_low ──────────────────────
-    # Each bar spans [predict_low, predict_high] for one alternative scenario.
-    fig.add_trace(
-        go.Bar(
-            x=bar_widths,
-            y=y_labels,
-            base=bar_bases,
-            orientation="h",
-            marker={"color": bar_colors, "line": {"width": 0}},
-            hovertext=hover_texts,
-            hovertemplate="%{hovertext}<extra></extra>",
-            showlegend=False,
-            name="interval",
+    # ── 4. Interval bars: grouped by fill color for efficiency ──────────────
+    # Bars may be split at the pivot for probabilistic plots (BARS-014).
+    # Group by color so each distinct color is one go.Bar trace.
+    color_groups: dict[str, list[tuple[str, float, float, str]]] = {}
+    for y_lbl, base_v, width_v, color, hover in seg_entries:
+        color_groups.setdefault(color, []).append((y_lbl, base_v, width_v, hover))
+
+    for color, grp in color_groups.items():
+        fig.add_trace(
+            go.Bar(
+                y=[e[0] for e in grp],
+                x=[e[2] for e in grp],
+                base=[e[1] for e in grp],
+                orientation="h",
+                width=0.4,
+                marker={"color": color, "line": {"width": 0}},
+                hovertext=[e[3] for e in grp],
+                hovertemplate="%{hovertext}<extra></extra>",
+                showlegend=False,
+                name="interval",
+            )
         )
-    )
+
+    # hover_texts for markers: one entry per item (not per segment)
+    hover_texts_per_item = [str(item.get("hover", "")) for item in items]
 
     # ── 5. Prediction markers: vertical tick at the predicted value ──────────
     fig.add_trace(
@@ -665,26 +723,16 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 "color": marker_colors_list,
                 "line": {"width": 2.5, "color": marker_colors_list},
             },
-            hovertext=hover_texts,
+            hovertext=hover_texts_per_item,
             hovertemplate="%{hovertext}<extra></extra>",
             showlegend=False,
             name="prediction",
         )
     )
 
-    # ── 6. Right-side annotations: current feature / instance values ─────────
-    for y_label, item in zip(y_labels, items, strict=False):
-        fig.add_annotation(
-            x=1.01,
-            y=y_label,
-            text=_display_value(item.get("value")),
-            xref="paper",
-            yref="y",
-            showarrow=False,
-            xanchor="left",
-            font={"size": 10, "color": "#64748b"},
-            align="left",
-        )
+    # ── 6. Right-side instance values via secondary y-axis (PlotSpec twin-axis parity) ──────────
+    n_items = len(items)
+    instance_values_alt = [_display_value(item.get("value")) for item in items]
 
     # ── 7. Layout ────────────────────────────────────────────────────────────
     xaxis_cfg: dict[str, Any] = {
@@ -704,7 +752,24 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         },
         margin={"l": 240, "r": 200, "t": 64, "b": 56},
         showlegend=False,
-        bargap=0.4,
+        barmode="overlay",
+    )
+    # Secondary y-axis for instance values, overlaying primary (matching PlotSpec right twin-axis).
+    # Categorical axis maps labels to integer indices 0..n-1; reversed primary puts index 0 at top.
+    fig.update_layout(
+        yaxis2={
+            "overlaying": "y",
+            "side": "right",
+            "tickmode": "array",
+            "tickvals": list(range(n_items)),
+            "ticktext": instance_values_alt,
+            "title": {"text": "Instance values", "font": {"size": 11}},
+            "range": [n_items - 0.5, -0.5],
+            "showgrid": False,
+            "zeroline": False,
+            "showline": False,
+            "ticks": "",
+        }
     )
 
     return fig

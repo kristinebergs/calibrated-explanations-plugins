@@ -31,10 +31,10 @@ _REG_NEG_COLOR = "#d62728"   # tab:red
 # Body interval overlay colors — parity with CE matplotlib fill_betweenx at alpha 0.2.
 # Classification body: positive contribution range → red alpha 0.2, negative → blue alpha 0.2.
 # Regression body: positive → blue alpha 0.2, negative → red alpha 0.2.
-_CLF_POS_INTERVAL = "rgba(214, 39, 40, 0.20)"   # red, alpha 0.2
-_CLF_NEG_INTERVAL = "rgba(31, 119, 180, 0.20)"  # blue, alpha 0.2
-_REG_POS_INTERVAL = "rgba(31, 119, 180, 0.20)"  # blue, alpha 0.2
-_REG_NEG_INTERVAL = "rgba(214, 39, 40, 0.20)"   # red, alpha 0.2
+_CLF_POS_INTERVAL = "rgba(214, 39, 40, 0.40)"   # red, alpha 0.4 — visible in extension beyond solid
+_CLF_NEG_INTERVAL = "rgba(31, 119, 180, 0.40)"  # blue, alpha 0.4
+_REG_POS_INTERVAL = "rgba(31, 119, 180, 0.40)"  # blue, alpha 0.4
+_REG_NEG_INTERVAL = "rgba(214, 39, 40, 0.40)"   # red, alpha 0.4
 
 
 def _warn_fallback(reason: str) -> None:
@@ -803,32 +803,36 @@ def _add_contribution_traces(
     show_uncertainty = bool(render_options.get("show_uncertainty", False))
     is_classification = bool(render_options.get("is_classification", False))
 
-    # Suppress the solid bar for rules whose interval crosses zero (uncertainty=True only)
+    # Clip solid bar to the inner edge of the uncertainty interval so the band
+    # [weight_low, weight_high] is fully visible with no solid bar overlapping it.
+    # Positive: solid [0, weight_low]; uncertainty [weight_low, weight_high].
+    # Negative: solid [0, weight_high]; uncertainty [weight_low, weight_high].
+    # Crossing-zero intervals suppress the solid bar entirely (solid = 0).
     if show_uncertainty:
-        display_values = [
-            0.0 if item.get("crosses_zero") is True else v
-            for item, v in zip(items, values, strict=False)
-        ]
+        display_values = []
+        for item, v in zip(items, values, strict=False):
+            if item.get("crosses_zero") is True:
+                display_values.append(0.0)
+            else:
+                low = item.get("contribution_low")
+                high = item.get("contribution_high")
+                if low is not None and high is not None:
+                    direction = item.get("direction", "positive")
+                    if direction == "positive":
+                        display_values.append(max(0.0, float(low)))
+                    else:
+                        display_values.append(min(0.0, float(high)))
+                else:
+                    display_values.append(v)
     else:
         display_values = values
 
-    fig.add_trace(
-        go.Bar(
-            x=display_values,
-            y=labels,
-            orientation="h",
-            marker={"color": colors},
-            text=None,
-            hovertext=hover_text,
-            hovertemplate="%{hovertext}<extra></extra>",
-            name="contribution",
-        ),
-        **add_kwargs,
-    )
     if show_uncertainty:
+        # Uncertainty bands are added FIRST so the solid bar renders on top (matching
+        # PlotSpec's fill_betweenx-then-barh paint order). The extension region beyond
+        # the solid bar shows the translucent band; the overlap region is covered.
         # Build per-entry list of (y_label, base, width, color, hover).
-        # For crossing-zero intervals, emit two entries (negative side and positive side).
-        # Per-color bar traces render as filled horizontal bands that shadow the solid bars.
+        # For crossing-zero intervals, emit two entries (negative and positive sides).
         bar_entries: list[tuple[str, float, float, str, str]] = []
 
         for label, item in zip(labels, items, strict=False):
@@ -875,6 +879,23 @@ def _add_contribution_traces(
                 ),
                 **add_kwargs,
             )
+
+    # Solid contribution bar — added after uncertainty so it renders on top.
+    # No explicit width: Plotly bargap default (0.2) gives 80% fill, matching
+    # matplotlib's default barh height=0.8 for visual parity across all panels.
+    fig.add_trace(
+        go.Bar(
+            x=display_values,
+            y=labels,
+            orientation="h",
+            marker={"color": colors},
+            text=None,
+            hovertext=hover_text,
+            hovertemplate="%{hovertext}<extra></extra>",
+            name="contribution",
+        ),
+        **add_kwargs,
+    )
 
 
 def _add_prediction_header_traces(
@@ -1064,7 +1085,10 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         x_range = prediction.get("x_range")
         header_x_label = prediction.get("x_label") or ""
         n_header = len(header_bars)
-        header_fraction = max(0.12, 0.10 * n_header)
+        n_body = len(items)
+        # Equal pixel height per category across both subplots: allocate header rows
+        # proportionally so each category (header and body) gets the same row height.
+        header_fraction = n_header / (n_header + n_body)
         row_heights = [header_fraction, 1.0 - header_fraction]
 
         fig = make_subplots(
@@ -1084,20 +1108,6 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         _add_contribution_traces(
             fig, items, labels, values, colors, hover_text, render_options, row=2, col=1
         )
-
-        # Instance values anchored to the body panel (row 2 → yaxis2)
-        for y_label, val_text in zip(labels, instance_values, strict=False):
-            fig.add_annotation(
-                x=1.01,
-                y=y_label,
-                text=val_text,
-                xref="paper",
-                yref="y2",
-                showarrow=False,
-                xanchor="left",
-                font={"size": 10, "color": "#64748b"},
-                align="left",
-            )
 
         # Base prediction uncertainty band in contribution space (alpha matches CE's 0.20)
         if render_options.get("show_uncertainty"):
@@ -1123,7 +1133,6 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             title=_title_for(artifact, render_options),
             margin={"l": 160, "r": 200, "t": 64, "b": 56},
             showlegend=False,
-            bargap=0.25,
             barmode="overlay",
         )
         if x_range is not None:
@@ -1137,23 +1146,28 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=True)
         if body_range is not None:
             fig.update_xaxes(range=body_range, row=2, col=1)
+        # Instance values on right via secondary y-axis overlaying body row (yaxis2).
+        # Plotly maps categorical labels to integer indices 0..n-1; the reversed primary
+        # places index 0 at the top. yaxis3 uses the same numeric range reversed.
+        _n_body = len(labels)
+        fig.update_layout(
+            yaxis3={
+                "overlaying": "y2",
+                "side": "right",
+                "tickmode": "array",
+                "tickvals": list(range(_n_body)),
+                "ticktext": instance_values,
+                "title": {"text": "Instance values", "font": {"size": 11}},
+                "range": [_n_body - 0.5, -0.5],
+                "showgrid": False,
+                "zeroline": False,
+                "showline": False,
+                "ticks": "",
+            }
+        )
     else:
         fig = go.Figure()
         _add_contribution_traces(fig, items, labels, values, colors, hover_text, render_options)
-
-        # Instance values on the right of the single-panel body (yaxis = "y")
-        for y_label, val_text in zip(labels, instance_values, strict=False):
-            fig.add_annotation(
-                x=1.01,
-                y=y_label,
-                text=val_text,
-                xref="paper",
-                yref="y",
-                showarrow=False,
-                xanchor="left",
-                font={"size": 10, "color": "#64748b"},
-                align="left",
-            )
 
         # Base prediction uncertainty band in contribution space (alpha matches CE's 0.20)
         if render_options.get("show_uncertainty"):
@@ -1180,12 +1194,28 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             yaxis={"autorange": "reversed"},
             margin={"l": 160, "r": 200, "t": 64, "b": 56},
             showlegend=False,
-            bargap=0.25,
             barmode="overlay",
         )
         body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=False)
         if body_range is not None:
             fig.update_xaxes(range=body_range)
+        # Instance values on right via secondary y-axis overlaying primary body axis.
+        _n_body = len(labels)
+        fig.update_layout(
+            yaxis2={
+                "overlaying": "y",
+                "side": "right",
+                "tickmode": "array",
+                "tickvals": list(range(_n_body)),
+                "ticktext": instance_values,
+                "title": {"text": "Instance values", "font": {"size": 11}},
+                "range": [_n_body - 0.5, -0.5],
+                "showgrid": False,
+                "zeroline": False,
+                "showline": False,
+                "ticks": "",
+            }
+        )
     return fig
 
 

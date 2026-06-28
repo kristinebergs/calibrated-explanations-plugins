@@ -610,7 +610,7 @@ def test_regression_header_draws_interval_not_full_bar(monkeypatch):
 
 
 def test_renderer_adds_right_axis_instance_value_annotations(monkeypatch):
-    """Instance values must appear as right-side annotations on the body panel."""
+    """Instance values must appear as right-side tick labels on the body panel."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
@@ -619,17 +619,16 @@ def test_renderer_adds_right_axis_instance_value_annotations(monkeypatch):
 
     result = plugin.render(artifact, context=context)
 
-    right_annotations = [
-        a for a in result.figure.annotations
-        if a.get("xref") == "paper" and a.get("x", 0) > 1.0
-    ]
-    assert len(right_annotations) >= len(artifact["items"]), (
-        f"Expected ≥{len(artifact['items'])} right-side annotations for instance values, "
-        f"got {len(right_annotations)}"
-    )
-    # Body is row 2 → annotations use yref="y2"
-    assert any(a.get("yref") == "y2" for a in right_annotations), (
-        "Body annotations should reference yref='y2' (body row) in 2-row layout"
+    # Instance values are rendered via a secondary y-axis instead of paper-coord
+    # annotations, for reliable tick alignment with horizontal bars.
+    # 2-row subplot: body uses yaxis3 overlaying y2; single-panel: yaxis2 overlaying y.
+    layout = result.figure.layout
+    right_axis = layout.get("yaxis3") or layout.get("yaxis2")
+    assert right_axis is not None, "Expected yaxis3 or yaxis2 for right-side instance values"
+    assert right_axis.get("side") == "right"
+    assert len(right_axis.get("ticktext", [])) >= len(artifact["items"]), (
+        f"Expected ≥{len(artifact['items'])} tick labels for instance values, "
+        f"got {len(right_axis.get('ticktext', []))}"
     )
 
 
@@ -652,7 +651,9 @@ def test_uncertainty_suppresses_bars_that_cross_zero(monkeypatch):
 
     bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
     assert bar_traces, "No bar traces"
-    contribution_bar = bar_traces[0]
+    solid_bars = [t for t in bar_traces if t.kwargs.get("name") == "contribution"]
+    assert solid_bars, "No solid contribution bar trace (name='contribution')"
+    contribution_bar = solid_bars[0]
     x_vals = list(contribution_bar.kwargs["x"])
     y_vals = list(contribution_bar.kwargs["y"])
 
@@ -694,7 +695,9 @@ def test_rnk_metric_and_rnk_weight_stored_in_options_used(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    artifact = plugin.build(_context(_dummy_explanation(), rnk_metric="feature_weight", rnk_weight=0.3))
+    artifact = plugin.build(
+        _context(_dummy_explanation(), rnk_metric="feature_weight", rnk_weight=0.3)
+    )
 
     assert artifact["options_used"]["rnk_metric"] == "feature_weight"
     assert artifact["options_used"]["rnk_weight"] == pytest.approx(0.3)

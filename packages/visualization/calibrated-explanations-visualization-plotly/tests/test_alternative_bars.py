@@ -442,7 +442,7 @@ def test_renderer_adds_vrect_for_base_interval(monkeypatch):
 
 
 def test_renderer_adds_right_axis_annotations(monkeypatch):
-    """Current feature values must appear as right-side annotations."""
+    """Current feature values must appear as right-side instance-value labels."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
@@ -451,10 +451,13 @@ def test_renderer_adds_right_axis_annotations(monkeypatch):
 
     result = plugin.render(artifact, context=context)
 
-    # One annotation per item placed to the right (paper x > 1)
-    right_annotations = [a for a in result.figure.annotations if a.get("xref") == "paper"]
-    assert len(right_annotations) >= len(artifact["items"]), (
-        "Expected one right-side annotation per alternative for instance values"
+    # Instance values are now rendered via a secondary y-axis (yaxis2) instead of
+    # paper-coord annotations, to guarantee tick alignment with horizontal bars.
+    right_axis = result.figure.layout.get("yaxis2")
+    assert right_axis is not None, "Expected yaxis2 for right-side instance values"
+    assert right_axis.get("side") == "right"
+    assert len(right_axis.get("ticktext", [])) >= len(artifact["items"]), (
+        "Expected one tick label per alternative for instance values"
     )
 
 
@@ -509,10 +512,12 @@ def test_renderer_y_labels_match_rule_text(monkeypatch):
 
     result = plugin.render(artifact, context=context)
 
+    # CE color grouping may split same-color items across multiple Bar traces (one
+    # trace per distinct fill color), so collect y-labels across all bar traces.
     bar_traces = [t for t in result.figure.traces if t.__class__.__name__ == "FakeBar"]
-    y_labels = list(bar_traces[0].kwargs["y"])
-    expected_rules = [item["rule"] for item in artifact["items"]]
-    assert y_labels == expected_rules
+    all_y_labels = {y for t in bar_traces for y in t.kwargs["y"]}
+    expected_rules = {item["rule"] for item in artifact["items"]}
+    assert all_y_labels == expected_rules
 
 
 def test_renderer_no_warnings_on_valid_artifact(monkeypatch):
