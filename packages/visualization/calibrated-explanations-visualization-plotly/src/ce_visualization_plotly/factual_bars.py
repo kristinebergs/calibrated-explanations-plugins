@@ -302,19 +302,28 @@ def _prediction_header(
         if isinstance(prediction, dict):
             predicted_class = prediction.get("classes", prediction.get("class"))
 
-        if class_labels is not None and len(class_labels) >= 2:
-            # For multiclass: use the predicted class index to identify target vs complement
+        # Label priority:
+        # 1. pos_caption / neg_caption on the explanation (user-set, already formatted)
+        # 2. class_labels from get_class_labels(), wrapped as P(Y=…) / P(Y!=…)
+        # 3. prediction["classes"] index, wrapped as P(Y=…) / P(Y!=…)
+        # 4. threshold labels (keep existing format)
+        # 5. generic P(Y=1) / P(Y!=1) fallback
+        pos_caption = getattr(local_explanation, "pos_caption", None)
+        neg_caption = getattr(local_explanation, "neg_caption", None)
+
+        if pos_caption is not None and neg_caption is not None:
+            target_label = str(pos_caption)
+            complement_label = str(neg_caption)
+        elif class_labels is not None and len(class_labels) >= 2:
+            target_idx = 1  # binary default
             if predicted_class is not None:
                 with contextlib.suppress(Exception):
-                    cls_idx = int(predicted_class)
-                    target_label = str(class_labels[cls_idx])
-                    complement_label = f"P(y!={class_labels[cls_idx]})"
-            else:
-                target_label = str(class_labels[1])
-                complement_label = str(class_labels[0])
+                    target_idx = int(predicted_class)
+            target_label = f"P(Y={class_labels[target_idx]})"
+            complement_label = f"P(Y!={class_labels[target_idx]})"
         elif label is not None:
-            target_label = str(label)
-            complement_label = "complement"
+            target_label = f"P(Y={label})"
+            complement_label = f"P(Y!={label})"
         else:
             is_thresholded_fn = getattr(local_explanation, "is_thresholded", None)
             threshold_val = getattr(local_explanation, "threshold", None)
@@ -322,8 +331,8 @@ def _prediction_header(
                 target_label = f"P(y > {threshold_val})"
                 complement_label = f"P(y <= {threshold_val})"
             else:
-                target_label = "class 1"
-                complement_label = "class 0"
+                target_label = "P(Y=1)"
+                complement_label = "P(Y!=1)"
         bars: list[dict[str, Any]] = []
         if p is not None:
             target_bar: dict[str, Any] = {"label": target_label, "value": p}
@@ -1051,6 +1060,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     hover_text = [str(item.get("hover") or "") for item in items]
 
     show_prediction_header = bool(render_options.get("show_prediction_header", True))
+    show_y_labels = bool(render_options.get("show_y_labels", True))
     prediction = dict(artifact.get("prediction", {}) or {})
     is_classification = prediction.get("kind") == "probabilistic"
     render_options["is_classification"] = is_classification
@@ -1128,43 +1138,55 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)  # type: ignore[arg-type]
 
+        # Extra top margin: header x-axis (ticks + title) is placed at the figure top.
+        _margin = (
+            {"l": 40, "r": 40, "t": 90, "b": 56}
+            if not show_y_labels
+            else {"l": 160, "r": 200, "t": 90, "b": 56}
+        )
         fig.update_layout(
             template="plotly_white",
             title=_title_for(artifact, render_options),
-            margin={"l": 160, "r": 200, "t": 64, "b": 56},
+            margin=_margin,
             showlegend=False,
             barmode="overlay",
         )
         if x_range is not None:
             fig.update_xaxes(range=x_range, row=1, col=1)
+        # Place the header x-axis (ticks + title) at the TOP of the header panel so
+        # it never drifts into the body subplot area below.
+        fig.update_xaxes(side="top", row=1, col=1)
         if header_x_label:
             fig.update_xaxes(title_text=header_x_label, row=1, col=1)
         fig.update_yaxes(autorange="reversed", row=1, col=1)
         fig.update_xaxes(title_text=x_label_contribution, row=2, col=1)
         fig.update_yaxes(title_text=y_label_contribution, row=2, col=1)
         fig.update_yaxes(autorange="reversed", row=2, col=1)
+        if not show_y_labels:
+            fig.update_yaxes(showticklabels=False, row=2, col=1)
         body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=True)
         if body_range is not None:
             fig.update_xaxes(range=body_range, row=2, col=1)
-        # Instance values on right via secondary y-axis overlaying body row (yaxis2).
-        # Plotly maps categorical labels to integer indices 0..n-1; the reversed primary
-        # places index 0 at the top. yaxis3 uses the same numeric range reversed.
-        _n_body = len(labels)
-        fig.update_layout(
-            yaxis3={
-                "overlaying": "y2",
-                "side": "right",
-                "tickmode": "array",
-                "tickvals": list(range(_n_body)),
-                "ticktext": instance_values,
-                "title": {"text": "Instance values", "font": {"size": 11}},
-                "range": [_n_body - 0.5, -0.5],
-                "showgrid": False,
-                "zeroline": False,
-                "showline": False,
-                "ticks": "",
-            }
-        )
+        if show_y_labels:
+            # Instance values on right via secondary y-axis overlaying body row (yaxis2).
+            # Plotly maps categorical labels to integer indices 0..n-1; the reversed primary
+            # places index 0 at the top. yaxis3 uses the same numeric range reversed.
+            _n_body = len(labels)
+            fig.update_layout(
+                yaxis3={
+                    "overlaying": "y2",
+                    "side": "right",
+                    "tickmode": "array",
+                    "tickvals": list(range(_n_body)),
+                    "ticktext": instance_values,
+                    "title": {"text": "Instance values", "font": {"size": 11}},
+                    "range": [_n_body - 0.5, -0.5],
+                    "showgrid": False,
+                    "zeroline": False,
+                    "showline": False,
+                    "ticks": "",
+                }
+            )
     else:
         fig = go.Figure()
         _add_contribution_traces(fig, items, labels, values, colors, hover_text, render_options)
@@ -1186,36 +1208,42 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
 
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333")
+        _margin = (
+            {"l": 40, "r": 40, "t": 64, "b": 56}
+            if not show_y_labels
+            else {"l": 160, "r": 200, "t": 64, "b": 56}
+        )
         fig.update_layout(
             template="plotly_white",
             title=_title_for(artifact, render_options),
             xaxis_title=x_label_contribution,
             yaxis_title=y_label_contribution,
-            yaxis={"autorange": "reversed"},
-            margin={"l": 160, "r": 200, "t": 64, "b": 56},
+            yaxis={"autorange": "reversed", "showticklabels": show_y_labels},
+            margin=_margin,
             showlegend=False,
             barmode="overlay",
         )
         body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=False)
         if body_range is not None:
             fig.update_xaxes(range=body_range)
-        # Instance values on right via secondary y-axis overlaying primary body axis.
-        _n_body = len(labels)
-        fig.update_layout(
-            yaxis2={
-                "overlaying": "y",
-                "side": "right",
-                "tickmode": "array",
-                "tickvals": list(range(_n_body)),
-                "ticktext": instance_values,
-                "title": {"text": "Instance values", "font": {"size": 11}},
-                "range": [_n_body - 0.5, -0.5],
-                "showgrid": False,
-                "zeroline": False,
-                "showline": False,
-                "ticks": "",
-            }
-        )
+        if show_y_labels:
+            # Instance values on right via secondary y-axis overlaying primary body axis.
+            _n_body = len(labels)
+            fig.update_layout(
+                yaxis2={
+                    "overlaying": "y",
+                    "side": "right",
+                    "tickmode": "array",
+                    "tickvals": list(range(_n_body)),
+                    "ticktext": instance_values,
+                    "title": {"text": "Instance values", "font": {"size": 11}},
+                    "range": [_n_body - 0.5, -0.5],
+                    "showgrid": False,
+                    "zeroline": False,
+                    "showline": False,
+                    "ticks": "",
+                }
+            )
     return fig
 
 

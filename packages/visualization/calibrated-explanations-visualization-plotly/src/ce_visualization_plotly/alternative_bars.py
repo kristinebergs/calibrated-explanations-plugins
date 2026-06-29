@@ -576,6 +576,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     render_options = dict(artifact.get("options_used", {}) or {})
     render_options.update(options)
 
+    show_y_labels = bool(render_options.get("show_y_labels", True))
     items = list(artifact.get("items", ()))
     base_pred = dict(artifact.get("base_prediction", {}) or {})
     axis_meta = dict(artifact.get("axis_metadata", {}) or {})
@@ -742,6 +743,11 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     if xticks is not None:
         xaxis_cfg["tickvals"] = xticks
 
+    _margin = (
+        {"l": 40, "r": 40, "t": 64, "b": 56}
+        if not show_y_labels
+        else {"l": 240, "r": 200, "t": 64, "b": 56}
+    )
     fig.update_layout(
         template="plotly_white",
         title=_title_for(artifact, render_options),
@@ -749,28 +755,30 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         yaxis={
             "title": axis_meta.get("y_label", "Alternative rules"),
             "autorange": "reversed",
+            "showticklabels": show_y_labels,
         },
-        margin={"l": 240, "r": 200, "t": 64, "b": 56},
+        margin=_margin,
         showlegend=False,
         barmode="overlay",
     )
-    # Secondary y-axis for instance values, overlaying primary (matching PlotSpec right twin-axis).
-    # Categorical axis maps labels to integer indices 0..n-1; reversed primary puts index 0 at top.
-    fig.update_layout(
-        yaxis2={
-            "overlaying": "y",
-            "side": "right",
-            "tickmode": "array",
-            "tickvals": list(range(n_items)),
-            "ticktext": instance_values_alt,
-            "title": {"text": "Instance values", "font": {"size": 11}},
-            "range": [n_items - 0.5, -0.5],
-            "showgrid": False,
-            "zeroline": False,
-            "showline": False,
-            "ticks": "",
-        }
-    )
+    if show_y_labels:
+        # Secondary y-axis for instance values, overlaying primary.
+        # Categorical labels map to integer indices 0..n-1; reversed primary puts index 0 at top.
+        fig.update_layout(
+            yaxis2={
+                "overlaying": "y",
+                "side": "right",
+                "tickmode": "array",
+                "tickvals": list(range(n_items)),
+                "ticktext": instance_values_alt,
+                "title": {"text": "Instance values", "font": {"size": 11}},
+                "range": [n_items - 0.5, -0.5],
+                "showgrid": False,
+                "zeroline": False,
+                "showline": False,
+                "ticks": "",
+            }
+        )
 
     return fig
 

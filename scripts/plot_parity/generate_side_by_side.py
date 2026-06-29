@@ -105,6 +105,38 @@ _FACTUAL_PROB = {
     "pos_caption": "P(y=1)",
 }
 
+_FACTUAL_MULTICLASS = {
+    "predict": {"predict": 0.65, "low": 0.55, "high": 0.75},
+    "feature_weights": {
+        "predict": [0.10, 0.20, -0.08],
+        "low": [0.05, 0.14, -0.15],
+        "high": [0.15, 0.28, -0.03],
+    },
+    "features_to_plot": [0, 1, 2],
+    "column_names": ["f0", "f1", "f2"],
+    "instance": [4.2, 1.5, 7.0],
+    "y_minmax": [0.0, 1.0],
+    "interval": True,
+    "class_names": ["cat", "dog", "bird"],
+    "predicted_class": 2,
+}
+
+_ALT_MULTICLASS = {
+    "predict": {"predict": 0.55, "low": 0.45, "high": 0.65},
+    "feature_weights": {
+        "predict": [0.3, 0.7],
+        "low": [0.2, 0.6],
+        "high": [0.4, 0.8],
+    },
+    "features_to_plot": [0, 1],
+    "column_names": ["a0", "a1"],
+    "instance": [0.3, 0.8],
+    "y_minmax": [0.0, 1.0],
+    "interval": True,
+    "class_names": ["cat", "dog", "bird"],
+    "predicted_class": 2,
+}
+
 _FACTUAL_REG = {
     "predict": {"predict": 3.6, "low": 3.2, "high": 4.1},
     "feature_weights": {
@@ -183,6 +215,8 @@ def _factual_fake_explanation(params: dict, *, task: str) -> SimpleNamespace:
     column_names = params["column_names"]
     features_to_plot = params["features_to_plot"]
     instance = params["instance"]
+    class_names = params.get("class_names")
+    predicted_class = params.get("predicted_class")
 
     if isinstance(feature_weights, dict):
         weights = feature_weights["predict"]
@@ -208,8 +242,11 @@ def _factual_fake_explanation(params: dict, *, task: str) -> SimpleNamespace:
         feature_names=list(column_names),
         y_minmax=y_minmax,
     )
+    if class_names:
+        collection.get_class_labels = lambda: class_names  # type: ignore[assignment]
     neg_caption = params.get("neg_caption")
     pos_caption = params.get("pos_caption")
+    _classes = predicted_class if predicted_class is not None else (1 if task != "regression" else None)
     local = SimpleNamespace(
         index=0,
         calibrated_explanations=collection,
@@ -217,7 +254,7 @@ def _factual_fake_explanation(params: dict, *, task: str) -> SimpleNamespace:
             "predict": predict["predict"],
             "low": predict.get("low"),
             "high": predict.get("high"),
-            "classes": 1 if task != "regression" else None,
+            "classes": _classes,
         },
         rules=rules,
         get_mode=lambda: task,
@@ -239,6 +276,8 @@ def _alternative_fake_explanation(params: dict, *, task: str) -> SimpleNamespace
     features_to_plot = params["features_to_plot"]
     instance = params["instance"]
     y_minmax = params.get("y_minmax")
+    class_names = params.get("class_names")
+    predicted_class = params.get("predicted_class")
 
     if isinstance(feature_weights, dict):
         predicts = feature_weights["predict"]
@@ -263,6 +302,9 @@ def _alternative_fake_explanation(params: dict, *, task: str) -> SimpleNamespace
         feature_names=list(column_names),
         y_minmax=y_minmax,
     )
+    if class_names:
+        collection.get_class_labels = lambda: class_names  # type: ignore[assignment]
+    _classes = predicted_class if predicted_class is not None else None
     local = SimpleNamespace(
         index=0,
         calibrated_explanations=collection,
@@ -270,6 +312,7 @@ def _alternative_fake_explanation(params: dict, *, task: str) -> SimpleNamespace
             "predict": predict["predict"],
             "low": predict.get("low"),
             "high": predict.get("high"),
+            "classes": _classes,
         },
         rules=rules,
         get_mode=lambda: task,
@@ -389,10 +432,15 @@ def _run_cases(output_dir: Path) -> None:
     # y-axis, making the LAST item the TOP row.  Plotly ranks descending and puts
     # the FIRST item at the top (autorange="reversed").  Sorting ascending before
     # calling PlotSpec makes both show the highest-ranked feature/alternative at top.
-    _fprob_ranked = _sorted_features_for_plotspec_factual(_FACTUAL_PROB)
-    _freg_ranked  = _sorted_features_for_plotspec_factual(_FACTUAL_REG)
-    _aprob_ranked = _sorted_features_for_plotspec_alternative(_ALT_PROB)
-    _areg_ranked  = _sorted_features_for_plotspec_alternative(_ALT_REG)
+    _fprob_ranked   = _sorted_features_for_plotspec_factual(_FACTUAL_PROB)
+    _freg_ranked    = _sorted_features_for_plotspec_factual(_FACTUAL_REG)
+    _fmulti_ranked  = _sorted_features_for_plotspec_factual(_FACTUAL_MULTICLASS)
+    _aprob_ranked   = _sorted_features_for_plotspec_alternative(_ALT_PROB)
+    _areg_ranked    = _sorted_features_for_plotspec_alternative(_ALT_REG)
+    _amulti_ranked  = _sorted_features_for_plotspec_alternative(_ALT_MULTICLASS)
+
+    _multi_pos = f"P(Y={_FACTUAL_MULTICLASS['class_names'][_FACTUAL_MULTICLASS['predicted_class']]})"
+    _multi_neg = f"P(Y!={_FACTUAL_MULTICLASS['class_names'][_FACTUAL_MULTICLASS['predicted_class']]})"
 
     cases = [
         # (name, plotspec_builder_fn, plotspec_kwargs, fake_expl_fn, style_id, task, show_uncertainty)
@@ -470,6 +518,44 @@ def _run_cases(output_dir: Path) -> None:
             "regression",
             False,
         ),
+        (
+            "factual_multiclass",
+            build_probabilistic_bars_spec,
+            {
+                "title": "factual_multiclass",
+                "predict": _FACTUAL_MULTICLASS["predict"],
+                "feature_weights": _FACTUAL_MULTICLASS["feature_weights"],
+                "features_to_plot": _fmulti_ranked,
+                "column_names": _FACTUAL_MULTICLASS["column_names"],
+                "instance": _FACTUAL_MULTICLASS["instance"],
+                "y_minmax": _FACTUAL_MULTICLASS["y_minmax"],
+                "interval": _FACTUAL_MULTICLASS["interval"],
+                "pos_caption": _multi_pos,
+                "neg_caption": _multi_neg,
+            },
+            lambda: _factual_fake_explanation(_FACTUAL_MULTICLASS, task="classification"),
+            _FACTUAL_STYLE,
+            "classification",
+            _FACTUAL_MULTICLASS["interval"],
+        ),
+        (
+            "alternative_multiclass",
+            build_alternative_probabilistic_spec,
+            {
+                "title": "alt_multiclass",
+                "predict": _ALT_MULTICLASS["predict"],
+                "feature_weights": _ALT_MULTICLASS["feature_weights"],
+                "features_to_plot": _amulti_ranked,
+                "column_names": _ALT_MULTICLASS["column_names"],
+                "instance": _ALT_MULTICLASS["instance"],
+                "y_minmax": _ALT_MULTICLASS["y_minmax"],
+                "interval": _ALT_MULTICLASS["interval"],
+            },
+            lambda: _alternative_fake_explanation(_ALT_MULTICLASS, task="classification"),
+            _ALT_STYLE,
+            "classification",
+            False,
+        ),
     ]
 
     for name, spec_fn, spec_kwargs, expl_fn, style_id, task, show_uncertainty in cases:
@@ -512,8 +598,10 @@ def _write_readme(output_dir: Path) -> None:
         "|---|---|---|\n"
         "| factual_probabilistic | factual_probabilistic_plotspec.png | factual_probabilistic_plotly.html |\n"
         "| factual_regression | factual_regression_plotspec.png | factual_regression_plotly.html |\n"
+        "| factual_multiclass | factual_multiclass_plotspec.png | factual_multiclass_plotly.html |\n"
         "| alternative_probabilistic | alternative_probabilistic_plotspec.png | alternative_probabilistic_plotly.html |\n"
-        "| alternative_regression | alternative_regression_plotspec.png | alternative_regression_plotly.html |\n\n"
+        "| alternative_regression | alternative_regression_plotspec.png | alternative_regression_plotly.html |\n"
+        "| alternative_multiclass | alternative_multiclass_plotspec.png | alternative_multiclass_plotly.html |\n\n"
         "## Review criteria\n\n"
         "- Row order and labels match\n"
         "- Bar colors match (hex)\n"
