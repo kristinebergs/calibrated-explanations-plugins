@@ -473,15 +473,23 @@ class UncertaintyQuadrantPlotRenderer(PlotRenderer):
             xaxis_title="Absolute local impact",
             yaxis_title="Calibrated uncertainty width",
             legend_title_text="Quadrant",
-            margin={"l": 60, "r": 24, "t": 56, "b": 56},
+            margin={"l": 5, "r": 24, "t": 48, "b": 48},
+            autosize=True,
         )
+        if hasattr(figure, "update_xaxes"):
+            figure.update_xaxes(automargin=True)
+        if hasattr(figure, "update_yaxes"):
+            figure.update_yaxes(automargin=True)
 
         saved_paths: tuple[str, ...] = ()
         if context.path:
             html_path = Path(context.path)
             if html_path.suffix.lower() != ".html":
                 html_path = html_path.with_suffix(".html")
-            figure.write_html(str(html_path))
+            figure.write_html(
+                str(html_path),
+                config={"responsive": True, "displayModeBar": "hover"},
+            )
             saved_paths = (str(html_path),)
         if context.show:
             figure.show()

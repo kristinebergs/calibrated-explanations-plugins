@@ -1833,7 +1833,7 @@ def export_html(fig: Any, path: str) -> str:
         )
         html_path.write_text(shell_html, encoding="utf-8")
         return str(html_path)
-    fig.write_html(str(html_path))
+    fig.write_html(str(html_path), config={"responsive": True, "displayModeBar": "hover"})
     return str(html_path)
 
 

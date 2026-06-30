@@ -1139,10 +1139,12 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)  # type: ignore[arg-type]
 
         # Extra top margin: header x-axis (ticks + title) is placed at the figure top.
+        # Left margin is kept small; automargin on the y-axis expands it to fit tick labels.
+        # Right margin is sized for the "Instance values" secondary axis title + tick labels.
         _margin = (
-            {"l": 40, "r": 40, "t": 90, "b": 56}
+            {"l": 10, "r": 10, "t": 64, "b": 48}
             if not show_y_labels
-            else {"l": 160, "r": 200, "t": 90, "b": 56}
+            else {"l": 5, "r": 110, "t": 64, "b": 48}
         )
         fig.update_layout(
             template="plotly_white",
@@ -1150,6 +1152,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             margin=_margin,
             showlegend=False,
             barmode="overlay",
+            autosize=True,
         )
         if x_range is not None:
             fig.update_xaxes(range=x_range, row=1, col=1)
@@ -1160,7 +1163,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             fig.update_xaxes(title_text=header_x_label, row=1, col=1)
         fig.update_yaxes(autorange="reversed", row=1, col=1)
         fig.update_xaxes(title_text=x_label_contribution, row=2, col=1)
-        fig.update_yaxes(title_text=y_label_contribution, row=2, col=1)
+        fig.update_yaxes(title_text=y_label_contribution, automargin=True, row=2, col=1)
         fig.update_yaxes(autorange="reversed", row=2, col=1)
         if not show_y_labels:
             fig.update_yaxes(showticklabels=False, row=2, col=1)
@@ -1209,19 +1212,20 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333")
         _margin = (
-            {"l": 40, "r": 40, "t": 64, "b": 56}
+            {"l": 10, "r": 10, "t": 48, "b": 48}
             if not show_y_labels
-            else {"l": 160, "r": 200, "t": 64, "b": 56}
+            else {"l": 5, "r": 110, "t": 48, "b": 48}
         )
         fig.update_layout(
             template="plotly_white",
             title=_title_for(artifact, render_options),
             xaxis_title=x_label_contribution,
             yaxis_title=y_label_contribution,
-            yaxis={"autorange": "reversed", "showticklabels": show_y_labels},
+            yaxis={"autorange": "reversed", "showticklabels": show_y_labels, "automargin": True},
             margin=_margin,
             showlegend=False,
             barmode="overlay",
+            autosize=True,
         )
         body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=False)
         if body_range is not None:
@@ -1280,7 +1284,10 @@ class LocalFactualBarsPlotRenderer(PlotRenderer):
             html_path = Path(context.path)
             if html_path.suffix.lower() != ".html":
                 html_path = html_path.with_suffix(".html")
-            figure.write_html(str(html_path))
+            figure.write_html(
+                str(html_path),
+                config={"responsive": True, "displayModeBar": "hover"},
+            )
             saved_paths = (str(html_path),)
         if context.show:
             figure.show()

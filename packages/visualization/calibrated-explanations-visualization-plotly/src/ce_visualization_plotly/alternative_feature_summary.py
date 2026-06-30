@@ -863,7 +863,8 @@ class AlternativeFeatureSummaryPlotRenderer(PlotRenderer):
             title="Local alternative feature summary",
             barmode="stack",
             legend_title_text="Role-quality combination",
-            margin={"l": 140, "r": 24, "t": 76, "b": 48},
+            margin={"l": 5, "r": 24, "t": 60, "b": 40},
+            autosize=True,
             meta={"artifact_type": STYLE_ID, "panel_config": panel_config},
         )
         x_title = "Share of rules" if normalize == "share" else "Rule count"
@@ -872,16 +873,19 @@ class AlternativeFeatureSummaryPlotRenderer(PlotRenderer):
             if include_conjunctions:
                 figure.update_xaxes(title_text=x_title, row=2, col=1)
         if hasattr(figure, "update_yaxes"):
-            figure.update_yaxes(autorange="reversed", row=1, col=1)
+            figure.update_yaxes(autorange="reversed", automargin=True, row=1, col=1)
             if include_conjunctions:
-                figure.update_yaxes(autorange="reversed", row=2, col=1)
+                figure.update_yaxes(autorange="reversed", automargin=True, row=2, col=1)
 
         saved_paths: tuple[str, ...] = ()
         if context.path:
             html_path = Path(context.path)
             if html_path.suffix.lower() != ".html":
                 html_path = html_path.with_suffix(".html")
-            figure.write_html(str(html_path))
+            figure.write_html(
+                str(html_path),
+                config={"responsive": True, "displayModeBar": "hover"},
+            )
             saved_paths = (str(html_path),)
         if context.show:
             figure.show()

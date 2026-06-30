@@ -744,9 +744,9 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         xaxis_cfg["tickvals"] = xticks
 
     _margin = (
-        {"l": 40, "r": 40, "t": 64, "b": 56}
+        {"l": 10, "r": 10, "t": 48, "b": 48}
         if not show_y_labels
-        else {"l": 240, "r": 200, "t": 64, "b": 56}
+        else {"l": 5, "r": 110, "t": 48, "b": 48}
     )
     fig.update_layout(
         template="plotly_white",
@@ -756,10 +756,12 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             "title": axis_meta.get("y_label", "Alternative rules"),
             "autorange": "reversed",
             "showticklabels": show_y_labels,
+            "automargin": True,
         },
         margin=_margin,
         showlegend=False,
         barmode="overlay",
+        autosize=True,
     )
     if show_y_labels:
         # Secondary y-axis for instance values, overlaying primary.
@@ -820,7 +822,10 @@ class LocalAlternativeBarsPlotRenderer(PlotRenderer):
             html_path = Path(context.path)
             if html_path.suffix.lower() != ".html":
                 html_path = html_path.with_suffix(".html")
-            figure.write_html(str(html_path))
+            figure.write_html(
+                str(html_path),
+                config={"responsive": True, "displayModeBar": "hover"},
+            )
             saved_paths = (str(html_path),)
         if context.show:
             figure.show()
