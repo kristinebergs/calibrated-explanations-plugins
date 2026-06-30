@@ -688,7 +688,7 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
             "items": items,
             "axis_metadata": {
                 "x_label": "Feature weights",
-                "y_label": "Rules" if mode_metadata.get("task") == "regression" else "Features",
+                "y_label": "Rules",
                 "zero_line": True,
             },
             "options_used": {
@@ -1061,6 +1061,10 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
 
     show_prediction_header = bool(render_options.get("show_prediction_header", True))
     show_y_labels = bool(render_options.get("show_y_labels", True))
+    # show_rule_labels: controls the left-side rule-condition tick labels on the primary y-axis.
+    # Defaults to show_y_labels so that show_y_labels=False still hides everything (backward compat).
+    # Can be set independently to hide just the rule text while keeping instance values visible.
+    show_rule_labels = bool(render_options.get("show_rule_labels", show_y_labels))
     prediction = dict(artifact.get("prediction", {}) or {})
     is_classification = prediction.get("kind") == "probabilistic"
     render_options["is_classification"] = is_classification
@@ -1084,7 +1088,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
 
     axis_meta = dict(artifact.get("axis_metadata", {}) or {})
     x_label_contribution = axis_meta.get("x_label", "Feature weights")
-    y_label_contribution = axis_meta.get("y_label", "Features")
+    y_label_contribution = axis_meta.get("y_label", "Rules")
 
     # Right-axis instance values: use str() for parity with CE legacy y-axis labels
     instance_values = [_display_value(item.get("instance_value")) for item in items]
@@ -1139,13 +1143,13 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             fig.add_vline(x=0, line_width=1, line_color="#333333", row=2, col=1)  # type: ignore[arg-type]
 
         # Extra top margin: header x-axis (ticks + title) is placed at the figure top.
-        # Left margin is kept small; automargin on the y-axis expands it to fit tick labels.
-        # Right margin is sized for the "Instance values" secondary axis title + tick labels.
-        _margin = (
-            {"l": 10, "r": 10, "t": 64, "b": 48}
-            if not show_y_labels
-            else {"l": 5, "r": 110, "t": 64, "b": 48}
-        )
+        # Left adapts to whether rule-condition labels are shown; right to instance-value axis.
+        _margin = {
+            "l": 5 if show_rule_labels else 10,
+            "r": 110 if show_y_labels else 10,
+            "t": 64,
+            "b": 48,
+        }
         fig.update_layout(
             template="plotly_white",
             title=_title_for(artifact, render_options),
@@ -1165,7 +1169,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         fig.update_xaxes(title_text=x_label_contribution, row=2, col=1)
         fig.update_yaxes(title_text=y_label_contribution, automargin=True, row=2, col=1)
         fig.update_yaxes(autorange="reversed", row=2, col=1)
-        if not show_y_labels:
+        if not show_rule_labels:
             fig.update_yaxes(showticklabels=False, row=2, col=1)
         body_range = _compute_body_xrange(items, render_options, prediction, is_dual_header=True)
         if body_range is not None:
@@ -1211,17 +1215,18 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
 
         if axis_meta.get("zero_line", True):
             fig.add_vline(x=0, line_width=1, line_color="#333333")
-        _margin = (
-            {"l": 10, "r": 10, "t": 48, "b": 48}
-            if not show_y_labels
-            else {"l": 5, "r": 110, "t": 48, "b": 48}
-        )
+        _margin = {
+            "l": 5 if show_rule_labels else 10,
+            "r": 110 if show_y_labels else 10,
+            "t": 48,
+            "b": 48,
+        }
         fig.update_layout(
             template="plotly_white",
             title=_title_for(artifact, render_options),
             xaxis_title=x_label_contribution,
             yaxis_title=y_label_contribution,
-            yaxis={"autorange": "reversed", "showticklabels": show_y_labels, "automargin": True},
+            yaxis={"autorange": "reversed", "showticklabels": show_rule_labels, "automargin": True},
             margin=_margin,
             showlegend=False,
             barmode="overlay",

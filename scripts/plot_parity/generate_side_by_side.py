@@ -98,6 +98,7 @@ _FACTUAL_PROB = {
     },
     "features_to_plot": [0, 1, 2],
     "column_names": ["f0", "f1", "f2"],
+    "rule_conditions": ["f0 <= 1.5", "f1 > 1.8", "f2 = 3"],
     "instance": [1.0, 2.0, 3.0],
     "y_minmax": [0.0, 1.0],
     "interval": True,
@@ -114,6 +115,7 @@ _FACTUAL_MULTICLASS = {
     },
     "features_to_plot": [0, 1, 2],
     "column_names": ["f0", "f1", "f2"],
+    "rule_conditions": ["f0 > 3.5", "f1 <= 2.0", "f2 > 5.0"],
     "instance": [4.2, 1.5, 7.0],
     "y_minmax": [0.0, 1.0],
     "interval": True,
@@ -130,6 +132,7 @@ _ALT_MULTICLASS = {
     },
     "features_to_plot": [0, 1],
     "column_names": ["a0", "a1"],
+    "rule_conditions": ["a0 <= 0.5", "a1 > 0.6"],
     "instance": [0.3, 0.8],
     "y_minmax": [0.0, 1.0],
     "interval": True,
@@ -146,6 +149,7 @@ _FACTUAL_REG = {
     },
     "features_to_plot": [0, 1],
     "column_names": ["r0", "r1"],
+    "rule_conditions": ["r0 <= 2.5", "r1 > 0.4"],
     "instance": [2.3, 0.5],
     "y_minmax": [-5.0, 100.0],
     "interval": True,
@@ -160,6 +164,7 @@ _ALT_PROB = {
     },
     "features_to_plot": [0, 1],
     "column_names": ["a0", "a1"],
+    "rule_conditions": ["a0 > 0.5", "a1 <= 0.1"],
     "instance": [0.1, 0.2],
     "y_minmax": [0.0, 1.0],
     "interval": True,
@@ -174,6 +179,7 @@ _ALT_REG = {
     },
     "features_to_plot": [0, 1],
     "column_names": ["r0", "r1"],
+    "rule_conditions": ["r0 > 0.8", "r1 <= -0.5"],
     "instance": [0.5, -1.2],
     "y_minmax": [-1.0, 2.5],
     "interval": True,
@@ -227,11 +233,12 @@ def _factual_fake_explanation(params: dict, *, task: str) -> SimpleNamespace:
         weight_lows = weights
         weight_highs = weights
 
+    rule_conditions = params.get("rule_conditions", list(column_names))
     rules = {
         "weight": list(weights),
         "weight_low": list(weight_lows),
         "weight_high": list(weight_highs),
-        "rule": list(column_names),
+        "rule": list(rule_conditions),
         "feature": list(features_to_plot),
         "value": list(instance),
         "feature_value": list(instance),
@@ -288,8 +295,9 @@ def _alternative_fake_explanation(params: dict, *, task: str) -> SimpleNamespace
         pred_lows = predicts
         pred_highs = predicts
 
+    rule_conditions = params.get("rule_conditions", list(column_names))
     rules = {
-        "rule": list(column_names),
+        "rule": list(rule_conditions),
         "predict": list(predicts),
         "predict_low": list(pred_lows),
         "predict_high": list(pred_highs),
@@ -409,7 +417,7 @@ def _render_plotly_html(
         return
 
     html_path = output_path.with_suffix(".html")
-    fig.write_html(str(html_path))
+    fig.write_html(str(html_path), config={"responsive": True, "displayModeBar": "hover"})
     print(f"  Saved: {html_path.name}")
 
     try:
@@ -452,7 +460,7 @@ def _run_cases(output_dir: Path) -> None:
                 "predict": _FACTUAL_PROB["predict"],
                 "feature_weights": _FACTUAL_PROB["feature_weights"],
                 "features_to_plot": _fprob_ranked,
-                "column_names": _FACTUAL_PROB["column_names"],
+                "column_names": _FACTUAL_PROB["rule_conditions"],
                 "instance": _FACTUAL_PROB["instance"],
                 "y_minmax": _FACTUAL_PROB["y_minmax"],
                 "interval": _FACTUAL_PROB["interval"],
@@ -472,7 +480,7 @@ def _run_cases(output_dir: Path) -> None:
                 "predict": _FACTUAL_REG["predict"],
                 "feature_weights": _FACTUAL_REG["feature_weights"],
                 "features_to_plot": _freg_ranked,
-                "column_names": _FACTUAL_REG["column_names"],
+                "column_names": _FACTUAL_REG["rule_conditions"],
                 "instance": _FACTUAL_REG["instance"],
                 "y_minmax": _FACTUAL_REG["y_minmax"],
                 "interval": _FACTUAL_REG["interval"],
@@ -490,7 +498,7 @@ def _run_cases(output_dir: Path) -> None:
                 "predict": _ALT_PROB["predict"],
                 "feature_weights": _ALT_PROB["feature_weights"],
                 "features_to_plot": _aprob_ranked,
-                "column_names": _ALT_PROB["column_names"],
+                "column_names": _ALT_PROB["rule_conditions"],
                 "instance": _ALT_PROB["instance"],
                 "y_minmax": _ALT_PROB["y_minmax"],
                 "interval": _ALT_PROB["interval"],
@@ -508,7 +516,7 @@ def _run_cases(output_dir: Path) -> None:
                 "predict": _ALT_REG["predict"],
                 "feature_weights": _ALT_REG["feature_weights"],
                 "features_to_plot": _areg_ranked,
-                "column_names": _ALT_REG["column_names"],
+                "column_names": _ALT_REG["rule_conditions"],
                 "instance": _ALT_REG["instance"],
                 "y_minmax": _ALT_REG["y_minmax"],
                 "interval": _ALT_REG["interval"],
@@ -526,7 +534,7 @@ def _run_cases(output_dir: Path) -> None:
                 "predict": _FACTUAL_MULTICLASS["predict"],
                 "feature_weights": _FACTUAL_MULTICLASS["feature_weights"],
                 "features_to_plot": _fmulti_ranked,
-                "column_names": _FACTUAL_MULTICLASS["column_names"],
+                "column_names": _FACTUAL_MULTICLASS["rule_conditions"],
                 "instance": _FACTUAL_MULTICLASS["instance"],
                 "y_minmax": _FACTUAL_MULTICLASS["y_minmax"],
                 "interval": _FACTUAL_MULTICLASS["interval"],
@@ -546,7 +554,7 @@ def _run_cases(output_dir: Path) -> None:
                 "predict": _ALT_MULTICLASS["predict"],
                 "feature_weights": _ALT_MULTICLASS["feature_weights"],
                 "features_to_plot": _amulti_ranked,
-                "column_names": _ALT_MULTICLASS["column_names"],
+                "column_names": _ALT_MULTICLASS["rule_conditions"],
                 "instance": _ALT_MULTICLASS["instance"],
                 "y_minmax": _ALT_MULTICLASS["y_minmax"],
                 "interval": _ALT_MULTICLASS["interval"],

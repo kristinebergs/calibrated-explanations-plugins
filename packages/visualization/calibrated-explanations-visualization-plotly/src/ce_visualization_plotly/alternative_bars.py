@@ -577,6 +577,9 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     render_options.update(options)
 
     show_y_labels = bool(render_options.get("show_y_labels", True))
+    # show_rule_labels: controls the left-side rule-condition tick labels on the primary y-axis.
+    # Defaults to show_y_labels so that show_y_labels=False still hides everything (backward compat).
+    show_rule_labels = bool(render_options.get("show_rule_labels", show_y_labels))
     items = list(artifact.get("items", ()))
     base_pred = dict(artifact.get("base_prediction", {}) or {})
     axis_meta = dict(artifact.get("axis_metadata", {}) or {})
@@ -743,11 +746,12 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     if xticks is not None:
         xaxis_cfg["tickvals"] = xticks
 
-    _margin = (
-        {"l": 10, "r": 10, "t": 48, "b": 48}
-        if not show_y_labels
-        else {"l": 5, "r": 110, "t": 48, "b": 48}
-    )
+    _margin = {
+        "l": 5 if show_rule_labels else 10,
+        "r": 110 if show_y_labels else 10,
+        "t": 48,
+        "b": 48,
+    }
     fig.update_layout(
         template="plotly_white",
         title=_title_for(artifact, render_options),
@@ -755,7 +759,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
         yaxis={
             "title": axis_meta.get("y_label", "Alternative rules"),
             "autorange": "reversed",
-            "showticklabels": show_y_labels,
+            "showticklabels": show_rule_labels,
             "automargin": True,
         },
         margin=_margin,
