@@ -393,6 +393,25 @@ def _dummy_regression_explanation() -> SimpleNamespace:
     return collection
 
 
+def _dummy_thresholded_regression_explanation() -> SimpleNamespace:
+    collection = SimpleNamespace(feature_names=["age", "income", "score", "risk"])
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={"predict": 0.74, "low": 0.66, "high": 0.81},
+        rules=_rules(),
+        y_threshold=5.1234567,
+        get_mode=lambda: "probabilistic_regression",
+        is_regression=lambda: False,
+        is_probabilistic=lambda: True,
+        is_thresholded=lambda: True,
+        is_alternative=lambda: False,
+    )
+    collection.explanations = [local]
+    collection.batch_metadata = {"task": "probabilistic_regression", "mode": "probabilistic_regression"}
+    return collection
+
+
 def test_probabilistic_artifact_has_two_prediction_header_bars(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
@@ -443,6 +462,18 @@ def test_regression_artifact_has_one_prediction_header_bar(monkeypatch):
     assert pred["x_label"].startswith("Prediction interval"), (
         f"Expected x_label to start with 'Prediction interval', got '{pred['x_label']}'"
     )
+
+
+def test_thresholded_regression_prediction_header_uses_y_threshold_labels(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_thresholded_regression_explanation()))
+
+    bars = artifact["prediction"]["bars"]
+    assert len(bars) == 2
+    assert bars[0]["label"] == "P(Y<=5.12346)"
+    assert bars[1]["label"] == "P(Y>5.12346)"
 
 
 def test_show_prediction_header_false_suppresses_header_traces(monkeypatch):

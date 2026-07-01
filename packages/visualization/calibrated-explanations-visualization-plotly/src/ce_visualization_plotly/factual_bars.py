@@ -325,10 +325,13 @@ def _prediction_header(
             complement_label = f"P(Y!={label})"
         else:
             is_thresholded_fn = getattr(local_explanation, "is_thresholded", None)
-            threshold_val = getattr(local_explanation, "threshold", None)
+            threshold_val = getattr(local_explanation, "y_threshold", None)
             if callable(is_thresholded_fn) and is_thresholded_fn() and threshold_val is not None:
-                target_label = f"P(y > {threshold_val})"
-                complement_label = f"P(y <= {threshold_val})"
+                threshold_label = _format_number(threshold_val)
+                if threshold_label == "unavailable":
+                    threshold_label = str(threshold_val)
+                target_label = f"P(Y<={threshold_label})"
+                complement_label = f"P(Y>{threshold_label})"
             else:
                 target_label = "P(Y=1)"
                 complement_label = "P(Y!=1)"
