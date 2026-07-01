@@ -378,9 +378,11 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
 
         collection = _collection_for(local_explanation)
 
-        # y_minmax for regression x-range
+        # y_minmax for regression x-range.
+        # y_minmax is set on the local explanation in CalibratedExplanation.__init__;
+        # _collection_for() returns the parent CalibratedExplanations which does not carry it.
         y_minmax: list[float] | None = None
-        y_minmax_raw = getattr(collection, "y_minmax", None)
+        y_minmax_raw = getattr(local_explanation, "y_minmax", None) or getattr(collection, "y_minmax", None)
         if y_minmax_raw is not None:
             try:
                 y_minmax = [float(y_minmax_raw[0]), float(y_minmax_raw[1])]

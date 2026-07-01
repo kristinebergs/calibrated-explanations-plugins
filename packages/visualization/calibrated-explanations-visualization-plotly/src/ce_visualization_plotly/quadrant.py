@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Mapping
 from math import ceil
 from pathlib import Path
 from typing import Any
@@ -186,13 +187,14 @@ def _mode_metadata(explanation: Any, local_explanation: Any) -> dict[str, Any]:
 
 
 def _extract_rule_items(local_explanation: Any) -> list[dict[str, Any]]:
-    rules = getattr(local_explanation, "rules", None)
-    if not isinstance(rules, dict):
+    get_rules = getattr(local_explanation, "get_rules", None)
+    rules = get_rules() if callable(get_rules) else getattr(local_explanation, "rules", None)
+    if not isinstance(rules, Mapping):
         build_payload = getattr(local_explanation, "build_rules_payload", None)
         if callable(build_payload):
             payload = build_payload()
-            rules = payload if isinstance(payload, dict) else getattr(payload, "rules", None)
-    if not isinstance(rules, dict):
+            rules = payload if isinstance(payload, Mapping) else getattr(payload, "rules", None)
+    if not isinstance(rules, Mapping):
         raise ValueError("The explanation does not expose factual rule contributions.")
 
     weights = list(rules.get("weight", ()))

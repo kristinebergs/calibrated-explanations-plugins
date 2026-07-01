@@ -638,13 +638,15 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
         is_regression = bool(mode_metadata.get("is_regression", False))
         y_minmax: list[float] | None = None
         if is_regression:
-            y_minmax_raw = getattr(collection, "y_minmax", None)
+            # y_minmax is set on the local explanation in CalibratedExplanation.__init__;
+            # _collection_for() returns the parent CalibratedExplanations which does not carry it.
+            y_minmax_raw = getattr(local_explanation, "y_minmax", None) or getattr(collection, "y_minmax", None)
             if y_minmax_raw is not None:
                 with contextlib.suppress(Exception):
                     y_minmax = [float(y_minmax_raw[0]), float(y_minmax_raw[1])]
             if y_minmax is None:
                 for _cal_attr in ("y_cal", "y"):
-                    _y = getattr(collection, _cal_attr, None)
+                    _y = getattr(local_explanation, _cal_attr, None) or getattr(collection, _cal_attr, None)
                     if _y is not None:
                         with contextlib.suppress(Exception):
                             _arr = list(_y)
