@@ -4,6 +4,7 @@ import contextlib
 import logging
 import re
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -123,18 +124,16 @@ def _feature_name(collection: Any, feature: Any) -> str | None:
 
 
 def _resolve_rules(local_explanation: Any) -> dict[str, Any]:
-    rules = getattr(local_explanation, "rules", None)
-    if not isinstance(rules, dict):
+    get_rules = getattr(local_explanation, "get_rules", None)
+    rules = get_rules() if callable(get_rules) else getattr(local_explanation, "rules", None)
+    if not isinstance(rules, Mapping):
         build_payload = getattr(local_explanation, "build_rules_payload", None)
         if callable(build_payload):
             payload = build_payload()
-            rules = payload if isinstance(payload, dict) else getattr(payload, "rules", None)
-    if not isinstance(rules, dict):
-        get_rules = getattr(local_explanation, "get_rules", None)
-        rules = get_rules() if callable(get_rules) else None
-    if not isinstance(rules, dict):
+            rules = payload if isinstance(payload, Mapping) else getattr(payload, "rules", None)
+    if not isinstance(rules, Mapping):
         raise ValueError("The explanation does not expose factual rule contributions.")
-    return rules
+    return dict(rules)
 
 
 def _compute_ranking(

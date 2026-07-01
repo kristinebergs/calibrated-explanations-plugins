@@ -174,13 +174,8 @@ def _mode_metadata(explanation: Any, local_explanation: Any) -> dict[str, Any]:
 
 
 def _resolve_alternative_rules(local_explanation: Any) -> dict[str, Any]:
-    if getattr(local_explanation, "has_conjunctive_rules", False) and getattr(
-        local_explanation, "conjunctive_rules", None
-    ):
-        rules = local_explanation.conjunctive_rules
-    else:
-        get_rules = getattr(local_explanation, "get_rules", None)
-        rules = get_rules() if callable(get_rules) else getattr(local_explanation, "rules", None)
+    get_rules = getattr(local_explanation, "get_rules", None)
+    rules = get_rules() if callable(get_rules) else getattr(local_explanation, "rules", None)
     if not isinstance(rules, Mapping):
         raise ValueError("The explanation does not expose alternative-rule data.")
     return dict(rules)
