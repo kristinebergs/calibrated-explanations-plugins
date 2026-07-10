@@ -1,4 +1,9 @@
+import sys
 from pathlib import Path
+
+# Insert source tree before venv so coverage tracks source files, not the installed wheel.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 from unittest.mock import Mock
 
 import pytest
@@ -27,6 +32,11 @@ def _reset_registry_state() -> None:
     clear_warnings = getattr(registry, "clear_trust_warnings", None)
     if callable(clear_warnings):
         clear_warnings()
+    # Purge cached plugin module so load_entrypoint_plugins re-imports it fresh
+    # and module-level register_factual_example_plugin() runs again.
+    for key in list(sys.modules.keys()):
+        if key.startswith("ce_explanation_factual_example"):
+            del sys.modules[key]
 
 
 class _DelegateStub:
@@ -127,7 +137,7 @@ def test_template_validator_rejects_malformed_provisional_config_schema():
 
     errors = []
     validate_plugin_config_schema(
-        Path("packages/explanation/calibrated-explanations-explanation-factual-example"),
+        Path("packages/explanation/calibrated-explanations-explanation-factual-example").resolve(),
         {"version": 1, "keys": {"enabled_labels": {"type": "not-supported"}}},
         errors,
     )

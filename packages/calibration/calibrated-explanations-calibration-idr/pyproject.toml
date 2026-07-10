@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-calibration-idr"
-version = "0.1.0"
+version = "0.1.1"
 description = "IDR regression interval calibration plugin for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -15,7 +15,6 @@ dependencies = [
 
 [project.entry-points."calibrated_explanations.plugins"]
 idr_regression = "ce_calibration_idr.plugin:IDRRegressionIntervalCalibratorPlugin"
-conformal_idr_regression = "ce_calibration_idr.conformal_plugin:ConformalIDRRegressionIntervalCalibratorPlugin"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ce_calibration_idr"]

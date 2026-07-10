@@ -54,7 +54,7 @@ def _as_save_paths(
 class DashboardPlotBuilder(PlotBuilder):
     """Build dashboard artifacts by validating registered sub-plot styles."""
 
-    plugin_meta: dict[str, Any] = {
+    plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
         "version": "0.1.0",
@@ -205,7 +205,7 @@ def _save_figure(fig: Any, save_path: str) -> bool:
 class DashboardPlotRenderer(PlotRenderer):
     """Render a multi-panel plotly dashboard by delegating to registered sub-plugins."""
 
-    plugin_meta: dict[str, Any] = {
+    plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
         "version": "0.1.0",
@@ -356,7 +356,7 @@ class CeDefaultPlotBuilder(PlotBuilder):
     ``instance_index`` option inside the plots spec.
     """
 
-    plugin_meta: dict[str, Any] = {
+    plugin_meta = {
         "schema_version": 1,
         "name": CE_DEFAULT_BUILDER_ID,
         "version": "0.1.0",
@@ -395,7 +395,7 @@ class CeDefaultPlotRenderer(PlotRenderer):
     ``explanation.plot(show=False)`` and captures the resulting figure.
     """
 
-    plugin_meta: dict[str, Any] = {
+    plugin_meta = {
         "schema_version": 1,
         "name": CE_DEFAULT_RENDERER_ID,
         "version": "0.1.0",
@@ -455,7 +455,7 @@ class CeDefaultPlotRenderer(PlotRenderer):
 class DashboardVisualizationBootstrap:
     """Bootstrap entry point for the dashboard visualization plugin package."""
 
-    plugin_meta: dict[str, Any] = {
+    plugin_meta = {
         "schema_version": 1,
         "name": BOOTSTRAP_ID,
         "version": "0.1.0",

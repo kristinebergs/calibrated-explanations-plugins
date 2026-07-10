@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from calibrated_explanations.plugins.builtins import PlotSpecDefaultBuilder, PlotSpecDefaultRenderer
+import matplotlib.pyplot as plt
+
 from calibrated_explanations.plugins.plots import (
     PlotArtifact,
     PlotBuilder,
@@ -24,7 +25,7 @@ BOOTSTRAP_ID = "official.visualization.example.bootstrap"
 
 
 class ExamplePlotBuilder(PlotBuilder):
-    """PlotSpec builder delegating to CE's default PlotSpec builder.
+    """PlotSpec builder that handles both single-instance and collection explanations.
 
     The important part for new developers is not the drawing logic, but that
     the builder publishes metadata with a stable ``style`` and
@@ -47,15 +48,15 @@ class ExamplePlotBuilder(PlotBuilder):
         "default_renderer": RENDERER_ID,
     }
 
-    def __init__(self) -> None:
-        self._delegate = PlotSpecDefaultBuilder()
-
     def build(self, context: PlotRenderContext) -> PlotArtifact:
-        return self._delegate.build(context)
+        return {
+            "explanation": context.explanation,
+            "plot_kwargs": dict(context.options),
+        }
 
 
 class ExamplePlotRenderer(PlotRenderer):
-    """PlotSpec renderer delegating to CE's default PlotSpec renderer."""
+    """PlotSpec renderer that calls explanation.plot(show=False) directly."""
 
     plugin_meta = {
         "schema_version": 1,
@@ -71,11 +72,32 @@ class ExamplePlotRenderer(PlotRenderer):
         "supports_interactive": False,
     }
 
-    def __init__(self) -> None:
-        self._delegate = PlotSpecDefaultRenderer()
-
     def render(self, artifact: PlotArtifact, *, context: PlotRenderContext) -> PlotRenderResult:
-        return self._delegate.render(artifact, context=context)
+        payload = dict(artifact)
+        explanation = payload["explanation"]
+        plot_kwargs: dict = dict(payload.get("plot_kwargs") or {})
+
+        collection = getattr(explanation, "explanations", None)
+        if collection is not None:
+            figs = []
+            for single_exp in collection:
+                plt.figure()
+                single_exp.plot(show=False, **plot_kwargs)
+                figs.append(plt.gcf())
+            if not figs:
+                return PlotRenderResult(
+                    artifact=artifact, figure=plt.figure(), saved_paths=(), extras={}
+                )
+            return PlotRenderResult(
+                artifact=artifact,
+                figure=figs[0],
+                saved_paths=(),
+                extras={"extra_figures": figs[1:]},
+            )
+        plt.figure()
+        explanation.plot(show=False, **plot_kwargs)
+        fig = plt.gcf()
+        return PlotRenderResult(artifact=artifact, figure=fig, saved_paths=(), extras={})
 
 
 class ExampleVisualizationBootstrap:

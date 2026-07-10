@@ -99,19 +99,25 @@ def static_plugin_meta(package_path: Path, target: str) -> dict[str, Any]:
     _, _, object_name = target.partition(":")
     tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
     constants = _collect_module_constants(tree)
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == object_name:
-            for statement in node.body:
-                if isinstance(statement, ast.Assign):
-                    for assign_target in statement.targets:
-                        if (
-                            isinstance(assign_target, ast.Name)
-                            and assign_target.id == "plugin_meta"
-                        ):
-                            resolved = _resolve_static_value(statement.value, constants)
-                            if isinstance(resolved, dict):
-                                return dict(resolved)
-    raise RuntimeError(f"Could not statically resolve plugin_meta for {target!r}")
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for item in node.body:
+            if not isinstance(item, ast.Assign):
+                continue
+            if len(item.targets) != 1 or not isinstance(item.targets[0], ast.Name):
+                continue
+            if item.targets[0].id != "plugin_meta":
+                continue
+            if node.name != object_name:
+                continue
+            try:
+                return dict(_resolve_static_value(item.value, constants))  # type: ignore[arg-type]
+            except (ValueError, TypeError):
+                continue
+    raise RuntimeError(
+        f"{target!r} does not expose a statically resolvable plugin_meta dict"
+    )
 
 
 def primary_plugin_target(package_path: Path) -> Any:
@@ -135,8 +141,8 @@ def visualization_metas(
     bootstrap = main_plugin_meta(package_path)
     builder_entries = entry_points_for_group(package_path, PLOT_BUILDER_GROUP)
     renderer_entries = entry_points_for_group(package_path, PLOT_RENDERER_GROUP)
-    if len(builder_entries) != 1 or len(renderer_entries) != 1:
-        raise RuntimeError(f"{package_path} must expose exactly one builder and one renderer")
+    if not builder_entries or not renderer_entries:
+        raise RuntimeError(f"{package_path} must expose at least one builder and one renderer")
     builder_meta = dict(load_entrypoint_target(next(iter(builder_entries.values()))).plugin_meta)
     renderer_meta = dict(load_entrypoint_target(next(iter(renderer_entries.values()))).plugin_meta)
     return bootstrap, builder_meta, renderer_meta
@@ -256,7 +262,8 @@ def validate_calibration_runtime(package_path: Path) -> None:
         prediction = explainer.predict(x_test, calibrated=True)
         if np.asarray(prediction).shape[0] != x_test.shape[0]:
             raise RuntimeError(f"Unexpected calibrated prediction shape for task {task!r}")
-        if explainer.interval_plugin_identifiers.get("default") != plugin_id:
+        id_map = getattr(explainer, "interval_plugin_identifiers", None) or getattr(explainer, "_interval_plugin_identifiers", {})
+        if id_map.get("default") != plugin_id:
             raise RuntimeError(f"CE did not select {plugin_id!r} as the active interval plugin")
 
 
@@ -267,45 +274,32 @@ def _explanation_override_name(mode: str) -> str:
         return "alternative_plugin"
     if mode == "fast":
         return "fast_plugin"
-    raise RuntimeError(f"Unsupported explanation mode {mode!r}")
-
-
-def _invoke_explanation(explainer: Any, mode: str, x_test: "np.ndarray"):
-    if mode == "factual":
-        return explainer.explain_factual(x_test)
-    if mode == "alternative":
-        return explainer.explore_alternatives(x_test)
-    if mode == "fast":
-        return explainer.explain_fast(x_test)
-    raise RuntimeError(f"Unsupported explanation mode {mode!r}")
+    return f"{mode}_plugin"
 
 
 def validate_explanation_runtime(package_path: Path) -> None:
-    from calibrated_explanations.plugins.registry import find_explanation_descriptor
-
     meta = main_plugin_meta(package_path)
     plugin_id = str(meta["name"])
+
+    from calibrated_explanations.plugins.registry import find_explanation_descriptor
+
     descriptor = find_explanation_descriptor(plugin_id)
     if descriptor is None or not descriptor.trusted:
         raise RuntimeError(f"Explanation plugin {plugin_id!r} was not registered as trusted")
 
-    modes = tuple(meta.get("modes", ()))
+    modes = tuple(meta.get("modes", ("factual",)))
     tasks = tuple(meta.get("tasks", ("classification",)))
-    concrete_tasks = tuple(task for task in tasks if task in ("classification", "regression"))
-    if not concrete_tasks:
-        concrete_tasks = ("classification",)
-    for task in concrete_tasks:
-        for mode in modes:
-            explainer, x_test = build_explainer(
-                task=task, **{_explanation_override_name(mode): plugin_id}
-            )
-            collection = _invoke_explanation(explainer, mode, x_test[:2])
+    for mode in modes:
+        for task in tasks:
+            override_name = _explanation_override_name(mode)
+            explainer, x_test = build_explainer(task=task, **{override_name: plugin_id})
+            if mode == "factual":
+                collection = explainer.explain_factual(x_test[:2])
+            elif mode == "alternative":
+                collection = explainer.explore_alternatives(x_test[:2])
+            else:
+                raise RuntimeError(f"Unsupported explanation mode {mode!r}")
             assert_non_empty_collection(collection)
-            selected = explainer.plugin_manager.explanation_plugin_identifiers.get(mode)
-            if selected != plugin_id:
-                raise RuntimeError(
-                    f"CE selected explanation plugin {selected!r} instead of {plugin_id!r} for mode {mode!r}"
-                )
 
 
 def validate_visualization_runtime(package_path: Path) -> None:

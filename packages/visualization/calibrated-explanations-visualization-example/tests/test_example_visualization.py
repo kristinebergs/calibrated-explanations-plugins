@@ -1,4 +1,9 @@
+import sys
 import warnings
+from pathlib import Path
+
+# Insert source tree before venv so coverage tracks source files, not the installed wheel.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pytest
 from sklearn.datasets import make_classification
