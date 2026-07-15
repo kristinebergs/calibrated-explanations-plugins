@@ -1,10 +1,15 @@
 # Plugin template
 
-Create new official packages through:
+Create new packages through:
 
 ```bash
 python scripts/scaffold_package.py --help
 ```
+
+New plugins are always scaffolded with `status = "experimental"` (see
+`docs/plugin-lifecycle.md`): source-install only, never published to PyPI, and
+never part of a metapackage. Promotion to `mature` happens later through a
+maturity-promotion PR, not through scaffolding.
 
 Reference docs:
 
@@ -23,11 +28,13 @@ The scaffold enforces:
 - family placement
 - public package naming
 - import package naming
+- `status = "experimental"` lifecycle metadata
 - family-appropriate entry-point registration
 - family-appropriate `plugin_meta` structure
 - optional provisional `plugin_meta["config_schema"]` for plugins that receive
   runtime config through CE context objects
-- README install and compatibility text
+- README status, source-install, and compatibility text (experimental READMEs
+  must not claim PyPI availability)
 
 ## Provisional plugin config
 
@@ -52,21 +59,27 @@ plugin_meta = {
 }
 ```
 
-## Attaching a plugin to the official runtime suite
+## From experimental to curated
 
-A package becomes "official" only when it is listed in the matching family
-metapackage dependencies:
+1. **Maturity**: open a maturity-promotion PR
+   (`.github/PULL_REQUEST_TEMPLATE/maturity_promotion.md`) that flips
+   `status = "experimental"` to `"mature"` and resolves every mandatory gate
+   in `docs/plugin-lifecycle.md`. CI runs the full release-grade suite for the
+   promoted package.
+2. **Curation (separate decision)**: propose adding the mature plugin to its
+   family metapackage dependencies:
 
-- calibration plugin -> `packages/meta/calibrated-explanations-calibration/pyproject.toml`
-- explanation plugin -> `packages/meta/calibrated-explanations-explanation/pyproject.toml`
-- visualization plugin -> `packages/meta/calibrated-explanations-visualization/pyproject.toml`
+   - calibration plugin -> `packages/meta/calibrated-explanations-calibration/pyproject.toml`
+   - explanation plugin -> `packages/meta/calibrated-explanations-explanation/pyproject.toml`
+   - visualization plugin -> `packages/meta/calibrated-explanations-visualization/pyproject.toml`
 
-After adding the dependency, verify:
+   Only mature plugins pass this check, and mature plugins are not curated
+   automatically. After adding the dependency, verify:
 
 ```bash
 python scripts/check_meta_package_sync.py
 python scripts/list_official_plugin_packages.py
 ```
 
-If the plugin path appears in `list_official_plugin_packages.py` output, CI will
-run the all-plugin artifact runtime check for it.
+If the plugin path appears in `list_official_plugin_packages.py` output, CI
+runs the metapackage artifact runtime checks for it.

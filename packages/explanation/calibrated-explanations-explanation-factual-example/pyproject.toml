@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-explanation-factual-example"
-version = "0.1.0"
-description = "Official explanation plugin for calibrated-explanations"
+version = "0.1.1"
+description = "Example factual explanation plugin for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -23,4 +23,5 @@ trusted = ["official.explanation.factual.example"]
 
 [tool.ce_plugin_repo]
 family = "explanation"
+status = "experimental"
 import_name = "ce_explanation_factual_example"

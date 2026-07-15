@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization-example"
-version = "0.1.0"
-description = "Official visualization plugin for calibrated-explanations"
+version = "0.1.1"
+description = "Example visualization plugin for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -26,4 +26,5 @@ packages = ["src/ce_visualization_example"]
 
 [tool.ce_plugin_repo]
 family = "visualization"
+status = "experimental"
 import_name = "ce_visualization_example"

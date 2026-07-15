@@ -4,15 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-explanation"
-version = "0.1.0"
-description = "Official metapackage for calibrated-explanations plugins"
+version = "0.2.0"
+description = "Curated explanation plugin metapackage for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "calibrated-explanations-explanation-alternative-example>=0.1,<1",
-    "calibrated-explanations-explanation-factual-example>=0.1,<1",
-    "calibrated-explanations-explanation-factual-lime>=0.1,<1",
-    "calibrated-explanations-explanation-factual-shap>=0.1,<1"
+    # Curation policy: only plugins with status = "mature" may be listed here.
+    # No plugin has completed a maturity review yet, so this set is empty.
 ]
 
 [tool.hatch.build.targets.wheel]

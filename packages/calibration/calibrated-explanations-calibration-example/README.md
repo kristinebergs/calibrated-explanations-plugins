@@ -2,13 +2,19 @@
 
 Family: `calibration`
 
-Purpose: Official example interval plugin showing the minimum wiring needed for
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
+Purpose: Example interval plugin showing the minimum wiring needed for
 `CalibratedExplainer` to discover, trust, and use a third-party calibrator.
 
 Install:
 
 ```bash
-pip install calibrated-explanations-calibration-example
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/calibration/calibrated-explanations-calibration-example
 ```
 
 Compatibility: `calibrated-explanations>=0.11`

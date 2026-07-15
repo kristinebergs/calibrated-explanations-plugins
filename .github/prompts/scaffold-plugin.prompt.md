@@ -74,10 +74,14 @@ __all__ = ["<PluginClass>"]
 
 ## After Scaffolding
 
-Remind the user to:
-1. Add this plugin as a dependency in `packages/meta/<family>/pyproject.toml`
-2. Run `pytest packages/<family>/<plugin_name>/tests/` to verify the scaffold
-3. Run `scripts/check_registry.py` to confirm the plugin appears in the registry
-4. Open a PR with the `plugin:new` label
+Remind the user that new plugins start with `status = "experimental"`
+(source-install only, never on PyPI, never in a metapackage), and to:
+1. Run `pytest packages/<family>/<plugin_name>/tests/` to verify the scaffold
+2. Run `python scripts/validate_repo_structure.py` to confirm policy compliance
+3. Open a PR with the `plugin:new` label
+4. Later, promote via a maturity-promotion PR
+   (`.github/PULL_REQUEST_TEMPLATE/maturity_promotion.md`); metapackage
+   curation is a separate decision after maturity (see
+   `docs/plugin-lifecycle.md`)
 
 > Coordinate major API additions with `@release-coordinator` in the enterprise repo.

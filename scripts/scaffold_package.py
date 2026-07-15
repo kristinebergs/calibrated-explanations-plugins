@@ -30,10 +30,25 @@ def main() -> int:
     parser.add_argument("--plugin-identifier")
     parser.add_argument("--entrypoint-group", default=MAIN_ENTRYPOINT_GROUP)
     parser.add_argument("--capability", action="append", dest="capabilities")
+    parser.add_argument(
+        "--status",
+        default="experimental",
+        choices=("experimental", "mature"),
+        help=(
+            "Lifecycle status of the new plugin. New plugins start experimental; "
+            "mature status is granted through a maturity-review PR, not scaffolding."
+        ),
+    )
     args = parser.parse_args()
 
     if not SLUG_PATTERN.match(args.slug):
         raise SystemExit("--slug must use lowercase kebab-case")
+    if args.status != "experimental":
+        raise SystemExit(
+            "Direct mature scaffolding is not supported. New plugins are scaffolded "
+            'with status = "experimental" and promoted to mature through a '
+            "maturity-review pull request (see docs/plugin-lifecycle.md)."
+        )
     if args.family == "meta" and args.package_type != "meta":
         raise SystemExit("--family meta requires --package-type meta")
     if args.family != "meta" and args.package_type != "plugin":
@@ -171,7 +186,7 @@ def build_plugin_pyproject(
         [project]
         name = "{distribution_name}"
         version = "{version}"
-        description = "Official {family} plugin for calibrated-explanations"
+        description = "{family.capitalize()} plugin for calibrated-explanations"
         readme = "README.md"
         requires-python = ">=3.11"
         dependencies = [
@@ -185,6 +200,7 @@ def build_plugin_pyproject(
 
         [tool.ce_plugin_repo]
         family = "{family}"
+        status = "experimental"
         import_name = "{import_name}"
         """
     )
@@ -197,20 +213,32 @@ def build_plugin_readme(*, distribution_name: str, family: str, ce_range: str) -
 
         Family: `{family}`
 
-        Purpose: Scaffolded official {family} plugin package aligned to the CE plugin contract.
+        Status: `experimental`
 
-        Install:
+        > **Experimental**: this plugin has not completed a maturity review and is
+        > not published to PyPI. Interfaces and behaviour may change without notice.
+
+        Purpose: Scaffolded {family} plugin package aligned to the CE plugin contract.
+
+        Install (from a checkout of this repository):
 
         ```bash
-        pip install {distribution_name}
+        pip install ./packages/{family}/{distribution_name}
         ```
 
         Compatibility: `calibrated-explanations{ce_range}`
+
+        Known limitations:
+
+        - Newly scaffolded; delegates to CE built-ins and has not been reviewed
+          for maturity. Document real assumptions, limitations, and failure
+          modes here as the implementation evolves.
 
         Upstream docs:
 
         - CE Read the Docs: <{DOCS_HOME}>
         - Plugin contract: <{PLUGIN_CONTRACT}>
+        - Lifecycle policy: `docs/plugin-lifecycle.md` in this repository
         """
     )
 
@@ -922,26 +950,23 @@ def write_meta_package(
     version: str,
 ) -> None:
     package_dir.mkdir(parents=True)
+    # The umbrella metapackage aggregates the family metapackages. Family
+    # metapackages start empty: only plugins with status = "mature" may be
+    # curated into them, and curation is a deliberate review decision.
     dependency_map = {
         "calibrated-explanations-plugins": [
             "calibrated-explanations-calibration",
             "calibrated-explanations-explanation",
             "calibrated-explanations-visualization",
         ],
-        "calibrated-explanations-calibration": [
-            "calibrated-explanations-calibration-example",
-        ],
-        "calibrated-explanations-explanation": [
-            "calibrated-explanations-explanation-alternative-example",
-            "calibrated-explanations-explanation-factual-example",
-        ],
-        "calibrated-explanations-visualization": [
-            "calibrated-explanations-visualization-example",
-        ],
     }
     dependency_lines = ",\n    ".join(
         f'"{dependency}{ce_range}"' for dependency in dependency_map.get(distribution_name, [])
     )
+    if not dependency_lines:
+        dependency_lines = (
+            '# Curation policy: only plugins with status = "mature" may be listed here.'
+        )
     pyproject = dedent(
         f"""\
         [build-system]
@@ -951,7 +976,7 @@ def write_meta_package(
         [project]
         name = "{distribution_name}"
         version = "{version}"
-        description = "Official metapackage for calibrated-explanations plugins"
+        description = "Curated metapackage for calibrated-explanations plugins"
         readme = "README.md"
         requires-python = ">=3.11"
         dependencies = [
@@ -971,7 +996,9 @@ def write_meta_package(
 
         Family: `meta`
 
-        Purpose: Official metapackage for the calibrated-explanations plugin ecosystem.
+        Purpose: Curated metapackage for the calibrated-explanations plugin ecosystem.
+        It installs only plugins that have completed a maturity review and were
+        explicitly selected for the recommended default set.
 
         Install:
 

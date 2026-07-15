@@ -1,5 +1,10 @@
 name: Package Checks
 
+# Tiered CI model (see docs/plugin-lifecycle.md):
+# - changed packages (any status): version bump + wheel build + runtime + tests
+# - promotion PRs (experimental -> mature): complete mature-package suite for
+#   the promoted packages, regardless of changed-package optimisations
+# - mature packages: release-grade wheel runtime validation on every run
 on:
   push:
     branches:
@@ -28,7 +33,7 @@ jobs:
           version: "0.9.21"
 
       - name: Install test tooling
-        run: uv pip install --system build
+        run: uv pip install --system build packaging
 
       - name: Determine diff base
         id: base
@@ -49,6 +54,10 @@ jobs:
       - name: Detect changed packages
         id: changed
         run: echo "packages=$(python scripts/list_changed_packages.py --base '${{ steps.base.outputs.base }}')" >> "$GITHUB_OUTPUT"
+
+      - name: Detect maturity promotions
+        id: promoted
+        run: echo "packages=$(python scripts/list_promotion_candidates.py --base '${{ steps.base.outputs.base }}')" >> "$GITHUB_OUTPUT"
 
       - name: Enforce version bumps for changed packages
         if: steps.changed.outputs.packages != '[]'
@@ -71,8 +80,12 @@ jobs:
           import json
           import subprocess
           packages = json.loads(r'''${{ steps.changed.outputs.packages }}''')
+          promoted = set(json.loads(r'''${{ steps.promoted.outputs.packages }}'''))
           for package in packages:
               if package.startswith("packages/meta/"):
+                  continue
+              if package in promoted:
+                  # Covered by the complete mature-package suite below.
                   continue
               if package == "packages/calibration/calibrated-explanations-calibration-idr":
                   # This package requires Python >=3.13 and a real upstream isodistrreg build.
@@ -88,7 +101,29 @@ jobs:
               )
           PY
 
-  all-plugin-runtime:
+      - name: Run complete mature-package suite for promoted packages
+        if: steps.promoted.outputs.packages != '[]'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          packages = json.loads(r'''${{ steps.promoted.outputs.packages }}''')
+          for package in packages:
+              # Release-grade validation: wheel build, install into a fresh
+              # environment, runtime contract checks, and the package test
+              # suite executed against the built artifact.
+              subprocess.check_call(
+                  [
+                      "python",
+                      "scripts/runtime_check_package.py",
+                      "--package-path",
+                      package,
+                  ]
+              )
+          PY
+
+  mature-plugin-runtime:
     runs-on: ubuntu-latest
 
     steps:
@@ -106,9 +141,9 @@ jobs:
           version: "0.9.21"
 
       - name: Install runtime tooling
-        run: uv pip install --system build
+        run: uv pip install --system build packaging
 
-      - name: Validate every official plugin from built wheels
+      - name: Validate every mature plugin from built wheels
         shell: bash
         run: |
           python - <<'PY'
@@ -116,7 +151,10 @@ jobs:
           import subprocess
 
           packages = json.loads(
-              subprocess.check_output(["python", "scripts/list_official_plugin_packages.py"], text=True)
+              subprocess.check_output(
+                  ["python", "scripts/list_buildable_packages.py", "--status", "mature"],
+                  text=True,
+              )
           )
           for package in packages:
               subprocess.check_call(
@@ -125,7 +163,6 @@ jobs:
                       "scripts/runtime_check_package.py",
                       "--package-path",
                       package,
-                      "--skip-pytest",
                   ]
               )
           PY

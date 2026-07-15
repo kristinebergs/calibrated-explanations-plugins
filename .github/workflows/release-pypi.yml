@@ -1,9 +1,28 @@
 name: Release PyPI Packages
 
+# Publication policy (see docs/plugin-lifecycle.md):
+# - A tag alone never publishes anything; scripts/resolve_release_tag.py gates
+#   every release on lifecycle status, curation invariants, version match, and
+#   default-branch reachability.
+# - Individual plugins are releasable only with status = "mature".
+# - The workflow_dispatch path exists solely for an exceptional, maintainer-
+#   approved security/migration release of a deprecated package. It runs in the
+#   same protected `pypi` environment, so it requires environment approval.
 on:
   push:
     tags:
       - "pkg/**"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (pkg/<distribution-name>/v<version>) that already exists in the repository"
+        required: true
+        type: string
+      allow-deprecated:
+        description: "Exceptional deprecated-package release override (security/migration only)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -19,6 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,11 +51,27 @@ jobs:
           version: "0.9.21"
 
       - name: Install release tooling
-        run: uv pip install --system build
+        run: uv pip install --system build packaging
 
-      - name: Resolve tagged package
+      - name: Resolve and gate tagged package
         id: release
-        run: python scripts/resolve_release_tag.py --tag "${GITHUB_REF_NAME}" --github-output "${GITHUB_OUTPUT}"
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+            EXTRA_ARGS=""
+            if [ "${{ inputs.allow-deprecated }}" = "true" ]; then
+              EXTRA_ARGS="--allow-deprecated"
+            fi
+          else
+            TAG="${GITHUB_REF_NAME}"
+            EXTRA_ARGS=""
+          fi
+          python scripts/resolve_release_tag.py \
+            --tag "${TAG}" \
+            --default-branch origin/main \
+            --github-output "${GITHUB_OUTPUT}" \
+            ${EXTRA_ARGS}
 
       - name: Build tagged package
         shell: bash

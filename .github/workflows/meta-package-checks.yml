@@ -1,5 +1,8 @@
 name: Meta Package Checks
 
+# A metapackage dependency change triggers curation policy validation,
+# building all selected artifacts, installation from a local wheelhouse, and
+# runtime verification of the resulting metapackage environment.
 on:
   push:
     branches:
@@ -36,9 +39,9 @@ jobs:
           version: "0.9.21"
 
       - name: Install build tooling
-        run: uv pip install --system build
+        run: uv pip install --system build packaging
 
-      - name: Validate metapackage dependency sync
+      - name: Validate metapackage curation invariants
         run: python scripts/check_meta_package_sync.py
 
       - name: Validate docs install commands
@@ -67,3 +70,30 @@ jobs:
           uv pip install --system --find-links .wheelhouse calibrated-explanations-explanation
           uv pip install --system --find-links .wheelhouse calibrated-explanations-visualization
           uv pip install --system --find-links .wheelhouse calibrated-explanations-plugins
+
+      - name: Verify metapackage runtime environments
+        shell: bash
+        run: |
+          python - <<'PY'
+          import subprocess
+
+          metapackages = [
+              "packages/meta/calibrated-explanations-calibration",
+              "packages/meta/calibrated-explanations-explanation",
+              "packages/meta/calibrated-explanations-visualization",
+              "packages/meta/calibrated-explanations-plugins",
+          ]
+          for package in metapackages:
+              subprocess.check_call(
+                  [
+                      "python",
+                      "scripts/runtime_check_metapackage.py",
+                      "--package-path",
+                      package,
+                      "--artifact-dir",
+                      ".wheelhouse",
+                      "--wheelhouse",
+                      ".wheelhouse",
+                  ]
+              )
+          PY

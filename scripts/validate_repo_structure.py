@@ -12,6 +12,10 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from repo_packages import ALLOWED_STATUSES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES_DIR = ROOT / "packages"
@@ -49,20 +53,35 @@ class PackageInfo:
     package_type: str
     name: str
     version: str
+    status: str | None
     import_name: str | None
     entry_points: dict[str, dict[str, str]]
 
 
+def validate_repository(root: Path | None = None) -> list[str]:
+    """Run all repository checks, optionally against an alternate repo root."""
+    global ROOT, PACKAGES_DIR
+    previous = (ROOT, PACKAGES_DIR)
+    if root is not None:
+        ROOT = root
+        PACKAGES_DIR = root / "packages"
+    try:
+        errors: list[str] = []
+        packages = discover_packages(errors)
+        check_uniqueness(packages, errors)
+        check_cross_package_imports(packages, errors)
+        return errors
+    finally:
+        ROOT, PACKAGES_DIR = previous
+
+
 def main() -> int:
-    errors: list[str] = []
-    packages = discover_packages(errors)
-    check_uniqueness(packages, errors)
-    check_cross_package_imports(packages, errors)
+    errors = validate_repository()
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    print(f"Validated {len(packages)} packages successfully.")
+    print("Repository structure validation passed.")
     return 0
 
 
@@ -117,31 +136,41 @@ def load_package_info(package_dir: Path, family: str, errors: list[str]) -> Pack
 
     metadata_family = tool_cfg.get("family") if isinstance(tool_cfg, dict) else None
     import_name = tool_cfg.get("import_name") if isinstance(tool_cfg, dict) else None
+    status = tool_cfg.get("status") if isinstance(tool_cfg, dict) else None
     dependencies = project.get("dependencies", [])
     entry_points = {
         group: dict(project.get("entry-points", {}).get(group, {})) for group in ENTRYPOINT_GROUPS
     }
 
     if family == "meta":
-        validate_meta_package(package_dir, name, metadata_family, dependencies, errors)
+        validate_meta_package(package_dir, name, metadata_family, status, dependencies, errors)
     else:
         validate_plugin_package(
             package_dir=package_dir,
             family=family,
             name=name,
             metadata_family=metadata_family,
+            status=status,
             import_name=import_name,
             entry_points=entry_points,
             dependencies=dependencies,
             errors=errors,
         )
-    validate_readme(readme_path, name, metadata_family or family, errors)
+        validate_lifecycle_metadata(package_dir, project, status, errors)
+    validate_readme(
+        readme_path,
+        name,
+        metadata_family or family,
+        status if family != "meta" else None,
+        errors,
+    )
     return PackageInfo(
         root=package_dir,
         family=family,
         package_type="meta" if family == "meta" else "plugin",
         name=name,
         version=version,
+        status=status if isinstance(status, str) else None,
         import_name=import_name,
         entry_points=entry_points,
     )
@@ -151,6 +180,7 @@ def validate_meta_package(
     package_dir: Path,
     name: str,
     metadata_family: str | None,
+    status: object,
     dependencies: list[str],
     errors: list[str],
 ) -> None:
@@ -160,12 +190,23 @@ def validate_meta_package(
         errors.append(
             f"{package_dir.relative_to(ROOT)} must declare tool.ce_plugin_repo.family = 'meta'"
         )
+    if status is not None:
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} is a metapackage and must not declare "
+            "tool.ce_plugin_repo.status; metapackage content is governed by curation "
+            "of mature plugins, not by an own lifecycle state"
+        )
     if (package_dir / "src").exists():
         errors.append(f"{package_dir.relative_to(ROOT)} meta-package must not contain src/")
     if (package_dir / "tests").exists():
         errors.append(f"{package_dir.relative_to(ROOT)} meta-package must not contain tests/")
-    if not dependencies:
-        errors.append(f"{package_dir.relative_to(ROOT)} meta-package must declare dependencies")
+    # The umbrella metapackage must aggregate the family metapackages. Family
+    # metapackages may legitimately be empty while no plugin is mature.
+    if name == "calibrated-explanations-plugins" and not dependencies:
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} umbrella metapackage must depend on "
+            "the family metapackages"
+        )
 
 
 def validate_plugin_package(
@@ -174,6 +215,7 @@ def validate_plugin_package(
     family: str,
     name: str,
     metadata_family: str | None,
+    status: object,
     import_name: str | None,
     entry_points: dict[str, dict[str, str]],
     dependencies: list[str],
@@ -190,6 +232,16 @@ def validate_plugin_package(
         )
     if metadata_family != family:
         errors.append(f"{package_dir.relative_to(ROOT)} must declare family {family!r}")
+    if status is None:
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} is missing tool.ce_plugin_repo.status. "
+            f'Declare status = "experimental" (new plugins), "mature", or "deprecated".'
+        )
+    elif status not in ALLOWED_STATUSES:
+        errors.append(
+            f"{package_dir.relative_to(ROOT)} declares unknown status {status!r}. "
+            f"Allowed statuses: {', '.join(ALLOWED_STATUSES)}."
+        )
     if not isinstance(import_name, str) or not import_name:
         errors.append(f"{package_dir.relative_to(ROOT)} missing tool.ce_plugin_repo.import_name")
         return
@@ -269,6 +321,13 @@ def extract_plugin_meta(module_path: Path, object_name: str) -> dict | None:
                     for target in statement.targets:
                         if isinstance(target, ast.Name) and target.id == "plugin_meta":
                             return resolve_static_value(statement.value, module_constants)
+                if (
+                    isinstance(statement, ast.AnnAssign)
+                    and isinstance(statement.target, ast.Name)
+                    and statement.target.id == "plugin_meta"
+                    and statement.value is not None
+                ):
+                    return resolve_static_value(statement.value, module_constants)
     return None
 
 
@@ -478,18 +537,114 @@ def validate_plugin_config_default(
         errors.append(f"{prefix} must be a mapping")
 
 
-def validate_readme(readme_path: Path, package_name: str, family: str, errors: list[str]) -> None:
-    text = readme_path.read_text(encoding="utf-8")
-    if f"pip install {package_name}" not in text:
-        errors.append(f"{readme_path.relative_to(ROOT)} must contain an install command")
-    if f"Family: `{family}`" not in text:
-        errors.append(f"{readme_path.relative_to(ROOT)} must declare Family: `{family}`")
-    if "Purpose:" not in text:
-        errors.append(f"{readme_path.relative_to(ROOT)} must contain Purpose:")
-    if "Compatibility: `calibrated-explanations" not in text:
+def validate_lifecycle_metadata(
+    package_dir: Path, project: dict, status: object, errors: list[str]
+) -> None:
+    """Enforce status-sensitive project metadata rules."""
+    rel = package_dir.relative_to(ROOT)
+    description = project.get("description")
+    if status != "mature" and isinstance(description, str) and "official" in description.lower():
         errors.append(
-            f"{readme_path.relative_to(ROOT)} must declare calibrated-explanations compatibility"
+            f"{rel} has status {status!r} and must not describe itself as 'official' "
+            "in project.description; only mature plugins are officially published"
         )
+    if status != "mature":
+        return
+    maintainers = project.get("maintainers")
+    if not isinstance(maintainers, list) or not any(
+        isinstance(entry, dict) and entry.get("name") for entry in maintainers
+    ):
+        errors.append(
+            f"{rel} is mature but declares no project.maintainers; a named "
+            "maintainer is a mandatory maturity gate"
+        )
+    if not project.get("license") and not project.get("license-files"):
+        errors.append(
+            f"{rel} is mature but declares no project.license; a "
+            "publication-compatible licence is a mandatory maturity gate"
+        )
+
+
+def _has_bare_pypi_install(text: str, package_name: str) -> bool:
+    return any(line.strip() == f"pip install {package_name}" for line in text.splitlines())
+
+
+def _has_source_install(text: str) -> bool:
+    return (
+        "pip install -e" in text
+        or "pip install ./" in text
+        or 'pip install "./' in text
+        or "git+" in text
+    )
+
+
+def validate_readme(
+    readme_path: Path,
+    package_name: str,
+    family: str,
+    status: str | None,
+    errors: list[str],
+) -> None:
+    text = readme_path.read_text(encoding="utf-8")
+    rel = readme_path.relative_to(ROOT)
+    if f"Family: `{family}`" not in text:
+        errors.append(f"{rel} must declare Family: `{family}`")
+    if "Purpose:" not in text:
+        errors.append(f"{rel} must contain Purpose:")
+    if "Compatibility: `calibrated-explanations" not in text:
+        errors.append(f"{rel} must declare calibrated-explanations compatibility")
+
+    if status is None:
+        # Metapackages are the curated PyPI product and keep the plain command.
+        if f"pip install {package_name}" not in text:
+            errors.append(f"{rel} must contain an install command")
+        return
+
+    if status in ALLOWED_STATUSES and f"Status: `{status}`" not in text:
+        errors.append(
+            f"{rel} must declare its lifecycle status with a 'Status: `{status}`' line "
+            "matching tool.ce_plugin_repo.status"
+        )
+
+    if status == "mature":
+        if not _has_bare_pypi_install(text, package_name):
+            errors.append(
+                f"{rel} is mature and must document PyPI installation with a plain "
+                f"'pip install {package_name}' command"
+            )
+    elif status == "experimental":
+        if _has_bare_pypi_install(text, package_name):
+            errors.append(
+                f"{rel} is experimental and must not advertise 'pip install "
+                f"{package_name}'; experimental plugins are not published to PyPI. "
+                "Document a source install instead."
+            )
+        if not _has_source_install(text):
+            errors.append(
+                f"{rel} is experimental and must document a source install "
+                "(pip install ./<path>, pip install -e, or a git+ URL)"
+            )
+        if "not published to PyPI" not in text:
+            errors.append(
+                f"{rel} is experimental and must contain the warning phrase "
+                "'not published to PyPI' so users are not misled about availability"
+            )
+    elif status == "deprecated":
+        if _has_bare_pypi_install(text, package_name):
+            errors.append(
+                f"{rel} is deprecated and must not advertise 'pip install "
+                f"{package_name}'; deprecated plugins are not recommended for install"
+            )
+        if "**Deprecated**" not in text and "# Deprecated" not in text:
+            errors.append(
+                f"{rel} is deprecated and must contain a prominent '**Deprecated**' notice"
+            )
+        lowered = text.lower()
+        if "migration" not in lowered and "replacement" not in lowered:
+            errors.append(
+                f"{rel} is deprecated and must document a migration path or state "
+                "that no replacement exists"
+            )
 
 
 def check_uniqueness(packages: list[PackageInfo], errors: list[str]) -> None:

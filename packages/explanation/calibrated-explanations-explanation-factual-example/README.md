@@ -2,14 +2,20 @@
 
 Family: `explanation`
 
-Purpose: Official example explanation plugin showing the minimum wiring needed
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
+Purpose: Example explanation plugin showing the minimum wiring needed
 for `CalibratedExplainer` to discover, trust, initialize, and invoke a custom
 explanation plugin.
 
 Install:
 
 ```bash
-pip install calibrated-explanations-explanation-factual-example
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/explanation/calibrated-explanations-explanation-factual-example
 ```
 
 Compatibility: `calibrated-explanations>=0.11`

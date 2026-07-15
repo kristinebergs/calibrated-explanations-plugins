@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization"
-version = "0.1.0"
-description = "Official metapackage for calibrated-explanations plugins"
+version = "0.2.0"
+description = "Curated visualization plugin metapackage for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "calibrated-explanations-visualization-example>=0.1,<1",
-    "calibrated-explanations-visualization-plotly>=0.1,<1"
+    # Curation policy: only plugins with status = "mature" may be listed here.
+    # No plugin has completed a maturity review yet, so this set is empty.
 ]
 
 [tool.hatch.build.targets.wheel]

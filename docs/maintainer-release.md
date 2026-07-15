@@ -4,18 +4,29 @@
 
 Each package in this repository is versioned independently.
 
-The `Release PyPI Packages` workflow publishes exactly one package, resolved from
-the pushed package-specific tag.
+The `Release PyPI Packages` workflow publishes exactly one package, resolved
+from the pushed package-specific tag. **A tag alone never publishes anything**:
+`scripts/resolve_release_tag.py` gates every release on lifecycle policy
+before the build starts.
 
-Official plugin coverage is dependency-driven:
+Release eligibility:
 
-- family metapackages define which plugin distributions are official
-- runtime CI resolves official plugins from those dependency lists
-- directory presence alone does not make a package official
+- **plugins** — only `status = "mature"`; experimental plugins are rejected,
+  deprecated plugins are rejected on the tag-push path;
+- **metapackages** — rejected while any curation invariant fails (unknown,
+  wrong-family, experimental, or deprecated dependency; stale umbrella;
+  requires-python conflicts);
+- **every release** — the tag version must equal `project.version`, and the
+  tagged commit must be reachable from `origin/main` (no releases from
+  unmerged or unreviewed commits).
+
+Publication uses PyPI **trusted publishing** from the protected `pypi` GitHub
+environment. First publication of a new distribution is bootstrapped by
+creating a PyPI *pending publisher* for this repository/workflow so the
+project is under CE maintainer control from the first upload. See
+`docs/plugin-lifecycle.md` for ownership and approval authority.
 
 ## Package tag format
-
-Use this tag format for package releases:
 
 ```text
 pkg/<distribution-name>/v<version>
@@ -23,25 +34,40 @@ pkg/<distribution-name>/v<version>
 
 Examples:
 
-- `pkg/calibrated-explanations-calibration-example/v0.1.0`
-- `pkg/calibrated-explanations-calibration/v0.1.0`
+- `pkg/calibrated-explanations-visualization-plotly/v0.3.0`
+- `pkg/calibrated-explanations-calibration/v0.2.0`
 
 ## Typical workflow
 
-1. Bump `project.version` in the changed package.
-2. If this is a new official plugin, add it to the matching family metapackage dependencies.
-3. Run `python scripts/check_meta_package_sync.py`.
-4. Merge the change to the default branch.
-5. Create the package tag using the package-specific format.
-6. Push the tag; the release workflow starts automatically.
+1. Confirm the package is `mature` (plugins) or curation-clean (metapackages):
+   `python scripts/check_meta_package_sync.py`.
+2. Bump `project.version` in the changed package.
+3. Regenerate the index: `python scripts/generate_package_index.py`.
+4. Merge the change to the default branch through review.
+5. Create the package tag **on the merged commit** and push it; the release
+   workflow starts automatically and re-verifies everything.
+
+Dry-run the gate locally before tagging:
+
+```bash
+python scripts/resolve_release_tag.py --tag pkg/<name>/v<version> --default-branch origin/main
+```
+
+## Exceptional deprecated-package release
+
+Deprecated packages receive no ordinary releases. For a security or migration
+release only, a maintainer runs the release workflow manually
+(`workflow_dispatch`) with the existing tag and `allow-deprecated: true`. The
+run still executes inside the protected `pypi` environment, so it requires
+environment approval. Document the justification in the deprecation issue.
 
 ## Bootstrap order
 
 For the first repository release, tag and publish packages in this order:
 
-1. Individual plugin packages
+1. Individual mature plugin packages
 2. Family metapackages
 3. The umbrella `calibrated-explanations-plugins` metapackage
 
-Family and umbrella metapackages only need a new release when dependency
+Family and umbrella metapackages only need a new release when curated
 membership or `calibrated-explanations` compatibility ranges change.

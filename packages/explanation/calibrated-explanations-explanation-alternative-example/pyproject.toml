@@ -4,8 +4,8 @@
 
         [project]
         name = "calibrated-explanations-explanation-alternative-example"
-        version = "0.1.0"
-        description = "Official explanation plugin for calibrated-explanations"
+        version = "0.1.1"
+        description = "Example alternative explanation plugin for calibrated-explanations"
         readme = "README.md"
         requires-python = ">=3.11"
         dependencies = [
@@ -20,4 +20,5 @@ alternative_example = "ce_explanation_alternative_example.plugin:AlternativeExam
 
         [tool.ce_plugin_repo]
         family = "explanation"
+        status = "experimental"
         import_name = "ce_explanation_alternative_example"

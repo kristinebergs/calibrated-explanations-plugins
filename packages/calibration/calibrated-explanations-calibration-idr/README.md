@@ -3,10 +3,16 @@
 Install this plugin package with `calibrated-explanations` in a Python `>=3.13` environment:
 
 ```bash
-pip install calibrated-explanations-calibration-idr
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/calibration/calibrated-explanations-calibration-idr
 ```
 
 Family: `calibration`
+
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
 
 Purpose: post-hoc IDR regression distribution calibration for `calibrated-explanations`, using the
 upstream `isodistrreg.IDR` Python bindings. Two plugins are provided:

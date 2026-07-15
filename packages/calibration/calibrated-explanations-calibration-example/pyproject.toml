@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-calibration-example"
-version = "0.1.0"
-description = "Official calibration plugin for calibrated-explanations"
+version = "0.1.1"
+description = "Example calibration plugin for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -23,4 +23,5 @@ trusted = ["official.calibration.example"]
 
 [tool.ce_plugin_repo]
 family = "calibration"
+status = "experimental"
 import_name = "ce_calibration_example"

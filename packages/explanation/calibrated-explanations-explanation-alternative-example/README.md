@@ -2,14 +2,20 @@
 
 Family: `explanation`
 
-Purpose: Official example alternative explanation plugin showing how
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
+Purpose: Example alternative explanation plugin showing how
 `CalibratedExplainer` discovers, trusts, initializes, and invokes an
 alternative explanation plugin.
 
 Install:
 
 ```bash
-pip install calibrated-explanations-explanation-alternative-example
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/explanation/calibrated-explanations-explanation-alternative-example
 ```
 
 Compatibility: `calibrated-explanations>=0.11`

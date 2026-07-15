@@ -2,7 +2,7 @@
 
 Family: `meta`
 
-Purpose: Official metapackage for the calibrated-explanations plugin ecosystem.
+Purpose: Curated calibration plugin metapackage for the calibrated-explanations ecosystem.
 
 Install:
 
@@ -10,4 +10,9 @@ Install:
 pip install calibrated-explanations-calibration
 ```
 
-Compatibility: `calibrated-explanations>=0.1,<1`
+Compatibility: `calibrated-explanations>=0.11`
+
+This metapackage installs only plugins that completed a maturity review and
+were explicitly curated as the recommended default set (see
+`docs/plugin-lifecycle.md`). The curated set is currently empty; it grows as
+plugins are promoted and selected.

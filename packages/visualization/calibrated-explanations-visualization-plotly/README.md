@@ -2,6 +2,11 @@
 
 Family: `visualization`
 
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
 Purpose: Plotly visualization plugin layouts for calibrated-explanations, providing interactive local and global explanation plots.
 
 Compatibility: `calibrated-explanations>=0.11`
@@ -396,13 +401,15 @@ regression_result = regression_explainer.plot(
 Install Plotly support with:
 
 ```bash
-pip install calibrated-explanations-visualization-plotly[plotly]
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install "./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-plotly[plotly]"
 ```
 
 Install live dashboard support with:
 
 ```bash
-pip install calibrated-explanations-visualization-plotly[live]
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install "./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-plotly[live]"
 ```
 
 See `examples/local_ensured_plotly.ipynb` for a

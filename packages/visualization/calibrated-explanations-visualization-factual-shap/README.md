@@ -2,12 +2,18 @@
 
 Family: `visualization`
 
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
 Purpose: Separate SHAP visualization plugin package for calibrated-explanations.
 
 Install:
 
 ```bash
-pip install calibrated-explanations-visualization-factual-shap
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-factual-shap
 ```
 
 Compatibility: `calibrated-explanations>=0.11`

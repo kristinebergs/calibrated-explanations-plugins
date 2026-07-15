@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-calibration-idr"
-version = "0.1.0"
+version = "0.1.1"
 description = "IDR regression interval calibration plugin for calibrated-explanations"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -22,5 +22,6 @@ packages = ["src/ce_calibration_idr"]
 
 [tool.ce_plugin_repo]
 family = "calibration"
+status = "experimental"
 import_name = "ce_calibration_idr"
 calibration_kind = "regression"

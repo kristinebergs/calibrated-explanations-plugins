@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-testpaths = ["packages"]
+testpaths = ["packages", "tests"]
 addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
@@ -15,5 +15,6 @@ ignore = ["S101"]
 ".github/**/*.py" = ["S603", "S607"]
 "conftest.py" = ["S110"]
 "**/tests/**/*.py" = ["E402", "N806", "B017", "S104", "S105"]
+"tests/**/*.py" = ["S603", "S607"]
 "packages/**/ensured.py" = ["E501"]
 "packages/**/instance_workspace.py" = ["E501"]

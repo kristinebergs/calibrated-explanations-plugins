@@ -2,12 +2,18 @@
 
 Family: `explanation`
 
-Purpose: Scaffolded official explanation plugin package aligned to the CE plugin contract.
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
+Purpose: Scaffolded explanation plugin package aligned to the CE plugin contract.
 
 Install:
 
 ```bash
-pip install calibrated-explanations-explanation-factual-shap
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/explanation/calibrated-explanations-explanation-factual-shap
 ```
 
 Compatibility: `calibrated-explanations>=0.11`

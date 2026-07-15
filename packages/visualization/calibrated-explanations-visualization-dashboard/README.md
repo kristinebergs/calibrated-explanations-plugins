@@ -1,16 +1,26 @@
 # calibrated-explanations-visualization-dashboard
 
-Dashboard visualization plugin for [calibrated-explanations](https://github.com/Healthy-AI/calibrated-explanations).
+Family: `visualization`
 
-Combines any number of registered plot plugins and a narrative text panel into a single
-interactive [plotly](https://plotly.com/python/) figure.
+Status: `experimental`
 
-## Installation
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
+Purpose: Dashboard visualization plugin for
+[calibrated-explanations](https://github.com/Healthy-AI/calibrated-explanations).
+Combines any number of registered plot plugins and a narrative text panel into
+a single interactive [plotly](https://plotly.com/python/) figure.
+
+Compatibility: `calibrated-explanations>=0.11`
+
+## Installation (from source)
 
 ```bash
-pip install calibrated-explanations-visualization-dashboard
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-dashboard
 # Optional: PNG export
-pip install "calibrated-explanations-visualization-dashboard[png]"
+pip install "./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-dashboard[png]"
 ```
 
 ## Usage

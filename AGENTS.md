@@ -21,14 +21,38 @@ packages/
 ├── calibration/   ← calibration family plugins
 ├── explanation/   ← explanation family plugins
 ├── visualization/ ← visualization family plugins
-└── meta/          ← metapackage aggregators
+└── meta/          ← curated metapackage aggregators
 templates/         ← scaffold templates for new plugins
-scripts/           ← build, release, registry helpers
+scripts/           ← build, release, lifecycle, registry helpers
+tests/             ← lifecycle and governance policy tests
 docs/
-├── package-index.md
+├── plugin-lifecycle.md            ← lifecycle, maturity, curation, governance
+├── adr/ADR-P001-plugin-lifecycle-and-curation.md
+├── package-index.md               ← generated; do not edit by hand
+├── lifecycle-migration.md
+├── public-intake/                 ← staged public contribution route
 ├── which-package-should-i-install.md
 └── maintainer-release.md
 ```
+
+## Plugin Lifecycle
+
+Every plugin package declares `status = "experimental" | "mature" |
+"deprecated"` in `[tool.ce_plugin_repo]` (its `pyproject.toml`). This is the
+single source of truth for lifecycle state:
+
+- **experimental** — source-install only; never released to PyPI; never in a
+  metapackage; README must warn it is not published to PyPI
+- **mature** — passed the maturity review (`docs/plugin-lifecycle.md`);
+  releasable to PyPI; requires `project.maintainers` and licence metadata
+- **deprecated** — excluded from metapackages and ordinary releases; README
+  must carry a deprecation notice and migration guidance
+
+Status changes to `mature` go through a maturity-promotion PR
+(`.github/PULL_REQUEST_TEMPLATE/maturity_promotion.md`). Do not conflate
+lifecycle status with runtime trust (`plugin_meta["trusted"]`) — they are
+independent concepts. Shared discovery/validation logic lives in
+`scripts/repo_packages.py`.
 
 ## Plugin Protocol
 
@@ -41,13 +65,18 @@ Every plugin package must:
    omitted from the registry entry's `visible` set, not raise at import time
 5. **Match CE API version** — check that `CalibrationExplainer._API_VERSION` is compatible
 
-## What Is Official
+## What Is Official and Curated
 
-Official plugins are declared as dependencies of the three family metapackages only.
-CI resolves them at runtime from those dependency lists. Adding a plugin requires:
-1. A package under `packages/<family>/<name>/`
-2. A registry entry
-3. An entry in the family metapackage `pyproject.toml`
+The curated (recommended default) plugin sets are the dependencies of the
+three family metapackages; CI resolves them from those dependency lists. Only
+plugins with `status = "mature"` may appear there, and curation is a separate
+review decision from maturity — mature plugins are not added automatically.
+Adding a new plugin:
+1. Scaffold a package under `packages/<family>/<name>/` (starts `experimental`)
+2. Add a registry entry
+3. Promote to `mature` via a maturity-promotion PR when the review passes
+4. Optionally propose curation: an entry in the family metapackage
+   `pyproject.toml` (validated by `scripts/check_meta_package_sync.py`)
 
 ## Release Relationship
 

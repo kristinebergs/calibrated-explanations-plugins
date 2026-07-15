@@ -2,13 +2,19 @@
 
 Family: `visualization`
 
-Purpose: Official example visualization plugin showing how a CE plot package
+Status: `experimental`
+
+> **Experimental**: this plugin has not completed a maturity review and is
+> not published to PyPI. Install from source (see below).
+
+Purpose: Example visualization plugin showing how a CE plot package
 boots a builder, renderer, and style into the runtime registry.
 
 Install:
 
 ```bash
-pip install calibrated-explanations-visualization-example
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+pip install ./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-example
 ```
 
 Compatibility: `calibrated-explanations[viz]>=0.11`

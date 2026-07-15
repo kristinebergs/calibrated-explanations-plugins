@@ -2,7 +2,7 @@
 
 Family: `meta`
 
-Purpose: Official metapackage for the calibrated-explanations plugin ecosystem.
+Purpose: Umbrella metapackage aggregating the curated plugin families for the calibrated-explanations ecosystem.
 
 Install:
 
@@ -10,4 +10,4 @@ Install:
 pip install calibrated-explanations-plugins
 ```
 
-Compatibility: `calibrated-explanations>=0.1,<1`
+Compatibility: `calibrated-explanations>=0.11`

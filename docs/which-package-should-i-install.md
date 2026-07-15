@@ -1,6 +1,9 @@
 # Which package should I install?
 
-Choose the package based on what you need to install.
+Choose based on what you need and on each package's lifecycle status. The
+authoritative per-package listing is the generated
+[package-index.md](package-index.md); lifecycle definitions are in
+[plugin-lifecycle.md](plugin-lifecycle.md).
 
 Upstream CE docs:
 
@@ -8,97 +11,76 @@ Upstream CE docs:
 - CE installation guide: <https://calibrated-explanations.readthedocs.io/en/latest/get-started/installation.html>
 - CE plugin contract: <https://calibrated-explanations.readthedocs.io/en/latest/contributor/plugin-contract.html>
 
-## Install the standard official set
+## The curated default set (from PyPI, once released)
+
+The metapackages install only plugins that completed a maturity review and
+were explicitly curated:
 
 ```bash
 pip install calibrated-explanations-plugins
 ```
 
-## Install one family
-
-Calibration plugins:
+Or one family:
 
 ```bash
 pip install calibrated-explanations-calibration
-```
-
-Explanation plugins:
-
-```bash
 pip install calibrated-explanations-explanation
-```
-
-Visualization plugins:
-
-```bash
 pip install calibrated-explanations-visualization
 ```
 
-## Install one plugin
+> **Note**: no plugin has completed a maturity review yet, so the curated sets
+> are currently empty and the metapackages have not been published.
 
-Example calibration plugin:
+## Individual mature plugins (from PyPI)
 
-```bash
-pip install calibrated-explanations-calibration-example
-```
+Mature plugins are installable individually with `pip install
+<distribution-name>`. There are currently none; see the "Mature" sections of
+[package-index.md](package-index.md) as promotions land.
 
-Example factual explanation plugin:
+## Experimental plugins (from source only)
 
-```bash
-pip install calibrated-explanations-explanation-factual-example
-```
-
-Factual LIME explanation plugin:
+Experimental plugins are **not published to PyPI**. Install them from a
+repository checkout for development or evaluation:
 
 ```bash
-pip install calibrated-explanations-explanation-factual-lime
+git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
+cd calibrated-explanations-plugins
+pip install ./packages/<family>/<distribution-name>
 ```
 
-Factual SHAP explanation plugin:
+Current experimental plugins:
 
-```bash
-pip install calibrated-explanations-explanation-factual-shap
-```
+- `calibrated-explanations-calibration-example` — example calibration wiring
+- `calibrated-explanations-calibration-idr` — IDR regression interval
+  calibration (requires Python `>=3.13` and a source-installed `isodistrreg`
+  backend; see its README)
+- `calibrated-explanations-explanation-factual-example` — example factual
+  explanation wiring
+- `calibrated-explanations-explanation-alternative-example` — example
+  alternative explanation wiring
+- `calibrated-explanations-explanation-factual-lime` — factual LIME
+  explanations
+- `calibrated-explanations-explanation-factual-shap` — factual SHAP
+  explanations
+- `calibrated-explanations-visualization-example` — example visualization
+  wiring
+- `calibrated-explanations-visualization-plotly` — Plotly visualization
+  layouts
+- `calibrated-explanations-visualization-dashboard` — dashboard visualization
+- `calibrated-explanations-visualization-factual-shap` — SHAP visualization
 
-Example alternative explanation plugin:
+Each experimental README documents its limitations and exact source-install
+steps.
 
-```bash
-pip install calibrated-explanations-explanation-alternative-example
-```
+## Naming model
 
-Example visualization plugin:
-
-```bash
-pip install calibrated-explanations-visualization-example
-```
-
-Dashboard visualization plugin:
-
-```bash
-pip install calibrated-explanations-visualization-dashboard
-```
-
-Factual SHAP visualization plugin:
-
-```bash
-pip install calibrated-explanations-visualization-factual-shap
-```
-
-Plotly visualization plugin layouts:
-
-```bash
-pip install calibrated-explanations-visualization-plotly
-```
-
-## Official naming model
-
-Official individual plugin packages use this form:
+Individual plugin packages use this form:
 
 - `calibrated-explanations-calibration-<slug>`
 - `calibrated-explanations-explanation-<slug>`
 - `calibrated-explanations-visualization-<slug>`
 
-Official metapackages use these names:
+Metapackages use these names:
 
 - `calibrated-explanations-plugins`
 - `calibrated-explanations-calibration`
@@ -106,14 +88,7 @@ Official metapackages use these names:
 - `calibrated-explanations-visualization`
 
 If you are authoring or reviewing a plugin package rather than installing one,
-start with the upstream plugin contract before changing scaffolded code.
-To make a plugin official in this repository, it must be added to the matching
-family metapackage dependencies.
-
-### IDR regression calibration
-
-```bash
-pip install calibrated-explanations-calibration-idr
-```
-
-Use this package for IDR regression interval calibration backed by upstream `isodistrreg.IDR`. It is not listed in the official calibration metapackage until dependency, licensing, wheel, and CE integration conformance are proven.
+start with the upstream plugin contract and
+[plugin-lifecycle.md](plugin-lifecycle.md). A plugin becomes part of a curated
+metapackage only after it is mature **and** a separate curation decision adds
+it to the family metapackage dependencies.
