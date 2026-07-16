@@ -11,7 +11,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore
 
-from official_plugins import official_plugin_paths_for_meta_distribution
+from lifecycle import load_packages, meta_closure
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,8 +33,11 @@ def venv_python(venv_dir: Path) -> Path:
 
 
 def package_plugin_paths(meta_package_path: Path) -> list[Path]:
+    """Paths of the plugins curated by the metapackage (via family metas for the umbrella)."""
     distribution_name = read_distribution_name(meta_package_path)
-    return official_plugin_paths_for_meta_distribution(distribution_name)
+    packages = load_packages(ROOT)
+    meta = next(p for p in packages if p.name == distribution_name)
+    return [p.path for p in meta_closure(packages, meta) if p.package_type == "plugin"]
 
 
 def find_wheel(package_path: Path, artifact_dir: Path) -> Path:

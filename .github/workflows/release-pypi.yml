@@ -1,114 +1,104 @@
 name: Release PyPI Packages
 
-# Publication policy (see docs/plugin-lifecycle.md):
-# - A tag alone never publishes anything; scripts/resolve_release_tag.py gates
-#   every release on lifecycle status, curation invariants, version match, and
-#   default-branch reachability.
-# - Individual plugins are releasable only with status = "mature".
-# - The workflow_dispatch path exists solely for an exceptional, maintainer-
-#   approved security/migration release of a deprecated package. It runs in the
-#   same protected `pypi` environment, so it requires environment approval.
+# A tag alone never publishes anything. `scripts/lifecycle.py release` gates
+# every release: mature plugins only, valid non-empty metapackage curation,
+# tag/version match, and default-branch reachability. Deprecated packages have
+# no release path here; an exceptional deprecated release would be a reviewed
+# one-off workflow change (see docs/plugin-lifecycle.md).
+
 on:
   push:
     tags:
       - "pkg/**"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag (pkg/<distribution-name>/v<version>) that already exists in the repository"
-        required: true
-        type: string
-      allow-deprecated:
-        description: "Exceptional deprecated-package release override (security/migration only)"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  build-and-validate:
     runs-on: ubuntu-latest
-    environment: pypi
-
+    outputs:
+      package_path: ${{ steps.release.outputs.package_path }}
+      package_type: ${{ steps.release.outputs.package_type }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.9.21"
-
       - name: Install release tooling
-        run: uv pip install --system build packaging
+        run: python -m pip install build packaging
 
-      - name: Resolve and gate tagged package
+      - name: Validate repository structure and lifecycle policy
+        run: |
+          python scripts/validate_repo_structure.py
+          python scripts/lifecycle.py check
+
+      - name: Resolve and gate the release tag
         id: release
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-            EXTRA_ARGS=""
-            if [ "${{ inputs.allow-deprecated }}" = "true" ]; then
-              EXTRA_ARGS="--allow-deprecated"
-            fi
-          else
-            TAG="${GITHUB_REF_NAME}"
-            EXTRA_ARGS=""
-          fi
-          python scripts/resolve_release_tag.py \
-            --tag "${TAG}" \
-            --default-branch origin/main \
-            --github-output "${GITHUB_OUTPUT}" \
-            ${EXTRA_ARGS}
+          python scripts/lifecycle.py release \
+            --tag "${GITHUB_REF_NAME}" \
+            --default-branch origin/main >> "$GITHUB_OUTPUT"
 
-      - name: Build tagged package
+      - name: Build the tagged package and its curated closure
         shell: bash
         run: |
-          mkdir -p dist
-          python -m build --outdir dist "${{ steps.release.outputs.package_path }}"
+          mkdir -p dist .wheelhouse
+          python - <<'PY'
+          import json
+          import subprocess
+          tagged = r'''${{ steps.release.outputs.package_path }}'''
+          # For a metapackage tag this is the metapackage plus only the mature
+          # curated plugins it references (and, for the umbrella, the family
+          # metapackages); experimental packages are never built here.
+          for path in json.loads(r'''${{ steps.release.outputs.build_paths }}'''):
+              outdir = "dist" if path == tagged else ".wheelhouse"
+              subprocess.check_call(["python", "-m", "build", "--outdir", outdir, path])
+          PY
 
-      - name: Validate tagged plugin package
+      - name: Validate the plugin artifact
         if: steps.release.outputs.package_type == 'plugin'
-        shell: bash
         run: |
           python scripts/runtime_check_package.py \
             --package-path "${{ steps.release.outputs.package_path }}" \
             --artifact-dir dist
 
-      - name: Validate tagged metapackage
+      - name: Validate the metapackage artifact
         if: steps.release.outputs.package_type == 'meta'
-        shell: bash
         run: |
-          python scripts/check_meta_package_sync.py
-          mkdir -p .wheelhouse
-          python - <<'PY'
-          import json
-          import subprocess
-
-          packages = json.loads(
-              subprocess.check_output(["python", "scripts/list_buildable_packages.py"], text=True)
-          )
-          for package in packages:
-              subprocess.check_call(["python", "-m", "build", "--outdir", ".wheelhouse", package])
-          PY
           python scripts/runtime_check_metapackage.py \
             --package-path "${{ steps.release.outputs.package_path }}" \
             --artifact-dir dist \
             --wheelhouse .wheelhouse
 
-      - name: Publish to PyPI
+      - name: Upload validated distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build-and-validate
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      # No checkout: publish exactly the validated artifact, nothing rebuilt,
+      # no repository code executed in the trusted-publishing context.
+      - name: Download validated distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI (trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist

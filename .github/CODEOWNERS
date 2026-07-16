@@ -1,29 +1,5 @@
-# CODEOWNERS — review authority for lifecycle, curation, and release surfaces.
-# These rules take effect when branch protection requires code-owner review on
-# the default branch (see docs/plugin-lifecycle.md, "PyPI governance").
-
-# Default owner for everything not matched more specifically below.
+# Single-maintainer repository: one rule until a second maintainer or team
+# exists. Note: code-owner review is only independently enforced once branch
+# protection requires it AND an eligible independent reviewer exists; today
+# the protected `pypi` environment is the final publication approval boundary.
 * @tuvelofstrom
-
-# Release workflows and automation.
-/.github/workflows/ @tuvelofstrom
-/.github/CODEOWNERS @tuvelofstrom
-
-# Package lifecycle, curation, and release scripts.
-/scripts/ @tuvelofstrom
-
-# Lifecycle and governance policy documentation and tests.
-/docs/ @tuvelofstrom
-/tests/ @tuvelofstrom
-
-# Metapackages define the curated plugin sets; every change is a curation
-# decision.
-/packages/meta/ @tuvelofstrom
-
-# Lifecycle metadata: [tool.ce_plugin_repo] status lives in each package's
-# pyproject.toml, so status changes (including promotion to mature and
-# deprecation) always require code-owner approval.
-/packages/*/*/pyproject.toml @tuvelofstrom
-
-# Mature plugin packages: add one line per package when it is promoted, e.g.
-# /packages/visualization/calibrated-explanations-visualization-plotly/ @tuvelofstrom

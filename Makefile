@@ -8,8 +8,8 @@ lint:
 	$(PYTHON) -m ruff check . --exclude "*.ipynb"
 
 package-policy:
-	$(PYTHON) scripts/check_docs_install_commands.py
-	$(PYTHON) scripts/check_meta_package_sync.py
+	$(PYTHON) scripts/validate_repo_structure.py
+	$(PYTHON) scripts/lifecycle.py check
 
 test:
-	$(PYTHON) -m pytest -p no:cacheprovider packages/calibration/calibrated-explanations-calibration-idr/tests
+	$(PYTHON) -m pytest -p no:cacheprovider tests -q

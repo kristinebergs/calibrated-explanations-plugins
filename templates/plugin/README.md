@@ -64,10 +64,11 @@ plugin_meta = {
 1. **Maturity**: open a maturity-promotion PR
    (`.github/PULL_REQUEST_TEMPLATE/maturity_promotion.md`) that flips
    `status = "experimental"` to `"mature"` and resolves every mandatory gate
-   in `docs/plugin-lifecycle.md`. CI runs the full release-grade suite for the
-   promoted package.
-2. **Curation (separate decision)**: propose adding the mature plugin to its
-   family metapackage dependencies:
+   in `docs/plugin-lifecycle.md`. CI validates every changed package from a
+   built wheel, so the promotion PR is automatically checked at release grade.
+2. **Curation (separate decision, may share the promotion PR when justified
+   explicitly)**: propose adding the mature plugin to its family metapackage
+   dependencies:
 
    - calibration plugin -> `packages/meta/calibrated-explanations-calibration/pyproject.toml`
    - explanation plugin -> `packages/meta/calibrated-explanations-explanation/pyproject.toml`
@@ -77,9 +78,6 @@ plugin_meta = {
    automatically. After adding the dependency, verify:
 
 ```bash
-python scripts/check_meta_package_sync.py
-python scripts/list_official_plugin_packages.py
+python scripts/lifecycle.py check
+python scripts/lifecycle.py list --curated
 ```
-
-If the plugin path appears in `list_official_plugin_packages.py` output, CI
-runs the metapackage artifact runtime checks for it.

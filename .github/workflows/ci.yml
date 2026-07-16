@@ -1,0 +1,119 @@
+name: CI
+
+# Two jobs (see docs/plugin-lifecycle.md):
+# - policy: repository-wide structure, lifecycle, index, and policy tests
+# - changed-packages: wheel-build + clean-install + test validation for every
+#   changed plugin package, whatever its status. A promotion PR changes the
+#   package's pyproject.toml, so promotions are validated by the same path.
+# A package whose requires-python excludes this runner's Python is skipped
+# with a message; run its checks locally until CI covers that environment.
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install policy tooling
+        run: python -m pip install packaging pytest
+
+      - name: Validate repository structure and plugin contracts
+        run: python scripts/validate_repo_structure.py
+
+      - name: Validate lifecycle statuses and curation
+        run: python scripts/lifecycle.py check
+
+      - name: Validate generated package index
+        run: python scripts/lifecycle.py index --check
+
+      - name: Run lifecycle policy tests
+        run: python -m pytest tests -q
+
+  changed-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: python -m pip install build packaging
+
+      - name: Determine diff base
+        id: base
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.before }}" != "" ] && \
+               [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "base=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=$(git rev-parse HEAD^)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect changed packages
+        id: changed
+        run: echo "packages=$(python scripts/list_changed_packages.py --base '${{ steps.base.outputs.base }}')" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce version bumps for changed packages
+        if: steps.changed.outputs.packages != '[]'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          packages = json.loads(r'''${{ steps.changed.outputs.packages }}''')
+          subprocess.check_call(
+              ["python", "scripts/check_version_bumps.py", "--base", r"${{ steps.base.outputs.base }}", *packages]
+          )
+          PY
+
+      - name: Validate changed plugin packages from built wheels
+        if: steps.changed.outputs.packages != '[]'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          from packaging.specifiers import SpecifierSet
+
+          runner_python = f"{sys.version_info.major}.{sys.version_info.minor}"
+          packages = json.loads(r'''${{ steps.changed.outputs.packages }}''')
+          for package in packages:
+              pyproject = Path(package, "pyproject.toml")
+              if package.startswith("packages/meta/") or not pyproject.exists():
+                  # Curation is validated by the policy job; metapackage
+                  # artifacts are built and tested by the release workflow.
+                  continue
+              requires = tomllib.loads(pyproject.read_text())["project"].get("requires-python")
+              if requires and runner_python not in SpecifierSet(requires):
+                  print(
+                      f"Skipping {package}: requires-python {requires!r} excludes this "
+                      f"runner's Python {runner_python}. Run its checks locally with "
+                      "a matching interpreter."
+                  )
+                  continue
+              subprocess.check_call(
+                  ["python", "scripts/runtime_check_package.py", "--package-path", package]
+              )
+          PY
