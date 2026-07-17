@@ -408,7 +408,10 @@ def _dummy_thresholded_regression_explanation() -> SimpleNamespace:
         is_alternative=lambda: False,
     )
     collection.explanations = [local]
-    collection.batch_metadata = {"task": "probabilistic_regression", "mode": "probabilistic_regression"}
+    collection.batch_metadata = {
+        "task": "probabilistic_regression",
+        "mode": "probabilistic_regression",
+    }
     return collection
 
 

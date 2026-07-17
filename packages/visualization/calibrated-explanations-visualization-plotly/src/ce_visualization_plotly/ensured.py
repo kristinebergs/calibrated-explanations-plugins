@@ -621,6 +621,7 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
         "provider": "plotly.local",
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
+        "intent": "alternative",
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": (),
@@ -1868,7 +1869,7 @@ class LocalEnsuredPlotRenderer(PlotRenderer):
             figure = build_figure(artifact, dict(context.options))
         except ImportError as exc:
             raise RuntimeError(
-                "Plotly is required to render plotly.local.ensured. Install this package with the [plotly] extra."  # noqa: E501
+                "Plotly is required to render plotly.local.ensured. Install plotly (a mandatory dependency of calibrated-explanations-visualization-plotly); your environment appears to be missing or shadowing it."  # noqa: E501
             ) from exc
         shell_html = None
         if _requires_ui_shell(dict(context.options)):

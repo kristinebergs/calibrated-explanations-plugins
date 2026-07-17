@@ -131,15 +131,26 @@ def main_plugin_meta(package_path: Path) -> dict[str, Any]:
 
 def visualization_metas(
     package_path: Path,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], list[tuple[dict[str, Any], dict[str, Any]]]]:
+    """Return the bootstrap meta and one (builder, renderer) meta pair per style.
+
+    A visualization package may register any number of styles, but builder and
+    renderer entry points must come in identically named pairs.
+    """
     bootstrap = main_plugin_meta(package_path)
     builder_entries = entry_points_for_group(package_path, PLOT_BUILDER_GROUP)
     renderer_entries = entry_points_for_group(package_path, PLOT_RENDERER_GROUP)
-    if len(builder_entries) != 1 or len(renderer_entries) != 1:
-        raise RuntimeError(f"{package_path} must expose exactly one builder and one renderer")
-    builder_meta = dict(load_entrypoint_target(next(iter(builder_entries.values()))).plugin_meta)
-    renderer_meta = dict(load_entrypoint_target(next(iter(renderer_entries.values()))).plugin_meta)
-    return bootstrap, builder_meta, renderer_meta
+    if not builder_entries or set(builder_entries) != set(renderer_entries):
+        raise RuntimeError(
+            f"{package_path} must expose at least one builder/renderer entry-point "
+            "pair with matching names"
+        )
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for name in builder_entries:
+        builder_meta = dict(load_entrypoint_target(builder_entries[name]).plugin_meta)
+        renderer_meta = dict(load_entrypoint_target(renderer_entries[name]).plugin_meta)
+        pairs.append((builder_meta, renderer_meta))
+    return bootstrap, pairs
 
 
 def configure_trust(package_path: Path) -> None:
@@ -149,21 +160,10 @@ def configure_trust(package_path: Path) -> None:
     if family == "visualization":
         bootstrap_target = next(iter(main_entries.values()))
         bootstrap_meta = static_plugin_meta(package_path, bootstrap_target)
-        builder_target = next(
-            iter(entry_points_for_group(package_path, PLOT_BUILDER_GROUP).values())
-        )
-        renderer_target = next(
-            iter(entry_points_for_group(package_path, PLOT_RENDERER_GROUP).values())
-        )
-        builder_meta = static_plugin_meta(package_path, builder_target)
-        renderer_meta = static_plugin_meta(package_path, renderer_target)
-        trust_ids.extend(
-            [
-                str(bootstrap_meta["name"]),
-                str(builder_meta["name"]),
-                str(renderer_meta["name"]),
-            ]
-        )
+        trust_ids.append(str(bootstrap_meta["name"]))
+        for group in (PLOT_BUILDER_GROUP, PLOT_RENDERER_GROUP):
+            for target in entry_points_for_group(package_path, group).values():
+                trust_ids.append(str(static_plugin_meta(package_path, target)["name"]))
     else:
         trust_ids.append(
             str(static_plugin_meta(package_path, next(iter(main_entries.values())))["name"])
@@ -316,43 +316,72 @@ def validate_visualization_runtime(package_path: Path) -> None:
         find_plot_style_descriptor,
     )
 
-    _, builder_meta, renderer_meta = visualization_metas(package_path)
-    style_id = str(builder_meta["style"])
-    builder_id = str(builder_meta["name"])
-    renderer_id = str(renderer_meta["name"])
+    _, meta_pairs = visualization_metas(package_path)
 
-    builder_descriptor = find_plot_builder_descriptor(builder_id)
-    renderer_descriptor = find_plot_renderer_descriptor(renderer_id)
-    style_descriptor = find_plot_style_descriptor(style_id)
-    if builder_descriptor is None or not builder_descriptor.trusted:
-        raise RuntimeError(f"Plot builder {builder_id!r} was not registered as trusted")
-    if renderer_descriptor is None or not renderer_descriptor.trusted:
-        raise RuntimeError(f"Plot renderer {renderer_id!r} was not registered as trusted")
-    if style_descriptor is None:
-        raise RuntimeError(f"Plot style {style_id!r} was not registered")
-    if style_descriptor.metadata.get("builder_id") != builder_id:
-        raise RuntimeError(f"Plot style {style_id!r} did not resolve builder {builder_id!r}")
-    if style_descriptor.metadata.get("renderer_id") != renderer_id:
-        raise RuntimeError(f"Plot style {style_id!r} did not resolve renderer {renderer_id!r}")
-    if find_plot_plugin_trusted(style_id) is None:
-        raise RuntimeError(f"Trusted plot plugin for style {style_id!r} is unavailable")
+    explainer = None
+    x_test = None
+    collections: dict[str, Any] = {}
 
-    explainer, x_test = build_explainer(task="classification")
-    collection = explainer.explain_factual(x_test[:1])
-    assert_non_empty_collection(collection)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        collection.plot(style=style_id, show=False)
-    fallback_warnings = [
-        str(item.message)
-        for item in caught
-        if "falling back to default" in str(item.message).lower()
-        or "failed to find plot renderer" in str(item.message).lower()
-    ]
-    if fallback_warnings:
-        raise RuntimeError(
-            f"Visualization runtime fell back instead of using style {style_id!r}: {fallback_warnings}"
-        )
+    for builder_meta, renderer_meta in meta_pairs:
+        style_id = str(builder_meta["style"])
+        builder_id = str(builder_meta["name"])
+        renderer_id = str(renderer_meta["name"])
+
+        builder_descriptor = find_plot_builder_descriptor(builder_id)
+        renderer_descriptor = find_plot_renderer_descriptor(renderer_id)
+        style_descriptor = find_plot_style_descriptor(style_id)
+        if builder_descriptor is None or not builder_descriptor.trusted:
+            raise RuntimeError(f"Plot builder {builder_id!r} was not registered as trusted")
+        if renderer_descriptor is None or not renderer_descriptor.trusted:
+            raise RuntimeError(f"Plot renderer {renderer_id!r} was not registered as trusted")
+        if style_descriptor is None:
+            raise RuntimeError(f"Plot style {style_id!r} was not registered")
+        if style_descriptor.metadata.get("builder_id") != builder_id:
+            raise RuntimeError(f"Plot style {style_id!r} did not resolve builder {builder_id!r}")
+        if style_descriptor.metadata.get("renderer_id") != renderer_id:
+            raise RuntimeError(
+                f"Plot style {style_id!r} did not resolve renderer {renderer_id!r}"
+            )
+        if find_plot_plugin_trusted(style_id) is None:
+            raise RuntimeError(f"Trusted plot plugin for style {style_id!r} is unavailable")
+
+        # Smoke-render each style through the public CE API appropriate to the
+        # intent it declares ("factual" by default). Dashboard styles are
+        # validated at registry level only; their heavier runtime is covered by
+        # the package test suite.
+        intent = str(builder_meta.get("intent", "factual"))
+        if intent == "dashboard":
+            print(f"Registry-validated dashboard style {style_id!r} (no smoke render)")
+            continue
+
+        if explainer is None:
+            explainer, x_test = build_explainer(task="classification")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            if intent == "global":
+                explainer.plot(x_test, style=style_id, show=False)
+            else:
+                if intent not in collections:
+                    collections[intent] = (
+                        explainer.explain_factual(x_test[:1])
+                        if intent == "factual"
+                        else explainer.explore_alternatives(x_test[:1])
+                    )
+                    assert_non_empty_collection(collections[intent])
+                collections[intent].plot(style=style_id, show=False)
+        fallback_warnings = [
+            str(item.message)
+            for item in caught
+            if "falling back to default" in str(item.message).lower()
+            or "failed to find plot renderer" in str(item.message).lower()
+        ]
+        if fallback_warnings:
+            raise RuntimeError(
+                f"Visualization runtime fell back instead of using style {style_id!r}: "
+                f"{fallback_warnings}"
+            )
+        print(f"Smoke-rendered style {style_id!r} via intent {intent!r}")
 
 
 def validate_runtime(package_path: Path) -> None:

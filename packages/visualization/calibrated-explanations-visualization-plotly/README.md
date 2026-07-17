@@ -2,432 +2,246 @@
 
 Family: `visualization`
 
-Status: `experimental`
+Status: `mature`
 
-> **Experimental**: this plugin has not completed a maturity review and is
-> not published to PyPI. Install from source (see below).
+Interactive Plotly visualization layouts for
+[`calibrated-explanations`](https://github.com/kristinebergs/calibrated_explanations) (CE).
 
-Purpose: Plotly visualization plugin layouts for calibrated-explanations, providing interactive local and global explanation plots.
+## Purpose
 
-Compatibility: `calibrated-explanations>=0.11`
+CE's built-in plots are static matplotlib figures. This plugin adds
+interactive Plotly equivalents and extensions: hover inspection of every
+rule/contribution, standalone HTML export, searchable feature controls,
+batch/global instance overviews, and an optional dashboard workspace. It is
+intended for practitioners who explore CE explanations in notebooks or share
+self-contained interactive HTML reports.
 
-Plotly visualization layouts for `calibrated-explanations`.
+The plugin preserves CE semantics: calibrated values, intervals, signs, and
+explanation roles are taken from the CE explanation payload and are never
+rescaled or re-derived. Where the CE default renderer and Plotly differ, the
+difference is visual (hover cards, HTML output), not semantic.
 
-The package registers `plotly.local.uncertainty_quadrant`, a local factual
-explanation view that plots absolute local impact against calibrated
-uncertainty width. Signed contribution direction is encoded separately through
-marker semantics and hover text.
+## Installation
 
-The package registers `plotly.local.factual_bars`, a Plotly version of CE's
-standard local factual bar plot. Its default visual presentation matches the
-simple factual contribution view used with `uncertainty=False`: one horizontal
-bar per local factual rule or feature, signed around a zero reference line, with
-positive and negative contributions colored distinctly.
+```bash
+pip install calibrated-explanations-visualization-plotly
+```
 
-When `show_prediction_header=True` (the default), a visual prediction header is
-displayed above the contribution bars using Plotly subplots:
+Plotly is a mandatory dependency and is installed automatically. For the
+optional live dashboard (Dash), install the `[live]` extra:
 
-- **Probabilistic explanations** (classification): two horizontal bars showing
-  target-class probability and its complement, each with calibrated interval
-  overlays. The x-axis is fixed to `[0, 1]`. The complement interval is
-  computed as `[1 − high, 1 − low]` so both bars span the full probability
-  simplex.
-- **Regression explanations**: one horizontal bar showing the prediction value
-  with its conformal interval overlay. The x-axis uses the data range.
+```bash
+pip install "calibrated-explanations-visualization-plotly[live]"
+```
 
-Although contribution interval marks are hidden by default, each bar hover
-includes the calibrated contribution interval, interval width, zero-crossing
-status, current feature value when available, and prediction interval metadata
-when available. Set `show_uncertainty=True` to add visible contribution interval
-overlays while keeping the same hover details. Classification and regression
-factual explanations are both supported.
+The plugin registers itself through CE's plugin entry points; no manual
+registration call is needed beyond importing `ce_visualization_plotly.plugin`
+(CE's entry-point discovery does this for you).
 
-Factual bars examples:
+## Quick start
 
 ```python
-# Default: prediction header shown above contribution bars
+from sklearn.ensemble import RandomForestClassifier
+from calibrated_explanations import WrapCalibratedExplainer
+
+explainer = WrapCalibratedExplainer(RandomForestClassifier())
+explainer.fit(X_train, y_train)
+explainer.calibrate(X_cal, y_cal)
+
+import ce_visualization_plotly.plugin  # registers the plotly.* styles
+
+factual = explainer.explain_factual(X_test)
 factual[0].plot(style="plotly.local.factual_bars", show=True)
 
-# Show contribution uncertainty intervals as well
-factual[0].plot(
-    style="plotly.local.factual_bars",
-    show=True,
-    show_uncertainty=True,
-)
+alternatives = explainer.explore_alternatives(X_test)
+alternatives[0].plot(style="plotly.local.alternative_bars", show=True)
 
-# Suppress the prediction header (classic single-panel view)
-factual[0].plot(
-    style="plotly.local.factual_bars",
-    show=True,
-    show_prediction_header=False,
-)
+explainer.plot(X_test, style="plotly.global.instance_explorer", show=True)
 ```
 
-Interpretation note: the prediction header bars and the contribution bars use
-independent x-axis scales. The header shows the actual prediction value (or
-probability), while the contribution bars show signed local feature effects.
-Do not compare their bar widths directly.
+## Available styles
 
-The package also registers `plotly.local.alternative_bars`, a Plotly local bar
-plot for alternative (counterfactual/semifactual/superfactual) explanations.
+| Canonical style id | Input | Meaning |
+|---|---|---|
+| `plotly.local.factual_bars` | one factual explanation | Signed local feature/rule contributions around zero, with a calibrated prediction header. |
+| `plotly.local.factual_simple` | one factual explanation | Compact hub-style weight bars in payload order (conjunctions included): sign-coloured bars, optional interval error bars, no prediction header or ranking. |
+| `plotly.local.alternative_bars` | one alternative explanation | Independent alternative scenarios as prediction deltas (not additive components). |
+| `plotly.local.ensured` | alternative explanation collection | CE's ensured plot: prediction vs. uncertainty with alternative rule points and movement arrows. |
+| `plotly.local.alternative_feature_summary` | one alternative explanation | Which features appear in emitted alternatives, per role and quality flags (not global importance). |
+| `plotly.local.uncertainty_quadrant` | one factual explanation | Absolute local impact vs. calibrated uncertainty width, bucketed into quadrants. |
+| `plotly.global.instance_explorer` | batch of instances | Hover-only prediction/uncertainty overview of many instances (not a global explanation method). |
+| `plotly.dashboard.instance_workspace` | batch of instances | Standalone-HTML (or live Dash) workspace combining the instance explorer with per-instance local cards. |
 
-**Interpretation**: each bar in `plotly.local.alternative_bars` is an
-**independent candidate explanation** — not a contribution to a shared total.
-Alternative 1 says "if condition A holds, the prediction would be X." Alternative
-2 says "if condition B holds, the prediction would be Y." These are separate
-candidate scenarios; their bar values must not be summed or stacked.
+`plotly.local.ensured_triangular` is retained as a **deprecated alias** for
+`plotly.local.ensured`; it resolves to the same builder and renderer with no
+semantic change. New code should use the canonical id.
 
-Design:
-- horizontal layout, one bar per alternative rule
-- bar value = prediction delta (`predict_alt − predict_base`) when a base
-  prediction is available; raw prediction value otherwise
-- colors encode the alternative role: blue = counter (counterfactual),
-  green = super (superfactual), amber = semi (semifactual), slate = unknown
-- conjunctive rules are followed by indented component sub-bars (one per
-  feature) when `include_conjunctive_components=True`; all components share
-  the same prediction delta because we do not have per-feature decomposition
-  for conjunctive alternatives
-- when `show_prediction_header=True` (default) and a base prediction is
-  available, the base prediction is shown above the alternative bars in a
-  separate sub-panel so the user can orient the delta scale
+### Support matrix
 
-Alternative bars example:
+| Style | Binary clf | Multiclass clf | Thresholded/probabilistic regression | Conformal/percentile regression | Factual | Alternative | Batch input |
+|---|---|---|---|---|---|---|---|
+| `factual_bars` | ✅ | ⚠️ one-vs-rest header only | ✅ | ✅ | ✅ | ❌ error | per instance |
+| `factual_simple` | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ error | per instance |
+| `alternative_bars` | ✅ | ⚠️ one-vs-rest | ✅ | ✅ | ❌ error | ✅ | per instance |
+| `ensured` | ✅ | ⚠️ one-vs-rest | ✅ | ✅ | ❌ | ✅ | collection-level |
+| `alternative_feature_summary` | ✅ | ⚠️ | ✅ | ✅ | ❌ | ✅ | per instance |
+| `uncertainty_quadrant` | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | per instance |
+| `instance_explorer` | ✅ | ✅ | ✅ | ✅ | n/a | n/a | ✅ |
+| `instance_workspace` | ✅ | ⚠️ | ✅ | ✅ | via cards | via cards | ✅ |
 
-```python
-alternatives = explainer.explore_alternatives(X_query)
+- ✅ supported and tested. ⚠️ supported with limitations: multiclass renders
+  as the predicted class versus its complement (one-vs-rest); there is no
+  per-class panel and no dedicated multiclass test coverage.
+- ❌ unsupported inputs raise a clear `ValueError` early (no silent fallback
+  to another style).
+- Uncertainty display for one-sided explanations raises `Warning`, matching
+  CE core behaviour.
 
-# Single instance
-alternatives[0].plot(
-    style="plotly.local.alternative_bars",
-    show=True,
-)
+## Configuration
 
-# Filter to top 10, sort by prediction movement
-alternatives[0].plot(
-    style="plotly.local.alternative_bars",
-    filter_top=10,
-    sort_by="prediction_delta",
-    show=True,
-)
+Common options accepted by the local bar styles (`filter_top`, `sort_by`,
+`show_uncertainty`, `hover_uncertainty`, `show_prediction_header`,
+`hover_detail`) and style-specific options are validated on entry; invalid
+values raise `ValueError` naming the allowed values. Highlights:
 
-# Hide unknown-role alternatives
-alternatives[0].plot(
-    style="plotly.local.alternative_bars",
-    unknown_policy="hide",
-    show=True,
-)
+- `plotly.local.factual_bars` — `filter_top`, `sort_by`
+  (`abs|value|interval_width|label|original`; default: CE core ranking via
+  `rnk_metric`/`rnk_weight`), `show_uncertainty` (default `False`),
+  `show_prediction_header` (default `True`), `hover_detail`
+  (`compact|full`), `show_y_labels`, `show_rule_labels`. Only
+  `orientation="horizontal"` is supported.
+- `plotly.local.factual_simple` — `show_uncertainty` (default `False`; also
+  accepts CE's `uncertainty=True` alias). Rules (including conjunctions)
+  render in payload order with labels truncated at 32 characters; the full
+  rule text is kept in the artifact. There is no prediction header, ranking,
+  or filtering — the style intentionally mirrors the explainable-ai-hub
+  factual figure.
+- `plotly.local.alternative_bars` — `filter_top`, `sort_by`
+  (`original|prediction_delta|interval_width|role|feature`),
+  `show_uncertainty` (default `True`), `hover_uncertainty`,
+  `show_prediction_header`, `hover_detail`,
+  `include_conjunctive_components` (default `True`), `unknown_policy`
+  (`show|hide`).
+- `plotly.local.ensured` — `filter_top`/`max_points`, `sort_by`,
+  `show_arrows`, `show_original`, `show_triangle_reference`, `hover_detail`,
+  `include_missing_rule_points`, `feature_checklist`, `side_panel`.
+- `plotly.local.alternative_feature_summary` — `filter_top_features`,
+  `include_conjunctions` (default `False`), `normalize` (`count|share`),
+  `infer_roles` (default `False`), `unknown_policy`, `sort_by`,
+  `hover_detail`, `role_mapping`. Only horizontal orientation is supported.
+- `plotly.global.instance_explorer` — `aggregate_positions` (default
+  `True`), `position_precision` (default `3`), `aggregation_strategy`
+  (`round|bin`), `marker_size_min`/`marker_size_max`, `task`
+  (`classification|probabilistic_regression|conformal_regression|auto`),
+  `class_id`, `threshold`, `low_high_percentiles`,
+  `include_instance_records`, `show_triangle_reference`.
+- `plotly.dashboard.instance_workspace` — `dashboard_mode`
+  (`standalone_html`), `precompute` (`selected`), card selection via
+  `available_cards`, plus `global_options`, `factual_options`,
+  `alternative_options` forwarded to the underlying builders. Live mode is
+  started with `ce_visualization_plotly.dashboard.launch_instance_workspace(...)`
+  and requires the `[live]` extra.
 
-# Suppress conjunctive component expansion
-alternatives[0].plot(
-    style="plotly.local.alternative_bars",
-    include_conjunctive_components=False,
-    show=True,
-)
-```
+All styles accept `show` (default `True`) and `filename`/`path` for HTML
+export. Saving with `filename=` coerces the suffix to `.html` and disables
+auto-show unless `show` is passed explicitly.
 
-Supported alternative-bars options:
+## Interpretation
 
-- `filter_top: int | None` — maximum number of alternatives after sorting
-- `sort_by` — `"original"` (default), `"prediction_delta"`,
-  `"interval_width"`, `"role"`, or `"feature"`
-- `show_uncertainty` (default `True`) — show calibrated prediction interval
-  overlays per alternative
-- `hover_uncertainty` (default `True`) — include interval in hover text
-- `show_prediction_header` (default `True`) — show base prediction sub-panel
-- `hover_detail` — `"compact"` (default) or `"full"`; full adds ensured/pareto
-  flags and conjunction details to hover
-- `include_conjunctive_components` (default `True`) — expand conjunctive
-  rules into per-feature sub-bars
-- `unknown_policy` — `"show"` (default) or `"hide"`
+- **Factual bars** are signed local contributions around a zero line;
+  positive and negative contributions are coloured distinctly
+  (classification: red/blue; regression: blue/red, matching CE defaults).
+  The prediction header (probability bars or regression interval) uses an
+  **independent x-axis** from the contribution bars — do not compare bar
+  widths across the two panels. The complement probability bar spans
+  `[1 − high, 1 − low]`.
+- **Alternative bars** are **independent candidate scenarios**: each bar is
+  "if this condition held, the prediction would move to X". They must not be
+  summed or stacked. Conjunctive rules are expanded into indented component
+  sub-bars that all share the same prediction delta because CE provides no
+  per-feature decomposition for conjunctions.
+- **Ensured plot**: x = probability (probabilistic) or prediction value
+  (regression); y = uncertainty; red marker = original prediction; blue
+  markers = alternative rule points; arrows show predictive movement.
+- **Uncertainty intervals** are calibrated CE intervals; interval width is
+  `high − low` and is never inverted or rescaled. Regression predictions and
+  intervals are shown on the data scale and never presented as
+  probabilities.
+- **Explanation roles** (`counter`, `super`, `semi`) come from CE metadata.
+  When metadata is unavailable the plots record `role="unknown"` with
+  `role_source="unavailable"`; heuristic inference is opt-in
+  (`infer_roles=True`) and always marked `role_source="heuristic"`.
+- **Arrows and prediction movements are predictive statements only.** They
+  never indicate causal actionability.
 
-The package also registers `plotly.local.ensured`, a Plotly version of CE's
-existing ensured local alternative plot. It preserves the current semantics:
+## Compatibility
 
-- x-axis = probability for probabilistic mode, prediction value for regression
-- y-axis = uncertainty
-- red marker = original prediction
-- blue markers = alternative or rule points
-- arrows = predictive movement from the original point to shown alternatives
+| Dependency | Declared range | Tested versions |
+|---|---|---|
+| Python | `>=3.11` | 3.11.9, 3.14.4 |
+| calibrated-explanations | `>=1.0.0rc1,<2` | 1.0.0rc1 |
+| plotly | `>=5.18` | 5.18.0, 6.7.0, 6.9.0 |
+| dash (optional, `[live]`) | `>=3.1` | 3.1.0, 4.4.0 |
 
-The Plotly ensured plugin adds hover inspection, HTML export, `filter_top`, an
-optional searchable feature-control panel, and an optional right-side rule
-detail panel without changing CE's default `.plot()` behavior.
+The dash floor is `>=3.1` because dash 2.x/3.0 pin Flask/Werkzeug versions
+with known published vulnerabilities; dash 3.1 is the first release whose
+dependency range admits the patched Flask 3.1.3+/Werkzeug 3.1.4+.
 
-The package also registers `plotly.local.alternative_feature_summary`, a local
-summary for one alternative explanation. It answers which features are most
-involved in the emitted local alternatives, and in what primary role plus
-quality-flag combinations they appear. This is not global feature importance.
+Earlier CE versions relied on plugin-side monkey-patch bridges that this
+release removed; CE `>=1.0.0rc1` is the verified minimum.
 
-The default view is a compact horizontal stacked bar chart:
+## Assumptions and limitations
 
-- y-axis = feature names
-- x-axis = rule count, or share when `normalize="share"`
-- stacked segments = role-quality combinations such as `counter`,
-  `counter + ensured`, `counter + pareto`, and
-  `counter + ensured + pareto`
+- Role metadata is metadata-dependent; without it, roles are reported as
+  unknown rather than guessed (unless `infer_roles=True`, which marks its
+  output as heuristic).
+- Interactive output requires a browser or a notebook front-end able to
+  render Plotly HTML. Very large batches degrade interactive performance;
+  the instance explorer aggregates positions by default to compensate.
+- `plotly.global.instance_explorer` is hover-only in this release: click
+  panels and embedded local drill-down are not implemented.
+- Image (PNG/SVG) export is not part of the supported scope; output is
+  figure objects and standalone HTML. Use Plotly's own export tooling
+  (e.g. kaleido) at your own discretion.
+- Only horizontal bar orientations are supported for the bar styles.
+- CE's explanation-level `.plot()` consumes some kwargs before plugin
+  dispatch; this package therefore wraps (via `functools.wraps`, preserving
+  behaviour for all other styles) the public `FactualExplanation.plot`,
+  `AlternativeExplanation.plot`, and the `plotting.plot_global` module
+  attribute at registration time. No CE-private members are used.
 
-`ensured` and `pareto` are quality flags represented inside the primary role
-bars. They are not rendered as a separate default quality/status panel.
-Unknown roles mean CE metadata was unavailable or unmapped; they do not mean
-that a rule has no semantic role.
+## Failure modes
 
-Role-quality keys are encoded deterministically as:
+- **Unsupported explanation kind** (e.g. alternative explanation passed to
+  `factual_bars`): immediate `ValueError`.
+- **Missing rule/contribution payload**: `ValueError` ("does not expose
+  factual rule contributions" / "No … available for plotting").
+- **Invalid option values**: `ValueError` naming the accepted values.
+- **Plotly missing** (broken installation): `RuntimeError` with an
+  actionable install message from every renderer.
+- **Dash missing** when launching the live dashboard: `RuntimeError`
+  instructing to install the `[live]` extra.
+- **One-sided explanations with `show_uncertainty=True`**: `Warning`
+  (CE-core-compatible behaviour).
+- **Degraded CE surface** (e.g. `rank_features` unavailable): visible
+  `UserWarning` plus INFO log, deterministic fallback ordering — never a
+  silent behaviour change.
+- Rule labels, feature names, and hover text are rendered as Plotly text
+  (not raw HTML), and standalone HTML shells escape user-controlled labels;
+  no unsanitised user content is interpolated into executable HTML. This is
+  a safeguard description, not a security certification.
 
-```text
-primary_role[__ensured][__pareto]
-```
+## Support
 
-Examples include `counter`, `counter__ensured`, `counter__pareto`,
-`counter__ensured__pareto`, `semi__ensured`, and `unknown__pareto`. Primary
-roles are `counter`, `super`, `semi`, and `unknown`. Longer CE labels are
-normalised as `counterfactual -> counter`, `superfactual -> super`, and
-`semifactual -> semi`. `counterpotential` is not silently collapsed into
-`counter`; provide `role_mapping={"counterpotential": "counter"}` only when
-the current CE metadata treats those labels as equivalent.
+- Issues: <https://github.com/kristinebergs/calibrated_explanations/issues>
+  (public intake for the CE plugin ecosystem).
+- Maintainer: Tuwe Löfström (`tuwe.lofstrom@ju.se`).
+- Security reports: see `SECURITY.md` at the repository root.
 
-The optional conjunction panel is disabled by default. When
-`include_conjunctions=True`, it counts how often each feature participates in
-multi-feature rules, bucketed as `size_2`, `size_3`, or `size_4_plus`. A feature
-is counted once per conjunction rule it appears in. Single-feature alternatives
-are not counted as conjunctions, and conjunction counts are not merged into the
-role-quality bar.
+## Examples
 
-Supported alternative-feature-summary options:
-
-- `filter_top_features`: maximum number of displayed features after sorting
-- `include_conjunctions` (default `False`)
-- `normalize`: `"count"` or `"share"` (default `"count"`)
-- `infer_roles` (default `False`): enables conservative heuristics; inferred
-  roles are marked with `role_source="heuristic"`
-- `unknown_policy`: `"show"` or `"hide"` (default `"show"`)
-- `sort_by`: `"total"`, `"counter"`, `"super"`, `"semi"`, `"ensured"`,
-  `"pareto"`, `"conjunctions"`, or `"feature_name"`
-- `orientation`: `"horizontal"`; only horizontal bars are supported in v1
-- `hover_detail`: `"compact"` or `"full"`; both preserve counts and role source
-  summaries in hover
-- `role_mapping`: optional mapping for explicit project-specific role aliases
-
-Role metadata is metadata-dependent. When role metadata is unavailable, the
-builder records `primary_role="unknown"` and `role_source="unavailable"`.
-Heuristics are never used unless `infer_roles=True`; the implemented heuristic
-uses explicit role words in rule text or a probabilistic 0.5 decision-boundary
-crossing for counter-like rules. The artifact preserves raw role metadata in
-rule-level records where available.
-
-The package also registers `plotly.global.instance_explorer`, a hover-only
-batch/global overview for many CE instances. This is an instance explorer and
-prediction/uncertainty overview, not a global CE explanation method. It plots
-the central prediction quantity on the x-axis and calibrated uncertainty width
-on the y-axis. Probabilistic postures, including classification and thresholded
-regression, include the same probability triangle reference shape used by CE's
-probabilistic triangular plots.
-
-This style is invoked through CE's global plotting API, for example
-`explainer.plot(X_test, style="plotly.global.instance_explorer")`
-or `explainer.plot(X_test, y_test, style="plotly.global.instance_explorer",
-...)`. When targets are supplied, classification and thresholded
-probabilistic regression use one marker symbol per target class. Non-probabilistic
-regression uses target values as the marker color scale.
-
-One marker represents one or more instances. By default, positions are
-aggregated deterministically by rounded x/y coordinates, so marker size reflects
-how many instances share the plotted prediction/uncertainty position after
-aggregation. Hover text is task-specific:
-
-- classification: predicted class, probability, calibrated probability
-  interval, interval width, and true-label summaries when supplied
-- probabilistic or thresholded regression: target event, predicted event
-  probability, calibrated probability interval, interval width, and observed
-  event count when target values are supplied
-- conformal or percentile regression: point prediction / median, percentile or
-  confidence metadata, prediction interval, interval width, and observed
-  interval coverage when target values are supplied
-
-`plotly.global.instance_explorer` v1 intentionally implements hover-only
-interaction. Click panels, narrative panels, and embedded local drill-down plots
-are not implemented. The artifact keeps marker records, interaction capability
-metadata, and optional instance records so local drill-down can be added in a
-future version without changing the v1 rendering contract.
-
-Supported instance-explorer options:
-
-- `aggregate_positions` (default `True`)
-- `position_precision` (default `3`)
-- `aggregation_strategy` (`"round"` or `"bin"`, default `"round"`)
-- `marker_size_min` (default `6`)
-- `marker_size_max` (default `32`)
-- `task` (`"classification"`, `"probabilistic_regression"`,
-  `"conformal_regression"`, or `"auto"`)
-- `class_id`
-- `threshold`
-- `low_high_percentiles`
-- `include_instance_records`
-- `show_triangle_reference` (default `True` for probabilistic postures)
-
-Compact hover is the default for `plotly.local.ensured`; blue rule points show
-only rule, prediction, uncertainty, and interval unless
-`hover_detail="full"` is requested.
-
-`plotly.local.ensured_triangular` is retained as a deprecated alias for the old
-name. New code should use `plotly.local.ensured`.
-
-Supported ensured-specific options:
-
-- `filter_top` or `max_points`
-- `sort_by`
-- `show_arrows`
-- `show_original`
-- `show_triangle_reference`
-- `hover_detail`
-- `include_missing_rule_points`
-- `feature_checklist`
-- `side_panel`
-
-When `feature_checklist=True`, the renderer wraps the Plotly figure in a small
-HTML control shell with a search box, scrollable feature toggles, and All,
-None, and Reset actions. Feature visibility defaults to all shown feature
-groups. The search box filters the plot by searched feature and accepts regular
-expressions.
-
-When `side_panel=True`, a right-side text detail panel starts empty and updates
-when a rule point is clicked. The panel shows the selected rule, feature,
-values, prediction, uncertainty, interval, deltas, and explanation role
-metadata as readable text rather than a table trace.
-
-Role fields such as `counterfactual`, `counterpotential`, `semifactual`,
-`ensured`, and `pareto` are metadata-dependent. When a role cannot be resolved
-without overclaiming, the side panel and artifact use `explanation_role="unknown"`
-with `role_source="unavailable"`. Heuristic role assignments, when used, are
-marked with `role_source="heuristic"`.
-
-Arrows and alternative rules visualize predictive movement only. They do not
-imply causal actionability.
-
-Core CE plotting defaults remain unchanged.
-
-Current CE alternative custom styles are invoked from the collection-level API:
-
-```python
-alternatives = explainer.explore_alternatives(X_query)
-
-alternatives.plot(
-	style="plotly.local.ensured",
-	filter_top=20,
-	show=True,
-)
-
-alternatives.plot(
-	style="plotly.local.ensured",
-	filter_top=20,
-	show=True,
-	feature_checklist=True,
-	side_panel=True,
-)
-
-alternatives.plot(
-	style="plotly.local.ensured",
-	filter_top=20,
-	show=False,
-	filename="ensured.html",
-	feature_checklist=True,
-	side_panel=True,
-)
-```
-
-Alternative feature summary example:
-
-```python
-alternatives = explainer.explore_alternatives(X_query)
-
-alternatives[0].plot(
-    style="plotly.local.alternative_feature_summary",
-    show=True,
-)
-
-alternatives[0].plot(
-    style="plotly.local.alternative_feature_summary",
-    filter_top_features=10,
-    normalize="share",
-    show=True,
-)
-
-alternatives[0].plot(
-    style="plotly.local.alternative_feature_summary",
-    include_conjunctions=True,
-    show=True,
-)
-```
-
-Batch instance explorer examples:
-
-```python
-classification_result = explainer.plot(
-    X_query,
-    style="plotly.global.instance_explorer",
-    task="classification",
-    position_precision=2,
-    show=True,
-)
-
-classification_result_with_targets = explainer.plot(
-    X_query,
-    y_query,
-    style="plotly.global.instance_explorer",
-    task="classification",
-    position_precision=2,
-    show=True,
-)
-
-threshold_result = regression_explainer.plot(
-    X_query,
-    y_query,
-    threshold=threshold,
-    style="plotly.global.instance_explorer",
-    task="probabilistic_regression",
-    position_precision=2,
-    show=True,
-)
-
-regression_result = regression_explainer.plot(
-    X_query,
-    y_query,
-    style="plotly.global.instance_explorer",
-    task="regression",
-    position_precision=2,
-    show=True,
-)
-```
-
-Install Plotly support with:
-
-```bash
-git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
-pip install "./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-plotly[plotly]"
-```
-
-Install live dashboard support with:
-
-```bash
-git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
-pip install "./calibrated-explanations-plugins/packages/visualization/calibrated-explanations-visualization-plotly[live]"
-```
-
-See `examples/local_ensured_plotly.ipynb` for a
-`WrapCalibratedExplainer` classification and regression ensured walkthrough and
-`examples/local_uncertainty_quadrant.ipynb` for the local uncertainty quadrant
-example. See `examples/local_factual_bars.ipynb` for classification,
-regression, visible interval, prediction header, and HTML export factual-bar
-examples. See `examples/local_alternative_bars.ipynb` for an alternative bars
-walkthrough showing independent candidate explanations as separate rows. See
-`examples/local_alternative_feature_summary.ipynb` for the local alternative
-feature summary example and `examples/global_instance_explorer.ipynb` for a
-three-section batch instance explorer walkthrough.
-
-Dashboard examples live in the package-local `examples/` directory:
-
-- `examples/dashboard_instance_workspace_standalone.ipynb` demonstrates
-  `plotly.dashboard.instance_workspace` standalone HTML mode with precomputed
-  local cards.
-- `examples/dashboard_instance_workspace_live.ipynb` demonstrates
-  `ce_visualization_plotly.dashboard.launch_instance_workspace(...)` live Python
-  dashboard mode.
+The package-local `examples/` directory contains notebooks for factual bars,
+alternative bars, the alternative feature summary, the ensured plot, the
+uncertainty quadrant, the global instance explorer, and both dashboard
+modes. Notebooks are supplementary documentation; the automated test suite
+is the authoritative behaviour reference.

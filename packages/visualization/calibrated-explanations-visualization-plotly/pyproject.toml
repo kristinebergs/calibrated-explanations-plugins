@@ -4,21 +4,37 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization-plotly"
-version = "0.2.5"
+version = "0.3.0"
 description = "Plotly visualization plugin layouts for calibrated-explanations"
 readme = "README.md"
-requires-python = ">=3.10"
+license = "BSD-3-Clause"
+requires-python = ">=3.11"
+maintainers = [
+    { name = "Tuwe Löfström", email = "tuwe.lofstrom@ju.se" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
 dependencies = [
-    "calibrated-explanations[viz]>=0.11",
+    "calibrated-explanations[viz]>=1.0.0rc1,<2",
+    "plotly>=5.18",
 ]
 
+[project.urls]
+Repository = "https://github.com/kristinebergs/calibrated-explanations-plugins"
+Issues = "https://github.com/kristinebergs/calibrated_explanations/issues"
+
 [project.optional-dependencies]
-plotly = [
-    "plotly>=5.18",
-]
 live = [
-    "plotly>=5.18",
-    "dash>=2.14",
+    "dash>=3.1",
 ]
 
 [project.entry-points."calibrated_explanations.plugins"]
@@ -28,14 +44,20 @@ plotly_visualization = "ce_visualization_plotly.plugin:PlotlyVisualizationBootst
 uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotBuilder"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotBuilder"
 factual_bars = "ce_visualization_plotly.factual_bars:LocalFactualBarsPlotBuilder"
+factual_simple = "ce_visualization_plotly.factual_simple:LocalFactualSimplePlotBuilder"
+alternative_bars = "ce_visualization_plotly.alternative_bars:LocalAlternativeBarsPlotBuilder"
 alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotBuilder"
+instance_explorer = "ce_visualization_plotly.instance_explorer:GlobalInstanceExplorerPlotBuilder"
 instance_workspace = "ce_visualization_plotly.instance_workspace:InstanceWorkspaceDashboardBuilder"
 
 [project.entry-points."calibrated_explanations.plugins.plot_renderers"]
 uncertainty_quadrant = "ce_visualization_plotly.quadrant:UncertaintyQuadrantPlotRenderer"
 ensured = "ce_visualization_plotly.ensured:LocalEnsuredPlotRenderer"
 factual_bars = "ce_visualization_plotly.factual_bars:LocalFactualBarsPlotRenderer"
+factual_simple = "ce_visualization_plotly.factual_simple:LocalFactualSimplePlotRenderer"
+alternative_bars = "ce_visualization_plotly.alternative_bars:LocalAlternativeBarsPlotRenderer"
 alternative_feature_summary = "ce_visualization_plotly.alternative_feature_summary:AlternativeFeatureSummaryPlotRenderer"
+instance_explorer = "ce_visualization_plotly.instance_explorer:GlobalInstanceExplorerPlotRenderer"
 instance_workspace = "ce_visualization_plotly.instance_workspace:InstanceWorkspaceDashboardRenderer"
 
 [tool.hatch.build.targets.wheel]
@@ -43,5 +65,5 @@ packages = ["src/ce_visualization_plotly"]
 
 [tool.ce_plugin_repo]
 family = "visualization"
-status = "experimental"
+status = "mature"
 import_name = "ce_visualization_plotly"

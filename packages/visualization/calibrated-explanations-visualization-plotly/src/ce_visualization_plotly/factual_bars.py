@@ -163,8 +163,9 @@ def _compute_ranking(
     if filter_top <= 0:
         return []
 
-    rnk_metric = str(options.get("rnk_metric", "feature_weight"))
-    rnk_weight = float(options.get("rnk_weight", 0.5))
+    rnk_metric = str(options.get("rnk_metric") or "feature_weight")
+    _rnk_weight_raw = options.get("rnk_weight")
+    rnk_weight = 0.5 if _rnk_weight_raw is None else float(_rnk_weight_raw)
 
     import numpy as np  # noqa: PLC0415 — conditional import for non-plotting code path
 
@@ -204,7 +205,7 @@ def _compute_ranking(
 
     # Non-feature_weight: try calculate_metrics (CE ensured/uncertainty path)
     with contextlib.suppress(Exception):
-        from calibrated_explanations.utils.metrics import calculate_metrics  # noqa: PLC0415
+        from calibrated_explanations.utils.helper import calculate_metrics  # noqa: PLC0415
 
         predict_lows = list(rules.get("predict_low", []))
         predict_highs = list(rules.get("predict_high", []))
@@ -430,12 +431,14 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     if hover_detail not in {"compact", "full"}:
         raise ValueError("hover_detail must be compact or full.")
     filter_top = options.get("filter_top")
-    rnk_metric = str(options.get("rnk_metric", "feature_weight"))
+    # None means "use this style's default" (CE forwards unset kwargs as None).
+    rnk_metric = str(options.get("rnk_metric") or "feature_weight")
     if rnk_metric == "uncertainty":
         rnk_metric = "ensured"
         rnk_weight = 1.0
     else:
-        rnk_weight = float(options.get("rnk_weight", 0.5))
+        _rnk_weight_raw = options.get("rnk_weight")
+        rnk_weight = 0.5 if _rnk_weight_raw is None else float(_rnk_weight_raw)
     return {
         "filter_top": None if filter_top is None else int(filter_top),
         "sort_by": sort_by,
@@ -599,6 +602,7 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
         "provider": "plotly.local",
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
+        "intent": "factual",
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": (),
@@ -643,13 +647,17 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
         if is_regression:
             # y_minmax is set on the local explanation in CalibratedExplanation.__init__;
             # _collection_for() returns the parent CalibratedExplanations which does not carry it.
-            y_minmax_raw = getattr(local_explanation, "y_minmax", None) or getattr(collection, "y_minmax", None)
+            y_minmax_raw = getattr(local_explanation, "y_minmax", None) or getattr(
+                collection, "y_minmax", None
+            )
             if y_minmax_raw is not None:
                 with contextlib.suppress(Exception):
                     y_minmax = [float(y_minmax_raw[0]), float(y_minmax_raw[1])]
             if y_minmax is None:
                 for _cal_attr in ("y_cal", "y"):
-                    _y = getattr(local_explanation, _cal_attr, None) or getattr(collection, _cal_attr, None)
+                    _y = getattr(local_explanation, _cal_attr, None) or getattr(
+                        collection, _cal_attr, None
+                    )
                     if _y is not None:
                         with contextlib.suppress(Exception):
                             _arr = list(_y)
@@ -840,10 +848,26 @@ def _add_contribution_traces(
     else:
         display_values = values
 
+    # Solid contribution bar — added FIRST so uncertainty overlays render on top,
+    # matching the CE matplotlib adapter paint order (solid fill_betweenx, then
+    # translucent interval fill_betweenx). width=0.4 matches the adapter's
+    # fill_betweenx span of ±0.2 around each row centre.
+    fig.add_trace(
+        go.Bar(
+            x=display_values,
+            y=labels,
+            orientation="h",
+            width=0.4,
+            marker={"color": colors},
+            text=None,
+            hovertext=hover_text,
+            hovertemplate="%{hovertext}<extra></extra>",
+            name="contribution",
+        ),
+        **add_kwargs,
+    )
+
     if show_uncertainty:
-        # Uncertainty bands are added FIRST so the solid bar renders on top (matching
-        # PlotSpec's fill_betweenx-then-barh paint order). The extension region beyond
-        # the solid bar shows the translucent band; the overlap region is covered.
         # Build per-entry list of (y_label, base, width, color, hover).
         # For crossing-zero intervals, emit two entries (negative and positive sides).
         bar_entries: list[tuple[str, float, float, str, str]] = []
@@ -884,6 +908,7 @@ def _add_contribution_traces(
                     y=[e[0] for e in entries],
                     base=[e[1] for e in entries],
                     orientation="h",
+                    width=0.4,
                     marker={"color": color},
                     hovertext=[e[3] for e in entries],
                     hovertemplate="%{hovertext}<extra></extra>",
@@ -892,23 +917,6 @@ def _add_contribution_traces(
                 ),
                 **add_kwargs,
             )
-
-    # Solid contribution bar — added after uncertainty so it renders on top.
-    # No explicit width: Plotly bargap default (0.2) gives 80% fill, matching
-    # matplotlib's default barh height=0.8 for visual parity across all panels.
-    fig.add_trace(
-        go.Bar(
-            x=display_values,
-            y=labels,
-            orientation="h",
-            marker={"color": colors},
-            text=None,
-            hovertext=hover_text,
-            hovertemplate="%{hovertext}<extra></extra>",
-            name="contribution",
-        ),
-        **add_kwargs,
-    )
 
 
 def _add_prediction_header_traces(
@@ -962,6 +970,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[0.0],
                         orientation="h",
+                        width=0.4,
                         marker={"color": bar_color},
                         hovertext=[hover],
                         hovertemplate="%{hovertext}<extra></extra>",
@@ -980,6 +989,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[float(p_low)],
                         orientation="h",
+                        width=0.4,
                         marker={"color": bar_color, "opacity": 0.35},
                         hovertext=[hover],
                         hovertemplate="%{hovertext}<extra></extra>",
@@ -997,6 +1007,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[0.0],
                         orientation="h",
+                        width=0.4,
                         marker={"color": bar_color},
                         hovertext=[hover],
                         hovertemplate="%{hovertext}<extra></extra>",
@@ -1016,6 +1027,7 @@ def _add_prediction_header_traces(
                         y=[bar_label],
                         base=[float(p_low)],
                         orientation="h",
+                        width=0.4,
                         marker={"color": bar_color, "opacity": 0.5},
                         hovertext=[hover],
                         hovertemplate="%{hovertext}<extra></extra>",
@@ -1066,7 +1078,8 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
     show_prediction_header = bool(render_options.get("show_prediction_header", True))
     show_y_labels = bool(render_options.get("show_y_labels", True))
     # show_rule_labels: controls the left-side rule-condition tick labels on the primary y-axis.
-    # Defaults to show_y_labels so that show_y_labels=False still hides everything (backward compat).
+    # Defaults to show_y_labels so show_y_labels=False still hides everything (backward
+    # compatible).
     # Can be set independently to hide just the rule text while keeping instance values visible.
     show_rule_labels = bool(render_options.get("show_rule_labels", show_y_labels))
     prediction = dict(artifact.get("prediction", {}) or {})
@@ -1285,7 +1298,9 @@ class LocalFactualBarsPlotRenderer(PlotRenderer):
         except ImportError as exc:
             raise RuntimeError(
                 "Plotly is required to render plotly.local.factual_bars. "
-                "Install this package with the [plotly] extra."
+                "Install plotly (a mandatory dependency of "
+                "calibrated-explanations-visualization-plotly); your "
+                "environment appears to be missing or shadowing it."
             ) from exc
 
         saved_paths: tuple[str, ...] = ()

@@ -17,6 +17,10 @@ from .ensured import (
     LocalEnsuredPlotBuilder,
     LocalEnsuredPlotRenderer,
 )
+from .factual_simple import (
+    LocalFactualSimplePlotBuilder,
+    LocalFactualSimplePlotRenderer,
+)
 from .instance_explorer import (
     GlobalInstanceExplorerPlotBuilder,
     GlobalInstanceExplorerPlotRenderer,
@@ -42,6 +46,8 @@ __all__ = [
     "DashboardCardDescriptor",
     "GlobalInstanceExplorerPlotBuilder",
     "GlobalInstanceExplorerPlotRenderer",
+    "LocalFactualSimplePlotBuilder",
+    "LocalFactualSimplePlotRenderer",
     "InstanceWorkspaceDashboardBuilder",
     "InstanceWorkspaceDashboardRenderer",
     "PlotlyVisualizationBootstrap",

@@ -509,6 +509,7 @@ class AlternativeFeatureSummaryPlotBuilder(PlotBuilder):
         "provider": "plotly.local",
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
+        "intent": "alternative",
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": (),
@@ -770,7 +771,9 @@ class AlternativeFeatureSummaryPlotRenderer(PlotRenderer):
         except ImportError as exc:
             raise RuntimeError(
                 f"Plotly is required to render {STYLE_ID}. "
-                "Install this package with the [plotly] extra."
+                "Install plotly (a mandatory dependency of "
+                "calibrated-explanations-visualization-plotly); your "
+                "environment appears to be missing or shadowing it."
             ) from exc
 
         summaries = list(artifact.get("feature_summaries", ()))

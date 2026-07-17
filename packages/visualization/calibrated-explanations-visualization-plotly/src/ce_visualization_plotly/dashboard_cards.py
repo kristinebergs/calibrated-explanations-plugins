@@ -7,6 +7,7 @@ from typing import Any, Literal, Mapping
 from .alternative_feature_summary import STYLE_ID as ALTERNATIVE_FEATURE_SUMMARY_STYLE_ID
 from .ensured import STYLE_ID as ENSURED_STYLE_ID
 from .factual_bars import STYLE_ID as FACTUAL_BARS_STYLE_ID
+from .factual_simple import STYLE_ID as FACTUAL_SIMPLE_STYLE_ID
 from .instance_explorer import STYLE_ID as INSTANCE_EXPLORER_STYLE_ID
 from .quadrant import STYLE_ID as UNCERTAINTY_QUADRANT_STYLE_ID
 
@@ -87,6 +88,18 @@ _DASHBOARD_CARDS: tuple[DashboardCardDescriptor, ...] = (
         },
     ),
     DashboardCardDescriptor(
+        card_id="local_factual_simple",
+        style=FACTUAL_SIMPLE_STYLE_ID,
+        label="Local Factual Simple",
+        description="Compact factual weight bars in payload order, matching the hub ExplainPage figure.",  # noqa: E501
+        scope="local",
+        requires=("factual_explanation",),
+        supports_tasks=_ALL_TASKS,
+        default_options={
+            "show_uncertainty": False,
+        },
+    ),
+    DashboardCardDescriptor(
         card_id="uncertainty_quadrant",
         style=UNCERTAINTY_QUADRANT_STYLE_ID,
         label="Uncertainty Quadrant",
@@ -145,6 +158,7 @@ _CARD_BY_ID = {descriptor.card_id: descriptor for descriptor in _DASHBOARD_CARDS
 _CARD_BY_STYLE = {descriptor.style: descriptor for descriptor in _DASHBOARD_CARDS}
 _CARD_ALIASES = {
     "factual_bars": "local_factual_bars",
+    "factual_simple": "local_factual_simple",
     "local_uncertainty_quadrant": "uncertainty_quadrant",
     "local_ensured": "ensured",
     "local_alternative_feature_summary": "alternative_feature_summary",

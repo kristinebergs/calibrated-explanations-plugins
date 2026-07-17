@@ -121,11 +121,13 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     hover_detail = str(options.get("hover_detail", "compact"))
     if hover_detail not in {"compact", "full"}:
         raise ValueError("hover_detail must be 'compact' or 'full'.")
-    rnk_metric = str(options.get("rnk_metric", "ensured"))
+    # CE's collection-level plot forwards rnk_metric/rnk_weight as None when the
+    # caller did not set them; None means "use this style's default".
+    rnk_metric = str(options.get("rnk_metric") or "ensured")
     if rnk_metric not in {"ensured", "feature_weight", "uncertainty"}:
         raise ValueError("rnk_metric must be 'ensured', 'feature_weight', or 'uncertainty'.")
-    rnk_weight_raw = options.get("rnk_weight", 0.5)
-    rnk_weight = float(rnk_weight_raw)
+    rnk_weight_raw = options.get("rnk_weight")
+    rnk_weight = 0.5 if rnk_weight_raw is None else float(rnk_weight_raw)
     if not 0.0 <= rnk_weight <= 1.0:
         raise ValueError("rnk_weight must be in [0.0, 1.0].")
     # CE core maps "uncertainty" to "ensured" with rnk_weight=1.0
@@ -337,6 +339,7 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
         "provider": "plotly.local",
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
+        "intent": "alternative",
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": (),
@@ -382,7 +385,9 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
         # y_minmax is set on the local explanation in CalibratedExplanation.__init__;
         # _collection_for() returns the parent CalibratedExplanations which does not carry it.
         y_minmax: list[float] | None = None
-        y_minmax_raw = getattr(local_explanation, "y_minmax", None) or getattr(collection, "y_minmax", None)
+        y_minmax_raw = getattr(local_explanation, "y_minmax", None) or getattr(
+            collection, "y_minmax", None
+        )
         if y_minmax_raw is not None:
             try:
                 y_minmax = [float(y_minmax_raw[0]), float(y_minmax_raw[1])]
@@ -580,7 +585,8 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
 
     show_y_labels = bool(render_options.get("show_y_labels", True))
     # show_rule_labels: controls the left-side rule-condition tick labels on the primary y-axis.
-    # Defaults to show_y_labels so that show_y_labels=False still hides everything (backward compat).
+    # Defaults to show_y_labels so show_y_labels=False still hides everything (backward
+    # compatible).
     show_rule_labels = bool(render_options.get("show_rule_labels", show_y_labels))
     items = list(artifact.get("items", ()))
     base_pred = dict(artifact.get("base_prediction", {}) or {})
@@ -820,7 +826,9 @@ class LocalAlternativeBarsPlotRenderer(PlotRenderer):
         except ImportError as exc:
             raise RuntimeError(
                 f"Plotly is required to render {STYLE_ID}. "
-                "Install this package with the [plotly] extra."
+                "Install plotly (a mandatory dependency of "
+                "calibrated-explanations-visualization-plotly); your "
+                "environment appears to be missing or shadowing it."
             ) from exc
 
         saved_paths: tuple[str, ...] = ()

@@ -363,21 +363,20 @@ def test_dashboard_plot_bridge_consumes_style_and_precomputes(monkeypatch, tmp_p
     assert result.artifact["precomputed_local"]["1"]["cards"][0]["available"] is True
 
 
-def test_registration_replaces_stale_instance_explorer_only_bridge(monkeypatch):
+def test_registration_patches_plot_global_only_not_ce_classes(monkeypatch):
+    """Registration bridges the plotting module attribute, never CE class methods.
+
+    CE >= 1.0 resolves ``plot_global`` from the plotting module at call time in
+    ``CalibratedExplainer.plot`` (and ``WrapCalibratedExplainer.plot`` delegates
+    with kwargs intact), so the class methods must stay untouched.
+    """
     plugin_module = _load_plugin(monkeypatch)
+    import calibrated_explanations.plotting as ce_plotting
+    from calibrated_explanations.core.calibrated_explainer import CalibratedExplainer
     from calibrated_explanations.core.wrap_explainer import WrapCalibratedExplainer
-
-    original = getattr(WrapCalibratedExplainer.plot, "__wrapped__", WrapCalibratedExplainer.plot)
-
-    def stale_bridge(self, x, y=None, threshold=None, **kwargs):
-        if kwargs.get("style") != "plotly.global.instance_explorer":
-            return original(self, x, y=y, threshold=threshold, **kwargs)
-        return "global"
-
-    stale_bridge.__wrapped__ = original
-    stale_bridge._plotly_instance_explorer_bridge = True
-    monkeypatch.setattr(WrapCalibratedExplainer, "plot", stale_bridge)
 
     plugin_module.register_plotly_visualization_components()
 
-    assert getattr(WrapCalibratedExplainer.plot, "_plotly_bridge_version", 0) >= 2
+    assert getattr(ce_plotting.plot_global, "_plotly_bridge_version", 0) >= 2
+    assert not hasattr(CalibratedExplainer.plot, "_plotly_bridge_version")
+    assert not hasattr(WrapCalibratedExplainer.plot, "_plotly_bridge_version")

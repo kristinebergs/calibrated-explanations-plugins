@@ -28,6 +28,8 @@ from .dashboard_cards import (
 from .ensured import LocalEnsuredPlotBuilder, LocalEnsuredPlotRenderer
 from .factual_bars import STYLE_ID as FACTUAL_BARS_STYLE_ID
 from .factual_bars import LocalFactualBarsPlotBuilder, LocalFactualBarsPlotRenderer
+from .factual_simple import STYLE_ID as FACTUAL_SIMPLE_STYLE_ID
+from .factual_simple import LocalFactualSimplePlotBuilder, LocalFactualSimplePlotRenderer
 from .instance_explorer import (
     GlobalInstanceExplorerPlotBuilder,
 )
@@ -51,12 +53,14 @@ _VALID_LAYOUTS = {"default", "wide", "compact"}
 _LOCAL_CARD_BUILDERS = {
     "plotly.local.uncertainty_quadrant": UncertaintyQuadrantPlotBuilder,
     FACTUAL_BARS_STYLE_ID: LocalFactualBarsPlotBuilder,
+    FACTUAL_SIMPLE_STYLE_ID: LocalFactualSimplePlotBuilder,
     "plotly.local.ensured": LocalEnsuredPlotBuilder,
     "plotly.local.alternative_feature_summary": AlternativeFeatureSummaryPlotBuilder,
 }
 _LOCAL_CARD_RENDERERS = {
     "plotly.local.uncertainty_quadrant": UncertaintyQuadrantPlotRenderer,
     FACTUAL_BARS_STYLE_ID: LocalFactualBarsPlotRenderer,
+    FACTUAL_SIMPLE_STYLE_ID: LocalFactualSimplePlotRenderer,
     "plotly.local.ensured": LocalEnsuredPlotRenderer,
     "plotly.local.alternative_feature_summary": AlternativeFeatureSummaryPlotRenderer,
 }
@@ -332,6 +336,7 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
         "provider": "plotly.dashboard",
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
+        "intent": "dashboard",
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": (),

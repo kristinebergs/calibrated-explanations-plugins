@@ -13,11 +13,10 @@ Intentional Plotly-only differences (hover cards, HTML format) are not compared.
 from __future__ import annotations
 
 import importlib
-import math
 import os
 import sys
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
@@ -46,14 +45,16 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg", force=True)
 
 import calibrated_explanations.plugins.registry as registry  # noqa: E402
+from calibrated_explanations.plugins.plots import PlotRenderContext  # noqa: E402
 from calibrated_explanations.viz import (  # noqa: E402
     build_alternative_probabilistic_spec,
     build_alternative_regression_spec,
     build_probabilistic_bars_spec,
     build_regression_bars_spec,
+)
+from calibrated_explanations.viz import (
     matplotlib_adapter as mpl_adapter,
 )
-from calibrated_explanations.plugins.plots import PlotRenderContext  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Plugin bootstrap
@@ -304,16 +305,16 @@ def _collect_factual_plotspec_primitives(case: FactualBarsParityCase) -> dict:
             interval=case.interval,
         )
     else:
-        kwargs: dict[str, Any] = dict(
-            title=None,
-            predict=case.predict,
-            feature_weights=case.feature_weights,
-            features_to_plot=case.features_to_plot,
-            column_names=case.column_names,
-            instance=case.instance,
-            y_minmax=case.y_minmax,
-            interval=case.interval,
-        )
+        kwargs: dict[str, Any] = {
+            "title": None,
+            "predict": case.predict,
+            "feature_weights": case.feature_weights,
+            "features_to_plot": case.features_to_plot,
+            "column_names": case.column_names,
+            "instance": case.instance,
+            "y_minmax": case.y_minmax,
+            "interval": case.interval,
+        }
         if case.neg_caption:
             kwargs["neg_caption"] = case.neg_caption
         if case.pos_caption:
@@ -479,7 +480,6 @@ def _collect_alternative_plotly_primitives(case: AlternativeBarsParityCase) -> d
     fig = _call_plotly_plugin(explanation, _ALT_STYLE)
     assert fig is not None, "Plotly figure must not be None"
 
-    import plotly.graph_objects as go  # noqa: PLC0415
 
     bar_traces = _extract_bar_traces(fig)
     interval_traces = [t for t in bar_traces if t["name"] == "interval"]
@@ -499,11 +499,7 @@ def _collect_alternative_plotly_primitives(case: AlternativeBarsParityCase) -> d
     if xaxis and getattr(xaxis, "range", None):
         xlim = list(xaxis.range)
 
-    # Find vrects (base interval background)
-    vrects = [
-        s for s in getattr(fig, "_layout_obj", fig.layout).shapes or []
-    ] if hasattr(getattr(fig, "_layout_obj", None), "shapes") else []
-    # Plotly stores shapes in fig.layout.shapes
+    # Base interval background vrects: Plotly stores shapes in fig.layout.shapes
     layout_shapes = getattr(layout, "shapes", None) or ()
 
     return {

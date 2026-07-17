@@ -1,0 +1,342 @@
+"""Package-level contract tests: entry points, registration, safety, escaping.
+
+These tests back the maturity gates: declared entry points load and agree with
+runtime registration, registration is idempotent, the deprecated style alias
+resolves to the canonical builder/renderer, importing the package has no side
+effects, missing backends fail actionably, and user-controlled labels are not
+interpolated into executable HTML.
+"""
+
+from __future__ import annotations
+
+import importlib
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+from types import MappingProxyType, SimpleNamespace
+
+import calibrated_explanations.plugins.registry as registry
+import pytest
+from calibrated_explanations.plugins.plots import PlotRenderContext
+
+_PACKAGE_DIR = Path(__file__).resolve().parents[1]
+_SRC_DIR = _PACKAGE_DIR / "src"
+
+BOOTSTRAP_ID = "official.visualization.plotly.bootstrap"
+
+_STYLE_IDS = (
+    "plotly.local.uncertainty_quadrant",
+    "plotly.local.ensured",
+    "plotly.local.factual_bars",
+    "plotly.local.factual_simple",
+    "plotly.local.alternative_bars",
+    "plotly.local.alternative_feature_summary",
+    "plotly.global.instance_explorer",
+    "plotly.dashboard.instance_workspace",
+)
+_ALIAS_STYLE_ID = "plotly.local.ensured_triangular"
+_CANONICAL_FOR_ALIAS = "plotly.local.ensured"
+
+
+def _reset_registry_state() -> None:
+    reset_catalog = getattr(registry, "reset_plugin_catalog", None)
+    if callable(reset_catalog):
+        reset_catalog(kind="all")
+    clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
+    if callable(clear_env_cache):
+        clear_env_cache()
+
+
+def _load_plugin(monkeypatch):
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    monkeypatch.setenv(
+        "CE_TRUST_PLUGIN",
+        "ce_visualization_plotly.plugin:PlotlyVisualizationBootstrap," + BOOTSTRAP_ID,
+    )
+    module = importlib.import_module("ce_visualization_plotly.plugin")
+    _reset_registry_state()
+    module.register_plotly_visualization_components()
+    return module
+
+
+def _pyproject() -> dict:
+    with (_PACKAGE_DIR / "pyproject.toml").open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def _load_entry_point_target(target: str):
+    module_name, _, attribute = target.partition(":")
+    module = importlib.import_module(module_name)
+    return getattr(module, attribute)
+
+
+# ---------------------------------------------------------------------------
+# Entry points and metadata
+# ---------------------------------------------------------------------------
+
+
+def test_declared_entry_points_load_and_cover_all_styles(monkeypatch):
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    data = _pyproject()
+    entry_points = data["project"]["entry-points"]
+
+    bootstrap_targets = entry_points["calibrated_explanations.plugins"]
+    assert list(bootstrap_targets) == ["plotly_visualization"]
+    bootstrap = _load_entry_point_target(bootstrap_targets["plotly_visualization"])
+    assert bootstrap.plugin_meta["name"] == BOOTSTRAP_ID
+
+    builders = entry_points["calibrated_explanations.plugins.plot_builders"]
+    renderers = entry_points["calibrated_explanations.plugins.plot_renderers"]
+    assert set(builders) == set(renderers), (
+        "builder and renderer entry-point names must agree"
+    )
+
+    loaded_styles = set()
+    for mapping, expected_capability in ((builders, "build"), (renderers, "render")):
+        for target in mapping.values():
+            loaded = _load_entry_point_target(target)
+            assert hasattr(loaded, expected_capability), target
+            meta = getattr(loaded, "plugin_meta", None)
+            assert isinstance(meta, dict) and meta.get("name"), target
+            style = meta.get("style")
+            if style:
+                loaded_styles.add(style)
+
+    # Every runtime-registered style has a declared builder+renderer entry point.
+    module = _load_plugin(monkeypatch)
+    del module
+    for style_id in _STYLE_IDS:
+        descriptor = registry.find_plot_style_descriptor(style_id)
+        assert descriptor is not None, f"{style_id} must be registered"
+
+
+def test_bootstrap_plugin_meta_version_matches_package_version(monkeypatch):
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    data = _pyproject()
+    plugin = importlib.import_module("ce_visualization_plotly.plugin")
+    assert (
+        plugin.PlotlyVisualizationBootstrap.plugin_meta["version"]
+        == data["project"]["version"]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Registration behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_registration_is_idempotent(monkeypatch):
+    module = _load_plugin(monkeypatch)
+    before = {
+        style_id: registry.find_plot_style_descriptor(style_id) for style_id in _STYLE_IDS
+    }
+    module.register_plotly_visualization_components()
+    module.register_plotly_visualization_components()
+    for style_id, descriptor in before.items():
+        assert registry.find_plot_style_descriptor(style_id) is descriptor, (
+            f"duplicate registration must not replace descriptor for {style_id}"
+        )
+
+
+def test_deprecated_alias_resolves_to_canonical_builder_and_renderer(monkeypatch):
+    _load_plugin(monkeypatch)
+    canonical = registry.find_plot_style_descriptor(_CANONICAL_FOR_ALIAS)
+    alias = registry.find_plot_style_descriptor(_ALIAS_STYLE_ID)
+    assert canonical is not None and alias is not None
+
+    def _meta(descriptor):
+        metadata = getattr(descriptor, "metadata", descriptor)
+        return {
+            "builder_id": metadata.get("builder_id"),
+            "renderer_id": metadata.get("renderer_id"),
+        }
+
+    assert _meta(alias) == _meta(canonical)
+
+
+# ---------------------------------------------------------------------------
+# Import safety
+# ---------------------------------------------------------------------------
+
+
+def test_import_has_no_filesystem_or_network_side_effects(tmp_path):
+    script = (
+        "import socket\n"
+        "class _GuardSocket(socket.socket):\n"
+        "    def __init__(self, *args, **kwargs):\n"
+        "        raise AssertionError('network access during import')\n"
+        "socket.socket = _GuardSocket\n"
+        "def _blocked(*args, **kwargs):\n"
+        "    raise AssertionError('network access during import')\n"
+        "socket.create_connection = _blocked\n"
+        "import ce_visualization_plotly.plugin\n"
+        "print('IMPORT_OK')\n"
+    )
+    result = subprocess.run(  # noqa: S603 — fixed script, trusted interpreter
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={
+            **__import__("os").environ,
+            "PYTHONPATH": str(_SRC_DIR),
+        },
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "IMPORT_OK" in result.stdout
+    leftover = [p for p in tmp_path.iterdir() if p.name != "__pycache__"]
+    assert leftover == [], f"import must not write files: {leftover}"
+
+
+# ---------------------------------------------------------------------------
+# Missing backend behaviour
+# ---------------------------------------------------------------------------
+
+
+def _factual_fake_explanation():
+    rules = {
+        "weight": [0.4, -0.2],
+        "weight_low": [0.3, -0.3],
+        "weight_high": [0.5, -0.1],
+        "rule": ["f0 > 1", "f1 <= 0"],
+        "feature": [0, 1],
+        "value": [1.5, -0.5],
+        "feature_value": [1.5, -0.5],
+    }
+    collection = SimpleNamespace(feature_names=["f0", "f1"], y_minmax=[0.0, 1.0])
+    local = SimpleNamespace(
+        index=0,
+        calibrated_explanations=collection,
+        prediction={"predict": 0.7, "low": 0.6, "high": 0.8, "classes": 1},
+        rules=rules,
+        get_mode=lambda: "classification",
+        is_regression=lambda: False,
+        is_probabilistic=lambda: True,
+        is_alternative=lambda: False,
+    )
+    collection.explanations = [local]
+    collection.batch_metadata = {"task": "classification", "mode": "classification"}
+    return collection
+
+
+def _context(explanation, *, style, path=None, show=False, **options) -> PlotRenderContext:
+    return PlotRenderContext(
+        explanation=explanation,
+        instance_metadata=MappingProxyType({"type": "instance"}),
+        style=style,
+        intent=MappingProxyType({"type": "factual"}),
+        show=show,
+        path=path,
+        save_ext=None,
+        options=MappingProxyType(options),
+    )
+
+
+def test_missing_plotly_produces_actionable_error(monkeypatch):
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
+
+    def _raise_import_error(*args, **kwargs):
+        raise ImportError("No module named 'plotly'")
+
+    monkeypatch.setattr(factual_bars, "build_figure", _raise_import_error)
+    renderer = factual_bars.LocalFactualBarsPlotRenderer()
+    builder = factual_bars.LocalFactualBarsPlotBuilder()
+    context = _context(_factual_fake_explanation(), style=factual_bars.STYLE_ID)
+    artifact = builder.build(context)
+    with pytest.raises(RuntimeError, match="[Pp]lotly is required"):
+        renderer.render(artifact, context=context)
+
+
+# ---------------------------------------------------------------------------
+# Output handling and escaping
+# ---------------------------------------------------------------------------
+
+_MALICIOUS_LABEL = "<script>alert('xss')</script>"
+
+
+def _malicious_fake_explanation():
+    collection = _factual_fake_explanation()
+    local = collection.explanations[0]
+    local.rules = {
+        **local.rules,
+        "rule": [_MALICIOUS_LABEL, "f1 <= 0 & \"quoted\" 'label'"],
+    }
+    collection.feature_names = [_MALICIOUS_LABEL, "unicode åäö × λ " + "long" * 100]
+    return collection
+
+
+def test_html_export_escapes_user_controlled_labels(monkeypatch, tmp_path):
+    pytest.importorskip("plotly")
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
+
+    builder = factual_bars.LocalFactualBarsPlotBuilder()
+    renderer = factual_bars.LocalFactualBarsPlotRenderer()
+    out = tmp_path / "report.html"
+    context = _context(
+        _malicious_fake_explanation(),
+        style=factual_bars.STYLE_ID,
+        path=str(out),
+        show_uncertainty=True,
+    )
+    artifact = builder.build(context)
+    result = renderer.render(artifact, context=context)
+    assert result.saved_paths == (str(out),)
+    content = out.read_text(encoding="utf-8")
+    assert "<script>alert(" not in content, (
+        "user-controlled labels must not appear as executable HTML"
+    )
+
+
+def test_ensured_detail_markup_escapes_labels_and_values(monkeypatch):
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    ensured = importlib.import_module("ce_visualization_plotly.ensured")
+    markup = ensured._detail_markup(_MALICIOUS_LABEL, _MALICIOUS_LABEL)
+    assert "<script>" not in markup
+    assert "&lt;script&gt;" in markup
+
+
+def test_unicode_and_long_labels_render(monkeypatch):
+    pytest.importorskip("plotly")
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
+
+    collection = _factual_fake_explanation()
+    local = collection.explanations[0]
+    local.rules = {
+        **local.rules,
+        "rule": ["ålder ≤ 40 × λ 日本語", "x" * 400],
+    }
+    builder = factual_bars.LocalFactualBarsPlotBuilder()
+    renderer = factual_bars.LocalFactualBarsPlotRenderer()
+    context = _context(collection, style=factual_bars.STYLE_ID)
+    artifact = builder.build(context)
+    result = renderer.render(artifact, context=context)
+    assert result.figure is not None
+
+
+def test_output_path_suffix_coerced_to_html_and_overwrites(monkeypatch, tmp_path):
+    pytest.importorskip("plotly")
+    monkeypatch.syspath_prepend(str(_SRC_DIR))
+    factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
+
+    builder = factual_bars.LocalFactualBarsPlotBuilder()
+    renderer = factual_bars.LocalFactualBarsPlotRenderer()
+    target = tmp_path / "figure.png"
+    expected = tmp_path / "figure.html"
+    expected.write_text("sentinel", encoding="utf-8")
+
+    context = _context(
+        _factual_fake_explanation(), style=factual_bars.STYLE_ID, path=str(target)
+    )
+    artifact = builder.build(context)
+    result = renderer.render(artifact, context=context)
+
+    assert result.saved_paths == (str(expected),)
+    assert not target.exists(), "non-HTML suffix must be coerced, not written"
+    content = expected.read_text(encoding="utf-8")
+    assert content != "sentinel", "documented behaviour: target path is overwritten"

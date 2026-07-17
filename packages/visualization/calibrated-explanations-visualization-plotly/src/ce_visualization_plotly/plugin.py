@@ -70,6 +70,19 @@ from .factual_bars import (
     LocalFactualBarsPlotBuilder,
     LocalFactualBarsPlotRenderer,
 )
+from .factual_simple import (
+    BUILDER_ID as FACTUAL_SIMPLE_BUILDER_ID,
+)
+from .factual_simple import (
+    RENDERER_ID as FACTUAL_SIMPLE_RENDERER_ID,
+)
+from .factual_simple import (
+    STYLE_ID as FACTUAL_SIMPLE_STYLE_ID,
+)
+from .factual_simple import (
+    LocalFactualSimplePlotBuilder,
+    LocalFactualSimplePlotRenderer,
+)
 from .instance_explorer import (
     BUILDER_ID as INSTANCE_EXPLORER_BUILDER_ID,
 )
@@ -120,7 +133,7 @@ class PlotlyVisualizationBootstrap:
     plugin_meta = {
         "schema_version": 1,
         "name": BOOTSTRAP_ID,
-        "version": "0.1.0",
+        "version": "0.3.0",
         "provider": "plotly.local",
         "data_modalities": ("tabular",),
         "capabilities": ["plot:bootstrap"],
@@ -205,6 +218,31 @@ def register_plotly_visualization_components() -> None:
                 "style": FACTUAL_BARS_STYLE_ID,
                 "builder_id": FACTUAL_BARS_BUILDER_ID,
                 "renderer_id": FACTUAL_BARS_RENDERER_ID,
+                "fallbacks": (),
+                "legacy_compatible": False,
+                "is_default": False,
+                "default_for": (),
+            },
+        )
+    if find_plot_builder_descriptor(FACTUAL_SIMPLE_BUILDER_ID) is None:
+        register_plot_builder(
+            FACTUAL_SIMPLE_BUILDER_ID,
+            LocalFactualSimplePlotBuilder(),
+            source="entrypoint",
+        )
+    if find_plot_renderer_descriptor(FACTUAL_SIMPLE_RENDERER_ID) is None:
+        register_plot_renderer(
+            FACTUAL_SIMPLE_RENDERER_ID,
+            LocalFactualSimplePlotRenderer(),
+            source="entrypoint",
+        )
+    if find_plot_style_descriptor(FACTUAL_SIMPLE_STYLE_ID) is None:
+        register_plot_style(
+            FACTUAL_SIMPLE_STYLE_ID,
+            metadata={
+                "style": FACTUAL_SIMPLE_STYLE_ID,
+                "builder_id": FACTUAL_SIMPLE_BUILDER_ID,
+                "renderer_id": FACTUAL_SIMPLE_RENDERER_ID,
                 "fallbacks": (),
                 "legacy_compatible": False,
                 "is_default": False,
@@ -318,7 +356,7 @@ def register_plotly_visualization_components() -> None:
 
 
 def _install_factual_bars_plot_bridge() -> None:
-    """Route explicit factual-bars style through the plugin before CE consumes kwargs.
+    """Route explicit factual styles (bars, simple) through the plugin before CE consumes kwargs.
 
     FactualExplanation.plot() pops filter_top (positional arg), uncertainty, rnk_metric,
     and rnk_weight before passing remaining kwargs to the plugin dispatcher. This bridge
@@ -336,7 +374,8 @@ def _install_factual_bars_plot_bridge() -> None:
 
     @wraps(original_plot)
     def plot_bridge(self: Any, filter_top: Any = None, **kwargs: Any) -> Any:
-        if kwargs.get("style") != FACTUAL_BARS_STYLE_ID:
+        style = kwargs.get("style")
+        if style not in (FACTUAL_BARS_STYLE_ID, FACTUAL_SIMPLE_STYLE_ID):
             return original_plot(self, filter_top, **kwargs)
         # filter_top is a positional arg CE would consume before plugin dispatch
         if filter_top is not None:
@@ -344,13 +383,21 @@ def _install_factual_bars_plot_bridge() -> None:
         # uncertainty=True → show_uncertainty=True; CE pops uncertainty before dispatch
         if "uncertainty" in kwargs:
             kwargs = {**kwargs, "show_uncertainty": bool(kwargs["uncertainty"])}
-        return _render_local_factual_bars(self, kwargs)
+        return _render_local_factual_style(self, kwargs, style)
 
     plot_bridge._factual_bars_bridge = True  # type: ignore[attr-defined]
     FactualExplanation.plot = plot_bridge
 
 
-def _render_local_factual_bars(explanation: Any, kwargs: dict[str, Any]) -> Any:
+_FACTUAL_STYLE_FALLBACKS = {
+    FACTUAL_BARS_STYLE_ID: (LocalFactualBarsPlotBuilder, LocalFactualBarsPlotRenderer),
+    FACTUAL_SIMPLE_STYLE_ID: (LocalFactualSimplePlotBuilder, LocalFactualSimplePlotRenderer),
+}
+
+
+def _render_local_factual_style(
+    explanation: Any, kwargs: dict[str, Any], style_id: str
+) -> Any:
     from calibrated_explanations.plugins import (  # noqa: PLC0415
         PlotRenderContext,
         ensure_builtin_plugins,
@@ -368,12 +415,13 @@ def _render_local_factual_bars(explanation: Any, kwargs: dict[str, Any]) -> Any:
     resolve_fn = getattr(manager, "resolve_plot_plugin", None)
     if callable(resolve_fn):
         plugin, identifier, _ = resolve_fn(
-            explicit_style=FACTUAL_BARS_STYLE_ID,
+            explicit_style=style_id,
             renderer_override=kwargs.get("renderer"),
         )
     else:
-        builder_instance = LocalFactualBarsPlotBuilder()
-        renderer_instance = LocalFactualBarsPlotRenderer()
+        builder_cls, renderer_cls = _FACTUAL_STYLE_FALLBACKS[style_id]
+        builder_instance = builder_cls()
+        renderer_instance = renderer_cls()
 
         class _DirectPlugin:
             def build(inner_self, ctx: Any) -> Any:  # noqa: N805
@@ -383,7 +431,7 @@ def _render_local_factual_bars(explanation: Any, kwargs: dict[str, Any]) -> Any:
                 return renderer_instance.render(artifact, context=context)
 
         plugin = _DirectPlugin()
-        identifier = FACTUAL_BARS_STYLE_ID
+        identifier = style_id
 
     show = bool(kwargs.get("show", True))
     path = kwargs.get("path")
@@ -618,15 +666,15 @@ def _render_local_alternative_feature_summary(
 def _install_global_instance_explorer_plot_bridge() -> None:
     """Route explicit global instance-explorer style through CE's plugin path.
 
-    Some CE versions keep the legacy global renderer as the default unless
-    ``use_legacy=False`` is supplied. This bridge preserves the default for all
-    normal plots, but makes the explicit Plotly global style work through the
-    standard ``explainer.plot(x[, y], style=...)`` API.
+    Patches the module attribute ``calibrated_explanations.plotting.plot_global``
+    only. ``CalibratedExplainer.plot`` (and ``WrapCalibratedExplainer.plot``,
+    which delegates to it with kwargs intact) imports ``plot_global`` from the
+    plotting module at call time on CE >= 1.0, so the module-level patch covers
+    the whole public ``explainer.plot(x[, y], style=...)`` API without touching
+    any CE class or private member.
     """
     try:
         import calibrated_explanations.plotting as ce_plotting
-        from calibrated_explanations.core.calibrated_explainer import CalibratedExplainer
-        from calibrated_explanations.core.wrap_explainer import WrapCalibratedExplainer
     except Exception:  # pragma: no cover - depends on installed CE version
         return
 
@@ -648,60 +696,6 @@ def _install_global_instance_explorer_plot_bridge() -> None:
         plot_global_bridge._plotly_instance_explorer_bridge = True  # type: ignore[attr-defined]
         plot_global_bridge._plotly_bridge_version = _PLOT_BRIDGE_VERSION  # type: ignore[attr-defined]
         ce_plotting.plot_global = plot_global_bridge
-
-    if getattr(CalibratedExplainer.plot, "_plotly_bridge_version", 0) < _PLOT_BRIDGE_VERSION:
-        original_calibrated_plot = getattr(
-            CalibratedExplainer.plot, "__wrapped__", CalibratedExplainer.plot
-        )
-
-        @wraps(original_calibrated_plot)
-        def calibrated_plot_bridge(
-            self: Any, x: Any, y: Any = None, threshold: Any = None, **kwargs: Any
-        ) -> Any:
-            if kwargs.get("style") not in {INSTANCE_EXPLORER_STYLE_ID, INSTANCE_WORKSPACE_STYLE_ID}:
-                return original_calibrated_plot(self, x, y=y, threshold=threshold, **kwargs)
-            style_override = kwargs.pop("style_override", None)
-            kwargs["style_override"] = style_override
-            from calibrated_explanations.plotting import plot_global
-
-            return plot_global(self, x, y=y, threshold=threshold, **kwargs)
-
-        calibrated_plot_bridge._plotly_instance_explorer_bridge = True  # type: ignore[attr-defined]
-        calibrated_plot_bridge._plotly_bridge_version = _PLOT_BRIDGE_VERSION  # type: ignore[attr-defined]
-        CalibratedExplainer.plot = calibrated_plot_bridge
-
-    if getattr(WrapCalibratedExplainer.plot, "_plotly_bridge_version", 0) < _PLOT_BRIDGE_VERSION:
-        original_wrap_plot = getattr(
-            WrapCalibratedExplainer.plot, "__wrapped__", WrapCalibratedExplainer.plot
-        )
-
-        @wraps(original_wrap_plot)
-        def wrap_plot_bridge(
-            self: Any, x: Any, y: Any = None, threshold: Any = None, **kwargs: Any
-        ) -> Any:
-            if kwargs.get("style") not in {INSTANCE_EXPLORER_STYLE_ID, INSTANCE_WORKSPACE_STYLE_ID}:
-                return original_wrap_plot(self, x, y=y, threshold=threshold, **kwargs)
-            assert (
-                self._assert_fitted(
-                    "The WrapCalibratedExplainer must be fitted and calibrated before plotting."
-                )
-                ._assert_calibrated(
-                    "The WrapCalibratedExplainer must be calibrated before plotting."
-                )
-                .explainer
-                is not None
-            )
-            cfg = getattr(self, "_cfg", None)
-            if cfg is not None:
-                if threshold is None:
-                    threshold = cfg.threshold
-                kwargs.setdefault("low_high_percentiles", cfg.low_high_percentiles)
-            kwargs["bins"] = self._get_bins(x, **kwargs)
-            return self.explainer.plot(x, y=y, threshold=threshold, **kwargs)
-
-        wrap_plot_bridge._plotly_instance_explorer_bridge = True  # type: ignore[attr-defined]
-        wrap_plot_bridge._plotly_bridge_version = _PLOT_BRIDGE_VERSION  # type: ignore[attr-defined]
-        WrapCalibratedExplainer.plot = wrap_plot_bridge
 
 
 def _render_global_instance_explorer(
@@ -787,12 +781,7 @@ def _render_global_instance_explorer(
         explanation=getattr(explainer, "latest_explanation", None),
         instance_metadata=MappingProxyType({"type": "global"}),
         style=identifier,
-        intent=MappingProxyType(
-            {
-                "type": "global",
-                "explainer_mode": getattr(explainer, "_last_explanation_mode", None),
-            }
-        ),
+        intent=MappingProxyType({"type": "global"}),
         show=show,
         path=path,
         save_ext=save_ext_value,

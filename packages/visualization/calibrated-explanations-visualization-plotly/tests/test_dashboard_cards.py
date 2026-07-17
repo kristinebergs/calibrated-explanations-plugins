@@ -20,6 +20,7 @@ def test_dashboard_registry_contains_current_plotly_styles(monkeypatch):
     assert [descriptor.card_id for descriptor in descriptors] == [
         "instance_explorer",
         "local_factual_bars",
+        "local_factual_simple",
         "uncertainty_quadrant",
         "ensured",
         "alternative_feature_summary",
@@ -27,6 +28,7 @@ def test_dashboard_registry_contains_current_plotly_styles(monkeypatch):
     assert {descriptor.style for descriptor in descriptors} == {
         "plotly.global.instance_explorer",
         "plotly.local.factual_bars",
+        "plotly.local.factual_simple",
         "plotly.local.uncertainty_quadrant",
         "plotly.local.ensured",
         "plotly.local.alternative_feature_summary",
@@ -65,6 +67,7 @@ def test_dashboard_registry_filters_scope_and_task(monkeypatch):
     assert [card.card_id for card in global_cards] == ["instance_explorer"]
     assert [card.card_id for card in local_cards] == [
         "local_factual_bars",
+        "local_factual_simple",
         "uncertainty_quadrant",
         "ensured",
         "alternative_feature_summary",
@@ -72,6 +75,7 @@ def test_dashboard_registry_filters_scope_and_task(monkeypatch):
     assert [card.card_id for card in regression_cards] == [
         "instance_explorer",
         "local_factual_bars",
+        "local_factual_simple",
         "uncertainty_quadrant",
         "ensured",
         "alternative_feature_summary",

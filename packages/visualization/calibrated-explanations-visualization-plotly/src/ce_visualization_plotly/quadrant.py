@@ -266,6 +266,7 @@ class UncertaintyQuadrantPlotBuilder(PlotBuilder):
         "provider": "plotly.local",
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
+        "intent": "factual",
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": (),
@@ -378,7 +379,9 @@ class UncertaintyQuadrantPlotRenderer(PlotRenderer):
         except ImportError as exc:
             raise RuntimeError(
                 "Plotly is required to render plotly.local.uncertainty_quadrant. "
-                "Install this package with the [plotly] extra."
+                "Install plotly (a mandatory dependency of "
+                "calibrated-explanations-visualization-plotly); your "
+                "environment appears to be missing or shadowing it."
             ) from exc
 
         items = list(artifact.get("items", ()))

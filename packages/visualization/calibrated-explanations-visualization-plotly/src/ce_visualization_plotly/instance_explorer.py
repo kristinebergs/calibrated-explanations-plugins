@@ -1032,6 +1032,7 @@ class GlobalInstanceExplorerPlotBuilder(PlotBuilder):
         "provider": "plotly.global",
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
+        "intent": "global",
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
         "dependencies": (),
@@ -1109,7 +1110,9 @@ class GlobalInstanceExplorerPlotRenderer(PlotRenderer):
         except ImportError as exc:
             raise RuntimeError(
                 "Plotly is required to render plotly.global.instance_explorer. "
-                "Install this package with the [plotly] extra."
+                "Install plotly (a mandatory dependency of "
+                "calibrated-explanations-visualization-plotly); your "
+                "environment appears to be missing or shadowing it."
             ) from exc
 
         saved_paths: tuple[str, ...] = ()
