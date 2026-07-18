@@ -45,8 +45,6 @@ def _trust_env() -> str:
 
 
 def _load_plugin(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     monkeypatch.setenv("CE_TRUST_PLUGIN", _trust_env())
     module = importlib.import_module("ce_visualization_plotly.plugin")
     _reset_registry_state()

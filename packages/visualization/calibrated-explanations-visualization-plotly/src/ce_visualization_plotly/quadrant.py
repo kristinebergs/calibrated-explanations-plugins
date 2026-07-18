@@ -206,12 +206,14 @@ def _extract_rule_items(local_explanation: Any) -> list[dict[str, Any]]:
     feature_values = list(rules.get("feature_value", ()))
     collection = _collection_for(local_explanation)
     items: list[dict[str, Any]] = []
+    skipped_rules = 0
 
     for index, raw_weight in enumerate(weights):
         contribution = _as_float(raw_weight)
         low = _as_float(_sequence_get(lows, index))
         high = _as_float(_sequence_get(highs, index))
         if contribution is None or low is None or high is None:
+            skipped_rules += 1
             continue
         feature = _sequence_get(features, index)
         feature_value = _sequence_get(feature_values, index, _sequence_get(values, index))
@@ -229,6 +231,12 @@ def _extract_rule_items(local_explanation: Any) -> list[dict[str, Any]]:
                 "high": high,
                 "interval_width": width,
             }
+        )
+    if skipped_rules:
+        _warn_fallback(
+            f"omitted {skipped_rules} rule(s) without a weight and two-sided "
+            "weight interval; the quadrant requires weight, weight_low, and "
+            "weight_high per rule."
         )
     return items
 

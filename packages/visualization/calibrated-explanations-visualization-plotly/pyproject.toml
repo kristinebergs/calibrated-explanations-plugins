@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization-plotly"
-version = "0.3.0"
+version = "0.3.1"
 description = "Plotly visualization plugin layouts for calibrated-explanations"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -30,7 +30,11 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/kristinebergs/calibrated-explanations-plugins"
+# Public intake for the CE plugin ecosystem lives in the public core repository
+# (this plugin monorepo is private); the same applies to security reports.
 Issues = "https://github.com/kristinebergs/calibrated_explanations/issues"
+Security = "https://github.com/kristinebergs/calibrated_explanations/security/policy"
+Documentation = "https://github.com/kristinebergs/calibrated_explanations"
 
 [project.optional-dependencies]
 live = [
@@ -62,6 +66,11 @@ instance_workspace = "ce_visualization_plotly.instance_workspace:InstanceWorkspa
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ce_visualization_plotly"]
+
+[tool.pytest.ini_options]
+markers = [
+    "viz: semantic parity tests against CE PlotSpec/matplotlib rendering",
+]
 
 [tool.ce_plugin_repo]
 family = "visualization"

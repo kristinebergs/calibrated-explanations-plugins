@@ -23,7 +23,7 @@ In a family metapackage; installable individually from PyPI once released.
 
 Releasable to PyPI individually; not part of a metapackage.
 
-- `calibrated-explanations-visualization-plotly` 0.3.0 — `packages/visualization/calibrated-explanations-visualization-plotly`
+- `calibrated-explanations-visualization-plotly` 0.3.1 — `packages/visualization/calibrated-explanations-visualization-plotly`
 
 ## Experimental plugins
 

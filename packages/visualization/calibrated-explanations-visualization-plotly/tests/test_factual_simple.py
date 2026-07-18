@@ -8,7 +8,6 @@ optional error bars, compact fixed layout with transparent background.
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
 import calibrated_explanations.plugins.registry as registry
@@ -40,8 +39,6 @@ def _reset_registry_state() -> None:
 
 
 def _load_plugin(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     monkeypatch.setenv(
         "CE_TRUST_PLUGIN",
         ",".join(
@@ -60,8 +57,6 @@ def _load_plugin(monkeypatch):
 
 
 def _module(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     return importlib.import_module("ce_visualization_plotly.factual_simple")
 
 
@@ -180,7 +175,9 @@ def test_figure_matches_hub_layout(monkeypatch):
         _POSITIVE_COLOR,
         _POSITIVE_COLOR,
     ]
-    assert bar.hovertemplate == "%{y}<br>Weight: %{x:.4f}<extra></extra>"
+    assert bar.hovertemplate == "%{customdata}<br>Weight: %{x:.4f}<extra></extra>"
+    # hover carries the full untruncated rule text via customdata
+    assert list(bar.customdata) == _rules()["rule"]
     assert bar.error_x.visible is not True  # no error bars without show_uncertainty
 
     layout = fig.layout
@@ -277,3 +274,35 @@ def test_html_export(monkeypatch, tmp_path):
     assert result.saved_paths == (str(expected),)
     assert expected.exists()
     assert not out.exists()
+
+
+def test_hover_keeps_full_rule_text_when_label_truncated(monkeypatch):
+    module = _module(monkeypatch)
+    builder = module.LocalFactualSimplePlotBuilder()
+    renderer = module.LocalFactualSimplePlotRenderer()
+    context = _context(_dummy_explanation())
+    result = renderer.render(builder.build(context), context=context)
+    bar = result.figure.data[0]
+
+    long_rule = _rules()["rule"][2]
+    assert len(long_rule) > 32
+    assert bar.y[2] == long_rule[:30] + "…"
+    assert bar.customdata[2] == long_rule
+
+
+def test_one_sided_explanation_raises_warning_when_uncertainty_requested(monkeypatch):
+    module = _module(monkeypatch)
+    explanation = _dummy_explanation()
+    explanation.explanations[0].is_one_sided = lambda: True
+    with pytest.raises(Warning, match="one-sided"):
+        module.LocalFactualSimplePlotBuilder().build(
+            _context(explanation, show_uncertainty=True)
+        )
+
+
+def test_one_sided_explanation_without_uncertainty_builds(monkeypatch):
+    module = _module(monkeypatch)
+    explanation = _dummy_explanation()
+    explanation.explanations[0].is_one_sided = lambda: True
+    artifact = module.LocalFactualSimplePlotBuilder().build(_context(explanation))
+    assert artifact["metadata"]["num_items"] == 4

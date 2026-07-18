@@ -45,8 +45,6 @@ def _trust_env() -> str:
 
 
 def _load_plugin(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     monkeypatch.setenv("CE_TRUST_PLUGIN", _trust_env())
     module = importlib.import_module("ce_visualization_plotly.plugin")
     _reset_registry_state()
@@ -928,3 +926,65 @@ def test_smoke_path_with_wrap_calibrated_explainer_regression(monkeypatch):
     assert result is not None
     assert result.artifact["task"] == "regression"
     assert result.figure is result.extras["figure"]
+
+
+def test_role_heuristics_require_infer_roles_opt_in(monkeypatch):
+    """Without metadata, roles stay unknown by default; heuristics are opt-in."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _base_alternative_rules()
+    # No role metadata keys, no membership methods on the SimpleNamespace.
+    # Rule 2 (predict 0.49) crosses the 0.5 boundary from base 0.72 and would
+    # be flagged counterfactual by the heuristic; rules with narrower intervals
+    # than the base would be flagged ensured.
+    rules["predict_low"] = [0.64, 0.78, 0.42, 0.74]
+    rules["predict_high"] = [0.68, 0.84, 0.56, 0.80]
+
+    default_artifact = plugin.build(
+        _context(_dummy_alternative_explanation(rules=rules), filter_top=4)
+    )
+    for point in default_artifact["rule_points"]:
+        assert point["explanation_role"] == "unknown"
+        assert point["role_source"] == "unavailable"
+        assert point["is_counterfactual"] is False
+        assert point["is_ensured"] is False
+
+    heuristic_artifact = plugin.build(
+        _context(
+            _dummy_alternative_explanation(rules=rules), filter_top=4, infer_roles=True
+        )
+    )
+    assert heuristic_artifact["options_used"]["infer_roles"] is True
+    heuristic_points = [
+        point
+        for point in heuristic_artifact["rule_points"]
+        if point["explanation_role"] != "unknown"
+    ]
+    assert heuristic_points, "opt-in heuristics should classify at least one point"
+    for point in heuristic_points:
+        assert point["role_source"] == "heuristic"
+    crossing = next(
+        point for point in heuristic_artifact["rule_points"] if point["index"] == 2
+    )
+    assert crossing["is_counterfactual"] is True
+
+
+def test_role_heuristics_do_not_override_explicit_all_false_metadata(monkeypatch):
+    """Explicit all-False rule metadata wins over opt-in heuristics."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _base_alternative_rules()
+    rules["is_ensured"] = [False, False, False, False]
+    rules["is_pareto"] = [False, False, False, False]
+    rules["is_counterfactual"] = [False, False, False, False]
+    rules["is_semifactual"] = [False, False, False, False]
+    rules["is_counterpotential"] = [False, False, False, False]
+
+    artifact = plugin.build(
+        _context(
+            _dummy_alternative_explanation(rules=rules), filter_top=4, infer_roles=True
+        )
+    )
+    for point in artifact["rule_points"]:
+        assert point["explanation_role"] == "unknown"
+        assert point["role_source"] == "rule_metadata"

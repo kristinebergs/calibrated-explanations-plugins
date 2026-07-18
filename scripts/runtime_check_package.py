@@ -37,6 +37,15 @@ def read_plugin_family(package_path: Path) -> str:
     return str(family)
 
 
+def read_import_name(package_path: Path) -> str:
+    with (package_path / "pyproject.toml").open("rb") as handle:
+        data = tomllib.load(handle)
+    import_name = data.get("tool", {}).get("ce_plugin_repo", {}).get("import_name")
+    if not isinstance(import_name, str) or not import_name:
+        raise RuntimeError(f"{package_path} is missing tool.ce_plugin_repo.import_name")
+    return import_name
+
+
 def calibrated_explanations_requirement(package_path: Path) -> str:
     family = read_plugin_family(package_path)
     if family == "visualization":
@@ -170,13 +179,16 @@ def installed_check(package_path: Path, run_pytest: bool) -> None:
     validate_runtime(package_path)
     check_plugin_docstrings(package_path)
     if run_pytest:
+        # Coverage targets the import name so the measured module is whatever
+        # the tests import — the installed wheel in the gate venv (the tests'
+        # conftest falls back to src/ only when no matching wheel is installed).
         run_checked(
             [
                 sys.executable,
                 "-m",
                 "pytest",
                 str(package_path / "tests"),
-                f"--cov={package_path / 'src'}",
+                f"--cov={read_import_name(package_path)}",
                 "--cov-report=term-missing",
                 "--cov-fail-under=80",
             ]

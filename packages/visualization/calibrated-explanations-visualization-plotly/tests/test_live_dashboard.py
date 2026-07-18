@@ -3,14 +3,11 @@ from __future__ import annotations
 import importlib
 import sys
 import types
-from pathlib import Path
 
 import pytest
 
 
 def _load_dashboard(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     return importlib.import_module("ce_visualization_plotly.dashboard")
 
 

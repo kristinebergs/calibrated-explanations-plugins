@@ -446,6 +446,7 @@ def _resolve_rule_role(
     mode_metadata: dict[str, Any],
     role_memberships: dict[str, set[int]] | None = None,
     role_membership_sources: set[str] | None = None,
+    infer_roles: bool = False,
 ) -> dict[str, Any]:
     flags = {
         "counterfactual": False,
@@ -487,7 +488,15 @@ def _resolve_rule_role(
                 source_hits["rule_metadata"] = True
                 break
 
-    if not any(flags.values()) and not membership_sources:
+    # Heuristic role inference is strictly opt-in (infer_roles=True) and only
+    # runs when neither CE membership metadata nor explicit rule metadata
+    # answered; its results are always marked role_source="heuristic".
+    if (
+        infer_roles
+        and not any(flags.values())
+        and not membership_sources
+        and not source_hits["rule_metadata"]
+    ):
         if point_uncertainty <= original["uncertainty"] + 1e-12:
             flags["ensured"] = True
             heuristic_used = True
@@ -731,6 +740,7 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
                 mode_metadata=mode_metadata,
                 role_memberships=role_memberships,
                 role_membership_sources=role_membership_sources,
+                infer_roles=bool(options.get("infer_roles", False)),
             )
             if role_metadata["role_source"] == "unavailable":
                 missing_role_metadata_count += 1
@@ -868,6 +878,7 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
                 "include_missing_rule_points": include_missing_rule_points,
                 "feature_checklist": bool(options.get("feature_checklist", False)),
                 "side_panel": bool(options.get("side_panel", False)),
+                "infer_roles": bool(options.get("infer_roles", False)),
             },
             "metadata": {
                 "shown_rule_count": len(shown_rule_points),

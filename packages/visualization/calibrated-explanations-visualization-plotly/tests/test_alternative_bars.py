@@ -41,8 +41,6 @@ def _trust_env() -> str:
 
 
 def _load_plugin(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     monkeypatch.setenv("CE_TRUST_PLUGIN", _trust_env())
     module = importlib.import_module("ce_visualization_plotly.plugin")
     _reset_registry_state()
@@ -776,3 +774,29 @@ def test_identical_to_base_filtered_after_ranking_and_filter_top(monkeypatch):
     rule_names = [item["rule"] for item in artifact["items"]]
     assert "identical" not in rule_names, "Identical-to-base rule must be filtered"
     assert "good_alt" in rule_names, "Non-identical rule within filter_top must be kept"
+
+
+def test_inline_fill_color_matches_ce_legacy_implementation(monkeypatch):
+    """The inline legacy-color copy must match CE's implementation exactly.
+
+    The plugin deliberately does NOT import the private CE symbol
+    ``viz.builders._legacy_get_fill_color`` at runtime; this test uses it only
+    as the parity oracle so drift in either copy is caught here.
+    """
+    _load_plugin(monkeypatch)
+    from ce_visualization_plotly import alternative_bars as ab
+
+    ce_builders = pytest.importorskip("calibrated_explanations.viz.builders")
+    legacy_fill = getattr(ce_builders, "_legacy_get_fill_color", None)
+    if legacy_fill is None:
+        pytest.skip("CE no longer exposes _legacy_get_fill_color; parity oracle unavailable")
+
+    probabilities = [index / 50 for index in range(51)] + [0.999999999, 1.0]
+    for probability in probabilities:
+        for reduction in (1.0, 0.99, 0.4, 0.15):
+            assert ab._ce_fill_color(probability, reduction) == legacy_fill(
+                probability, reduction
+            ), f"fill color drift at p={probability}, reduction={reduction}"
+
+    assert ab._REGRESSION_BAR_COLOR == ce_builders.REGRESSION_BAR_COLOR
+    assert ab._REGRESSION_BASE_COLOR == ce_builders.REGRESSION_BASE_COLOR

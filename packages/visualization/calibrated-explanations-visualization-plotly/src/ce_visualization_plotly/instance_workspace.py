@@ -618,7 +618,17 @@ def build_dashboard_html(artifact: PlotArtifact) -> str:
         ['task/posture', (details.task || record.metadata.task) + ' / ' + (details.posture || record.metadata.posture)],
         ['true label/target', details.true_label || details.target_value || details.target_label || details.target]
       ];
-      summary.innerHTML = rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + fmt(v) + '</dd>').join('');
+      // Values (labels, targets) are user-controlled data: always assign via
+      // textContent, never innerHTML, so hostile strings render as text.
+      summary.replaceChildren();
+      rows.forEach(([k, v]) => {{
+        const dt = document.createElement('dt');
+        dt.textContent = String(k);
+        const dd = document.createElement('dd');
+        dd.textContent = fmt(v);
+        summary.appendChild(dt);
+        summary.appendChild(dd);
+      }});
     }}
     function renderCards(instanceIndex) {{
       const local = data.precomputed[String(instanceIndex)];

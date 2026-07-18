@@ -4,7 +4,6 @@ import importlib
 import sys
 import types
 import warnings
-from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
 import calibrated_explanations.plugins.registry as registry
@@ -45,8 +44,6 @@ def _trust_env() -> str:
 
 
 def _load_plugin(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     monkeypatch.setenv("CE_TRUST_PLUGIN", _trust_env())
     module = importlib.import_module("ce_visualization_plotly.plugin")
     _reset_registry_state()
@@ -333,3 +330,30 @@ def test_factual_regression_smoke_with_calibrated_explainer(monkeypatch):
     assert result is not None
     assert result.artifact["task"] == "regression"
     assert len(result.artifact["items"]) == 3
+
+
+def test_rules_without_two_sided_intervals_warn_and_are_omitted(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _quadrant_rules()
+    rules["weight_low"] = [1.8, None, 0.1, 0.05, -0.2]
+    rules["weight_high"] = [2.3, -1.1, None, 0.85, 0.7]
+
+    with pytest.warns(UserWarning, match="omitted 2 rule"):
+        artifact = plugin.build(_context(_dummy_explanation(rules)))
+
+    kept_rules = {item["rule"] for item in artifact["items"]}
+    assert kept_rules == {"age > 30", "risk <= 1", "margin > 0"}
+
+
+def test_all_rules_missing_intervals_raises_value_error(monkeypatch):
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    rules = _quadrant_rules()
+    rules["weight_low"] = [None] * 5
+    rules["weight_high"] = [None] * 5
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with pytest.raises(ValueError, match="No factual rule contributions"):
+            plugin.build(_context(_dummy_explanation(rules)))

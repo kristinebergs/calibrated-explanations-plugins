@@ -1,4 +1,70 @@
-# Maturity evidence — calibrated-explanations-visualization-plotly 0.3.0
+# Maturity evidence — calibrated-explanations-visualization-plotly
+
+## 0.3.1 hardening review (2026-07-18)
+
+Independent re-audit of the 0.3.0 promotion; the `mature` status was treated
+as provisional and re-verified. Changes made:
+
+- **Bridge isolation.** All registration-time wrapping of public CE symbols
+  (`FactualExplanation.plot`, `AlternativeExplanation.plot`,
+  `plotting.plot_global`) moved out of `plugin.py` into one compatibility
+  module, `_ce_compat.py`, whose docstring records why each bridge exists,
+  the CE range that needs it, and the removal condition. The two chained
+  `AlternativeExplanation.plot` wrappers were consolidated into one; the
+  `filename=` → `path=` coercion is now uniform across all four bridged local
+  styles (previously the feature-summary bridge silently ignored
+  `filename=`).
+- **Private-member removal.** `alternative_bars` no longer imports
+  `viz.builders._legacy_get_fill_color` (CE-private); the inline copy is the
+  canonical implementation, and `test_inline_fill_color_matches_ce_legacy_implementation`
+  compares it against the CE original (53 probabilities × 4 reductions plus
+  both regression constants) as the parity oracle.
+- **Role heuristics opt-in.** The ensured plot applied ensured/counterfactual
+  role heuristics by default when metadata was absent, contradicting the
+  README's opt-in claim. Heuristics now require `infer_roles=True`, never
+  override explicit all-False rule metadata, and remain marked
+  `role_source="heuristic"`. Default is metadata-or-unknown.
+- **factual_simple contract.** One-sided explanations with
+  `show_uncertainty=True` now raise `Warning` (previously rendered garbage
+  error bars); hover shows the full untruncated rule text via customdata.
+- **uncertainty_quadrant contract made precise.** x = |calibrated weight|,
+  y = weight-interval width; rules without two-sided intervals are omitted
+  with a visible `UserWarning` (previously silent) and an empty result raises
+  `ValueError`. README support-matrix row upgraded from blanket ⚠️ to the
+  explicit contract.
+- **Security fix (standalone dashboard).** The instance-workspace summary
+  panel built DOM content via `innerHTML` from unescaped record values
+  (true labels / targets are user-controlled), allowing HTML injection from
+  hostile class labels at view time. It now builds DOM nodes via
+  `textContent` only; `test_dashboard_html_treats_hostile_labels_as_text`
+  guards both the escaped JSON channel and the DOM-construction pattern.
+- **Installed-wheel test fidelity.** All `sys.path` source-tree hacks were
+  removed from the test suite (including the parity tests' sibling
+  CE-checkout shadowing). `tests/conftest.py` prefers the installed
+  distribution and falls back to `src/` only when no version-matching install
+  exists; the wheel gate's coverage target now measures the installed
+  package (`--cov=ce_visualization_plotly`).
+- **Docs corrected.** README no longer implies CE auto-loads entry points in
+  user code (CE 1.0.x loads them only via
+  `plugins.registry.load_entrypoint_plugins()`/CLI); the quick-start import
+  is documented as required.
+
+Validation (all observed, 2026-07-18): dev suite 201 passed / 1 skipped;
+`ruff check src tests` clean; wheel gate
+(`scripts/runtime_check_package.py`) exit 0 with 201 passed / 1 skipped from
+the installed wheel at 83.75 % coverage and 100 % plugin docstring coverage;
+floor boundary venv (py 3.11.9, plotly 5.18.0, dash 3.1.0, CE 1.0.0rc1,
+installed wheel, `pip check` clean) and newest boundary venv (py 3.14.4,
+plotly 6.9.0, dash 4.4.0, CE 1.0.0rc1) both 201 passed / 1 skipped;
+`pip-audit --strict` on the newest closure: no known vulnerabilities;
+`validate_repo_structure.py`, `lifecycle.py check`, and
+`check_version_bumps.py` all pass. PyPI name re-verified unclaimed
+(HTTP 404) on 2026-07-18 — claiming it via the pending-publisher flow bound
+to `release-pypi.yml` remains the outstanding human action.
+
+---
+
+# 0.3.0 promotion review
 
 Reviewed 2026-07-16 for promotion `experimental` → `mature`.
 

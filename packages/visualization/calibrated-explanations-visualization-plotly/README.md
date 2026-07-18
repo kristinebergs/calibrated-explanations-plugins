@@ -34,9 +34,12 @@ optional live dashboard (Dash), install the `[live]` extra:
 pip install "calibrated-explanations-visualization-plotly[live]"
 ```
 
-The plugin registers itself through CE's plugin entry points; no manual
-registration call is needed beyond importing `ce_visualization_plotly.plugin`
-(CE's entry-point discovery does this for you).
+The plugin declares CE plugin entry points, so environments that call CE's
+`plugins.registry.load_entrypoint_plugins()` (for example the CE plugins CLI)
+discover it automatically. In ordinary user code CE 1.0.x does **not**
+auto-load entry points: import `ce_visualization_plotly.plugin` once (as in
+the quick start below) to register all `plotly.*` styles — no further
+registration call is needed.
 
 ## Quick start
 
@@ -85,7 +88,7 @@ semantic change. New code should use the canonical id.
 | `alternative_bars` | ✅ | ⚠️ one-vs-rest | ✅ | ✅ | ❌ error | ✅ | per instance |
 | `ensured` | ✅ | ⚠️ one-vs-rest | ✅ | ✅ | ❌ | ✅ | collection-level |
 | `alternative_feature_summary` | ✅ | ⚠️ | ✅ | ✅ | ❌ | ✅ | per instance |
-| `uncertainty_quadrant` | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | per instance |
+| `uncertainty_quadrant` | ✅ | ⚠️ one-vs-rest weights | ✅ | ✅ | ✅ | ❌ error | per instance |
 | `instance_explorer` | ✅ | ✅ | ✅ | ✅ | n/a | n/a | ✅ |
 | `instance_workspace` | ✅ | ⚠️ | ✅ | ✅ | via cards | via cards | ✅ |
 
@@ -96,6 +99,14 @@ semantic change. New code should use the canonical id.
   to another style).
 - Uncertainty display for one-sided explanations raises `Warning`, matching
   CE core behaviour.
+- `uncertainty_quadrant` has a fixed contract independent of task: x is the
+  absolute calibrated feature weight (`|weight|`), y is the calibrated weight
+  interval width (`weight_high − weight_low`). Rules without a weight and a
+  two-sided weight interval are omitted with a visible `UserWarning`; if no
+  rule qualifies (e.g. one-sided explanations) the builder raises
+  `ValueError`. Quadrant labels bucket rules against thresholds
+  (median/quantile_75/explicit) whose values and provenance are recorded in
+  the artifact — they are presentation thresholds, not statistical claims.
 
 ## Configuration
 
@@ -112,10 +123,10 @@ values raise `ValueError` naming the allowed values. Highlights:
   `orientation="horizontal"` is supported.
 - `plotly.local.factual_simple` — `show_uncertainty` (default `False`; also
   accepts CE's `uncertainty=True` alias). Rules (including conjunctions)
-  render in payload order with labels truncated at 32 characters; the full
-  rule text is kept in the artifact. There is no prediction header, ranking,
-  or filtering — the style intentionally mirrors the explainable-ai-hub
-  factual figure.
+  render in payload order with axis labels truncated at 32 characters; the
+  full rule text is kept in the artifact and shown in hover. There is no
+  prediction header, ranking, or filtering — the style intentionally mirrors
+  the explainable-ai-hub factual figure.
 - `plotly.local.alternative_bars` — `filter_top`, `sort_by`
   (`original|prediction_delta|interval_width|role|feature`),
   `show_uncertainty` (default `True`), `hover_uncertainty`,
@@ -124,7 +135,13 @@ values raise `ValueError` naming the allowed values. Highlights:
   (`show|hide`).
 - `plotly.local.ensured` — `filter_top`/`max_points`, `sort_by`,
   `show_arrows`, `show_original`, `show_triangle_reference`, `hover_detail`,
-  `include_missing_rule_points`, `feature_checklist`, `side_panel`.
+  `include_missing_rule_points`, `feature_checklist`, `side_panel`,
+  `infer_roles` (default `False`; opt-in role heuristics, marked
+  `role_source="heuristic"`), `pareto_cost`.
+- `plotly.local.uncertainty_quadrant` — `threshold_strategy`
+  (`median|quantile_75|explicit`, default `median`), `impact_threshold`,
+  `uncertainty_threshold`, `sort_by` (default `absolute_impact`),
+  `filter_top`.
 - `plotly.local.alternative_feature_summary` — `filter_top_features`,
   `include_conjunctions` (default `False`), `normalize` (`count|share`),
   `infer_roles` (default `False`), `unknown_policy`, `sort_by`,
@@ -176,12 +193,12 @@ auto-show unless `show` is passed explicitly.
 
 ## Compatibility
 
-| Dependency | Declared range | Tested versions |
+| Dependency | Declared range | Tested versions (0.3.1 wheel) |
 |---|---|---|
 | Python | `>=3.11` | 3.11.9, 3.14.4 |
 | calibrated-explanations | `>=1.0.0rc1,<2` | 1.0.0rc1 |
 | plotly | `>=5.18` | 5.18.0, 6.7.0, 6.9.0 |
-| dash (optional, `[live]`) | `>=3.1` | 3.1.0, 4.4.0 |
+| dash (optional, `[live]`) | `>=3.1` | 3.1.0, 4.4.0 (base install verified without dash) |
 
 The dash floor is `>=3.1` because dash 2.x/3.0 pin Flask/Werkzeug versions
 with known published vulnerabilities; dash 3.1 is the first release whose
@@ -208,7 +225,12 @@ release removed; CE `>=1.0.0rc1` is the verified minimum.
   dispatch; this package therefore wraps (via `functools.wraps`, preserving
   behaviour for all other styles) the public `FactualExplanation.plot`,
   `AlternativeExplanation.plot`, and the `plotting.plot_global` module
-  attribute at registration time. No CE-private members are used.
+  attribute at registration time. This is deliberate monkey-patching of
+  public CE symbols, isolated in one compatibility module
+  (`ce_visualization_plotly._ce_compat`) that documents why each bridge
+  exists, the CE range that needs it (`>=1.0.0rc1,<2`), and the upstream
+  condition under which it will be removed. Installation is idempotent and
+  import-order independent; no CE-private members are used at runtime.
 
 ## Failure modes
 
@@ -226,10 +248,15 @@ release removed; CE `>=1.0.0rc1` is the verified minimum.
 - **Degraded CE surface** (e.g. `rank_features` unavailable): visible
   `UserWarning` plus INFO log, deterministic fallback ordering — never a
   silent behaviour change.
+- **Rules without two-sided weight intervals** in `uncertainty_quadrant`:
+  omitted with a visible `UserWarning`; `ValueError` if nothing remains.
 - Rule labels, feature names, and hover text are rendered as Plotly text
-  (not raw HTML), and standalone HTML shells escape user-controlled labels;
-  no unsanitised user content is interpolated into executable HTML. This is
-  a safeguard description, not a security certification.
+  (not raw HTML). Standalone HTML shells escape user-controlled labels
+  server-side, and client-side scripts assign data values to the DOM via
+  `textContent` only (never `innerHTML` concatenation), so hostile labels,
+  class names, or targets render as text. This is a reviewed threat boundary
+  for package-generated HTML — not a security certification, and it does not
+  extend to third-party plugins composed into the same page.
 
 ## Support
 

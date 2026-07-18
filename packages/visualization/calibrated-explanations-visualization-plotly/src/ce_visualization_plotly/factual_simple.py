@@ -11,6 +11,7 @@ order with a fixed compact layout.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import warnings
 from pathlib import Path
@@ -106,6 +107,19 @@ class LocalFactualSimplePlotBuilder(PlotBuilder):
                 "plotly.local.factual_simple does not support alternative explanations."
             )
 
+        # Guard: one-sided explanations have no two-sided weight intervals.
+        # Match CE core (and plotly.local.factual_bars): raise Warning.
+        if options["show_uncertainty"]:
+            is_one_sided_fn = getattr(local_explanation, "is_one_sided", None)
+            if callable(is_one_sided_fn):
+                _is_one_sided = False
+                with contextlib.suppress(Exception):
+                    _is_one_sided = bool(is_one_sided_fn())
+                if _is_one_sided:
+                    raise Warning(
+                        "Interval plot is not supported for one-sided explanations."
+                    )
+
         rules = _resolve_rules(local_explanation)
         weights = list(rules.get("weight", ()))
         lows = list(rules.get("weight_low", rules.get("low", ())))
@@ -178,7 +192,10 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
                 _POSITIVE_COLOR if item["weight"] >= 0 else _NEGATIVE_COLOR for item in items
             ]
         },
-        "hovertemplate": "%{y}<br>Weight: %{x:.4f}<extra></extra>",
+        # customdata carries the untruncated rule text so hover always shows
+        # the full condition even when the y-axis label is truncated.
+        "customdata": [item["rule"] for item in items],
+        "hovertemplate": "%{customdata}<br>Weight: %{x:.4f}<extra></extra>",
     }
     if show_uncertainty:
         trace_kwargs["error_x"] = {

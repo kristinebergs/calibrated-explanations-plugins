@@ -35,53 +35,50 @@ ARTIFACT_VERSION = "0.2.0"
 
 _LOGGER = logging.getLogger(__name__)
 
-# Legacy color functions imported from CE core for exact visual parity.
-# Falls back to an inline copy when the private import path is unavailable.
-try:
-    from calibrated_explanations.viz.builders import (  # type: ignore[import]  # noqa: I001
-        REGRESSION_BAR_COLOR as _REGRESSION_BAR_COLOR,
-        REGRESSION_BASE_COLOR as _REGRESSION_BASE_COLOR,
-        _legacy_get_fill_color as _ce_fill_color,
+# Legacy CE fill-color function, replicated inline for exact visual parity with
+# CE's legacy/PlotSpec rendering. The upstream implementation
+# (calibrated_explanations.viz.builders._legacy_get_fill_color) is a private CE
+# member, so it is NOT imported at runtime; instead this copy is the canonical
+# implementation and tests/parity compare it against the CE original when that
+# private symbol is available (see test_alternative_bars.py).
+def _ce_brew2() -> list[tuple[int, int, int]]:
+    import numpy as np  # noqa: PLC0415
+
+    color_list: list[tuple[int, int, int]] = []
+    s, v = 0.75, 0.9
+    c, m = s * v, v - s * v
+    for h in np.arange(5, 385, 245).astype(int):
+        h_bar = h / 60.0
+        x = c * (1 - abs((h_bar % 2) - 1))
+        rgb_lut = [
+            (c, x, 0), (x, c, 0), (0, c, x), (0, x, c),
+            (x, 0, c), (c, 0, x), (c, x, 0),
+        ]
+        r, g, b = rgb_lut[int(h_bar)]
+        color_list.append((int(255 * (r + m)), int(255 * (g + m)), int(255 * (b + m))))
+    color_list.reverse()
+    return color_list
+
+
+def _ce_fill_color(probability: float, reduction: float = 1.0) -> str:
+    colors = _ce_brew2()
+    winner = int(probability >= 0.5)
+    color = colors[winner]
+    alpha = probability if winner == 1 else 1.0 - probability
+    alpha = ((alpha - 0.5) / 0.5) * 0.75 + 0.25
+    if reduction != 1.0:
+        alpha = reduction
+    blended = [int(round(alpha * c + (1 - alpha) * 255)) for c in color]
+    close = math.isfinite(probability) and math.isclose(
+        probability, 1.0, rel_tol=1e-9, abs_tol=1e-12
     )
-except Exception:  # pragma: no cover — fallback for environments without full CE install
-    import math as _math_fb
+    if reduction == 1.0 and close:
+        return "#ff0000"
+    return "#{:02x}{:02x}{:02x}".format(*blended)
 
-    import numpy as _np_fb
 
-    def _ce_brew2() -> list[tuple[int, int, int]]:
-        color_list: list[tuple[int, int, int]] = []
-        s, v = 0.75, 0.9
-        c, m = s * v, v - s * v
-        for h in _np_fb.arange(5, 385, 245).astype(int):
-            h_bar = h / 60.0
-            x = c * (1 - abs((h_bar % 2) - 1))
-            rgb_lut = [
-                (c, x, 0), (x, c, 0), (0, c, x), (0, x, c),
-                (x, 0, c), (c, 0, x), (c, x, 0),
-            ]
-            r, g, b = rgb_lut[int(h_bar)]
-            color_list.append((int(255 * (r + m)), int(255 * (g + m)), int(255 * (b + m))))
-        color_list.reverse()
-        return color_list
-
-    def _ce_fill_color(probability: float, reduction: float = 1.0) -> str:  # type: ignore[misc]
-        colors = _ce_brew2()
-        winner = int(probability >= 0.5)
-        color = colors[winner]
-        alpha = probability if winner == 1 else 1.0 - probability
-        alpha = ((alpha - 0.5) / 0.5) * 0.75 + 0.25
-        if reduction != 1.0:
-            alpha = reduction
-        blended = [int(round(alpha * c + (1 - alpha) * 255)) for c in color]
-        close = _math_fb.isfinite(probability) and _math_fb.isclose(
-            probability, 1.0, rel_tol=1e-9, abs_tol=1e-12
-        )
-        if reduction == 1.0 and close:
-            return "#ff0000"
-        return "#{:02x}{:02x}{:02x}".format(*blended)
-
-    _REGRESSION_BAR_COLOR: str = _ce_fill_color(1.0, 1.0)   # "#ff0000"
-    _REGRESSION_BASE_COLOR: str = _ce_fill_color(1.0, 0.15)
+_REGRESSION_BAR_COLOR: str = _ce_fill_color(1.0, 1.0)   # "#ff0000"
+_REGRESSION_BASE_COLOR: str = _ce_fill_color(1.0, 0.15)
 
 
 def _warn_fallback(reason: str) -> None:

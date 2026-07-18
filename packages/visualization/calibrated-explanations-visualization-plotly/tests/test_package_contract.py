@@ -49,7 +49,6 @@ def _reset_registry_state() -> None:
 
 
 def _load_plugin(monkeypatch):
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     monkeypatch.setenv(
         "CE_TRUST_PLUGIN",
         "ce_visualization_plotly.plugin:PlotlyVisualizationBootstrap," + BOOTSTRAP_ID,
@@ -77,7 +76,6 @@ def _load_entry_point_target(target: str):
 
 
 def test_declared_entry_points_load_and_cover_all_styles(monkeypatch):
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     data = _pyproject()
     entry_points = data["project"]["entry-points"]
 
@@ -112,7 +110,6 @@ def test_declared_entry_points_load_and_cover_all_styles(monkeypatch):
 
 
 def test_bootstrap_plugin_meta_version_matches_package_version(monkeypatch):
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     data = _pyproject()
     plugin = importlib.import_module("ce_visualization_plotly.plugin")
     assert (
@@ -173,15 +170,21 @@ def test_import_has_no_filesystem_or_network_side_effects(tmp_path):
         "import ce_visualization_plotly.plugin\n"
         "print('IMPORT_OK')\n"
     )
+    # Import the same code the suite under test imports: the installed
+    # distribution when it matches pyproject, the source tree otherwise.
+    from conftest import SRC_FALLBACK_ACTIVE
+
+    env = dict(__import__("os").environ)
+    if SRC_FALLBACK_ACTIVE:
+        env["PYTHONPATH"] = str(_SRC_DIR)
+    else:
+        env.pop("PYTHONPATH", None)
     result = subprocess.run(  # noqa: S603 — fixed script, trusted interpreter
         [sys.executable, "-c", script],
         cwd=tmp_path,
         capture_output=True,
         text=True,
-        env={
-            **__import__("os").environ,
-            "PYTHONPATH": str(_SRC_DIR),
-        },
+        env=env,
         timeout=120,
         check=False,
     )
@@ -236,7 +239,6 @@ def _context(explanation, *, style, path=None, show=False, **options) -> PlotRen
 
 
 def test_missing_plotly_produces_actionable_error(monkeypatch):
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
 
     def _raise_import_error(*args, **kwargs):
@@ -271,7 +273,6 @@ def _malicious_fake_explanation():
 
 def test_html_export_escapes_user_controlled_labels(monkeypatch, tmp_path):
     pytest.importorskip("plotly")
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
 
     builder = factual_bars.LocalFactualBarsPlotBuilder()
@@ -293,7 +294,6 @@ def test_html_export_escapes_user_controlled_labels(monkeypatch, tmp_path):
 
 
 def test_ensured_detail_markup_escapes_labels_and_values(monkeypatch):
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     ensured = importlib.import_module("ce_visualization_plotly.ensured")
     markup = ensured._detail_markup(_MALICIOUS_LABEL, _MALICIOUS_LABEL)
     assert "<script>" not in markup
@@ -302,7 +302,6 @@ def test_ensured_detail_markup_escapes_labels_and_values(monkeypatch):
 
 def test_unicode_and_long_labels_render(monkeypatch):
     pytest.importorskip("plotly")
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
 
     collection = _factual_fake_explanation()
@@ -321,7 +320,6 @@ def test_unicode_and_long_labels_render(monkeypatch):
 
 def test_output_path_suffix_coerced_to_html_and_overwrites(monkeypatch, tmp_path):
     pytest.importorskip("plotly")
-    monkeypatch.syspath_prepend(str(_SRC_DIR))
     factual_bars = importlib.import_module("ce_visualization_plotly.factual_bars")
 
     builder = factual_bars.LocalFactualBarsPlotBuilder()

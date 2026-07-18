@@ -30,8 +30,6 @@ def _reset_registry_state() -> None:
 
 
 def _load_plugin(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     monkeypatch.setenv(
         "CE_TRUST_PLUGIN",
         ",".join(
@@ -228,14 +226,17 @@ def test_selected_precompute_uses_registry_cards_and_aliases(monkeypatch):
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    artifact = plugin.build(
-        _context(
-            _explanations(),
-            precompute="selected",
-            selected_instance_indices=[1],
-            available_cards=["local_uncertainty_quadrant", "local_ensured"],
+    # The SimpleNamespace fixture lacks rank_features, so the ensured card's
+    # deterministic rank fallback fires its documented visible warning.
+    with pytest.warns(UserWarning, match="rank_features unavailable"):
+        artifact = plugin.build(
+            _context(
+                _explanations(),
+                precompute="selected",
+                selected_instance_indices=[1],
+                available_cards=["local_uncertainty_quadrant", "local_ensured"],
+            )
         )
-    )
 
     local = artifact["precomputed_local"]["1"]
     assert local["instance_index"] == 1
@@ -338,10 +339,12 @@ class _BridgeExplainer:
 
 def test_dashboard_plot_bridge_consumes_style_and_precomputes(monkeypatch, tmp_path):
     _install_fake_plotly(monkeypatch)
-    plugin_module = _load_plugin(monkeypatch)
+    _load_plugin(monkeypatch)
+    from ce_visualization_plotly import _ce_compat
+
     explainer = _BridgeExplainer()
 
-    result = plugin_module._render_instance_workspace_dashboard(
+    result = _ce_compat._render_instance_workspace_dashboard(
         explainer,
         [[1, 2], [3, 4]],
         [0, 1],
@@ -380,3 +383,37 @@ def test_registration_patches_plot_global_only_not_ce_classes(monkeypatch):
     assert getattr(ce_plotting.plot_global, "_plotly_bridge_version", 0) >= 2
     assert not hasattr(CalibratedExplainer.plot, "_plotly_bridge_version")
     assert not hasattr(WrapCalibratedExplainer.plot, "_plotly_bridge_version")
+
+
+def test_dashboard_html_treats_hostile_labels_as_text(monkeypatch, tmp_path):
+    """Hostile class labels/targets must never reach the DOM as executable HTML.
+
+    Covers both channels: the server-side JSON payload (HTML-escaped inside the
+    data script tag) and the client-side summary panel (which must build DOM
+    nodes via textContent, never innerHTML string concatenation).
+    """
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    hostile = "<img src=x onerror=alert('xss')>"
+    hostile_script = "</script><script>alert('xss')</script>"
+
+    artifact = plugin.build(
+        _context(
+            _explanations(),
+            precompute="none",
+            global_options={"true_labels": [hostile, hostile_script, "benign"]},
+        )
+    )
+    records = artifact["instance_records"]
+    assert any(record.get("true_label") == hostile for record in records)
+
+    workspace = importlib.import_module("ce_visualization_plotly.instance_workspace")
+    html_content = workspace.build_dashboard_html(artifact)
+
+    assert hostile not in html_content, "hostile label must be HTML-escaped everywhere"
+    assert "</script><script>alert" not in html_content
+    # Regression guard: the summary panel must not be assembled via innerHTML
+    # from data values.
+    assert "summary.innerHTML" not in html_content
+    assert "textContent" in html_content

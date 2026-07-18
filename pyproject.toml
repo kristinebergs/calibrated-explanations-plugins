@@ -18,3 +18,6 @@ ignore = ["S101"]
 "tests/**/*.py" = ["S603", "S607"]
 "packages/**/ensured.py" = ["E501"]
 "packages/**/instance_workspace.py" = ["E501"]
+# Example notebooks are supplementary documentation: allow long lines, late
+# imports after markdown/setup cells, and the pip-bootstrap subprocess cell.
+"packages/**/examples/*.ipynb" = ["E402", "E501", "S603", "S607"]

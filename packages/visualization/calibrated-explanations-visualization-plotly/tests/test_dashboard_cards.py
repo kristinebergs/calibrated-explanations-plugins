@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
 
 import pytest
 
 
 def _load_dashboard_cards(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     return importlib.import_module("ce_visualization_plotly.dashboard_cards")
 
 

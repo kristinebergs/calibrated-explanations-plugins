@@ -10,7 +10,10 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     # Curation policy: only plugins with status = "mature" may be listed here.
-    # No plugin has completed a maturity review yet, so this set is empty.
+    # calibrated-explanations-visualization-plotly is mature but not yet
+    # published to PyPI (name unclaimed, trusted publisher pending), so the
+    # curated set stays empty until its first release exists — a metapackage
+    # dependency must be resolvable from PyPI.
 ]
 
 [tool.hatch.build.targets.wheel]

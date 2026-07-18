@@ -29,8 +29,6 @@ def _reset_registry_state() -> None:
 
 
 def _load_plugin(monkeypatch):
-    src = Path(__file__).resolve().parents[1] / "src"
-    monkeypatch.syspath_prepend(str(src))
     monkeypatch.setenv(
         "CE_TRUST_PLUGIN",
         ",".join(

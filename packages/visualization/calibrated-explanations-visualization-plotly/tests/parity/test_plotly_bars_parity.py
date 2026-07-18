@@ -14,28 +14,16 @@ from __future__ import annotations
 
 import importlib
 import os
-import sys
 import warnings
 from dataclasses import dataclass
-from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Sys-path: make CE core and Plotly plugin importable without install
-# ---------------------------------------------------------------------------
-_TESTS_DIR = Path(__file__).resolve().parents[1]
-_PLUGIN_SRC = _TESTS_DIR.parent / "src"
-_CE_SRC = (
-    Path(__file__).resolve().parents[6]
-    / "calibrated_explanations"
-    / "src"
-)
-for _p in [str(_PLUGIN_SRC), str(_CE_SRC)]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+# Import-path policy (installed distribution vs. src fallback) is handled by
+# tests/conftest.py; parity always runs against the installed
+# calibrated-explanations release, never a sibling source checkout.
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 pytest.importorskip("plotly")
