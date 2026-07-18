@@ -11,7 +11,7 @@ Curated PyPI products; family metapackages contain only mature plugins.
 - `calibrated-explanations-calibration` 0.2.0
 - `calibrated-explanations-explanation` 0.2.0
 - `calibrated-explanations-plugins` 0.2.0
-- `calibrated-explanations-visualization` 0.2.0
+- `calibrated-explanations-visualization` 0.2.1
 
 ## Mature curated plugins
 
