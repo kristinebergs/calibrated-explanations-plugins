@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ._ce_compat import install_ce_plot_bridges
+from ._version import PACKAGE_VERSION as __version__  # noqa: N811
 from .alternative_feature_summary import (
     AlternativeFeatureSummaryPlotBuilder,
     AlternativeFeatureSummaryPlotRenderer,
@@ -53,7 +55,9 @@ __all__ = [
     "PlotlyVisualizationBootstrap",
     "UncertaintyQuadrantPlotBuilder",
     "UncertaintyQuadrantPlotRenderer",
+    "__version__",
     "dashboard_cards_for_scope",
+    "install_ce_plot_bridges",
     "dashboard_cards_for_task",
     "find_dashboard_card",
     "find_dashboard_card_by_style",

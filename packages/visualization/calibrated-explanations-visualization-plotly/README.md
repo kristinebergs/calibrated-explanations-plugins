@@ -2,7 +2,13 @@
 
 Family: `visualization`
 
-Status: `mature`
+Status: `experimental`
+
+> The code, tests, and parity evidence below target promotion to `mature`,
+> but the lifecycle status is held at `experimental` until the publication
+> criteria are met: the PyPI distribution name is still unclaimed, no release
+> exists to verify the install command against, and the trusted publisher is
+> not yet configured. See `MATURITY.md` for the audit trail.
 
 Interactive Plotly visualization layouts for
 [`calibrated-explanations`](https://github.com/kristinebergs/calibrated_explanations) (CE).
@@ -23,23 +29,37 @@ difference is visual (hover cards, HTML output), not semantic.
 
 ## Installation
 
+**Not yet on PyPI.** The distribution name
+`calibrated-explanations-visualization-plotly` is intended for this package
+but is unclaimed and no release has been published (verified 2026-07-19).
+Once the first release exists, installation will be `pip install` of that
+distribution name (with the `[live]` extra for the Dash dashboard). Until
+then, install from a checkout of this repository:
+
 ```bash
-pip install calibrated-explanations-visualization-plotly
+pip install packages/visualization/calibrated-explanations-visualization-plotly
 ```
 
-Plotly is a mandatory dependency and is installed automatically. For the
-optional live dashboard (Dash), install the `[live]` extra:
+Plotly and NumPy are mandatory dependencies and are installed automatically;
+Dash is needed only for the optional live dashboard (`[live]` extra).
 
-```bash
-pip install "calibrated-explanations-visualization-plotly[live]"
+Importing the package has **no side effects**: it does not register plot
+styles and does not touch CE. CE's entry-point discovery
+(`plugins.registry.load_entrypoint_plugins()`, e.g. via the CE plugins CLI)
+finds and validates the bootstrap, but on CE 1.0.x discovery does not invoke
+it. To use the styles, call the explicit registration function once:
+
+```python
+import ce_visualization_plotly as cevp
+
+cevp.register_plotly_visualization_components()
 ```
 
-The plugin declares CE plugin entry points, so environments that call CE's
-`plugins.registry.load_entrypoint_plugins()` (for example the CE plugins CLI)
-discover it automatically. In ordinary user code CE 1.0.x does **not**
-auto-load entry points: import `ce_visualization_plotly.plugin` once (as in
-the quick start below) to register all `plotly.*` styles — no further
-registration call is needed.
+By default this also installs the CE 1.0.x plot-dispatch compatibility
+bridges (see *Assumptions and limitations*); pass
+`install_compat_bridges=False` to register the styles without touching any
+CE symbol (explanation-level `.plot(style=…)` dispatch then stays on CE's
+native path, which drops the options this package needs on CE 1.0.x).
 
 ## Quick start
 
@@ -51,7 +71,9 @@ explainer = WrapCalibratedExplainer(RandomForestClassifier())
 explainer.fit(X_train, y_train)
 explainer.calibrate(X_cal, y_cal)
 
-import ce_visualization_plotly.plugin  # registers the plotly.* styles
+import ce_visualization_plotly as cevp
+
+cevp.register_plotly_visualization_components()  # explicit, idempotent
 
 factual = explainer.explain_factual(X_test)
 factual[0].plot(style="plotly.local.factual_bars", show=True)
@@ -94,7 +116,10 @@ semantic change. New code should use the canonical id.
 
 - ✅ supported and tested. ⚠️ supported with limitations: multiclass renders
   as the predicted class versus its complement (one-vs-rest); there is no
-  per-class panel and no dedicated multiclass test coverage.
+  per-class panel. The executable definition of this limitation lives in
+  `tests/test_multiclass.py` (real 3-class CE workflow: every ⚠️ style must
+  build and render the one-vs-rest view; factual headers caption the
+  predicted class as `P(y=<label>)`/`P(y!=<label>)`).
 - ❌ unsupported inputs raise a clear `ValueError` early (no silent fallback
   to another style).
 - Uncertainty display for one-sided explanations raises `Warning`, matching
@@ -129,7 +154,9 @@ values raise `ValueError` naming the allowed values. Highlights:
   the explainable-ai-hub factual figure.
 - `plotly.local.alternative_bars` — `filter_top`, `sort_by`
   (`original|prediction_delta|interval_width|role|feature`),
-  `show_uncertainty` (default `True`), `hover_uncertainty`,
+  `show_uncertainty` (accepted but **ignored with a visible
+  `UserWarning`** — CE core has no such toggle for alternative plots and
+  calibrated intervals are always drawn), `hover_uncertainty`,
   `show_prediction_header`, `hover_detail`,
   `include_conjunctive_components` (default `True`), `unknown_policy`
   (`show|hide`).
@@ -193,10 +220,11 @@ auto-show unless `show` is passed explicitly.
 
 ## Compatibility
 
-| Dependency | Declared range | Tested versions (0.3.1 wheel) |
+| Dependency | Declared range | Tested versions |
 |---|---|---|
-| Python | `>=3.11` | 3.11.9, 3.14.4 |
+| Python | `>=3.11` | 3.11.9 (0.3.2 wheel gate); 3.14.4 (0.3.1 boundary venv) |
 | calibrated-explanations | `>=1.0.0rc1,<2` | 1.0.0rc1 |
+| numpy | `>=1.24` (CE's own floor; direct runtime import) | 2.x line via CE |
 | plotly | `>=5.18` | 5.18.0, 6.7.0, 6.9.0 |
 | dash (optional, `[live]`) | `>=3.1` | 3.1.0, 4.4.0 (base install verified without dash) |
 
@@ -225,7 +253,9 @@ release removed; CE `>=1.0.0rc1` is the verified minimum.
   dispatch; this package therefore wraps (via `functools.wraps`, preserving
   behaviour for all other styles) the public `FactualExplanation.plot`,
   `AlternativeExplanation.plot`, and the `plotting.plot_global` module
-  attribute at registration time. This is deliberate monkey-patching of
+  attribute when `register_plotly_visualization_components()` is called
+  (never at import; opt out with `install_compat_bridges=False`). This is
+  deliberate monkey-patching of
   public CE symbols, isolated in one compatibility module
   (`ce_visualization_plotly._ce_compat`) that documents why each bridge
   exists, the CE range that needs it (`>=1.0.0rc1,<2`), and the upstream
@@ -245,9 +275,12 @@ release removed; CE `>=1.0.0rc1` is the verified minimum.
   instructing to install the `[live]` extra.
 - **One-sided explanations with `show_uncertainty=True`**: `Warning`
   (CE-core-compatible behaviour).
-- **Degraded CE surface** (e.g. `rank_features` unavailable): visible
-  `UserWarning` plus INFO log, deterministic fallback ordering — never a
-  silent behaviour change.
+- **Ranking is CE's own code**: both bar styles rank via CE's public
+  `rank_features`/`calculate_metrics`; there is no plugin-side replica, and
+  ranking failures propagate as errors rather than silently reordering.
+- **Unsupported CE version for the dispatch bridges** (CE major != 1) or a
+  missing public CE surface: bridges are not installed and a visible
+  `UserWarning` plus INFO log states the consequence and remedy.
 - **Rules without two-sided weight intervals** in `uncertainty_quadrant`:
   omitted with a visible `UserWarning`; `ValueError` if nothing remains.
 - Rule labels, feature names, and hover text are rendered as Plotly text

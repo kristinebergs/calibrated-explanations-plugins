@@ -15,6 +15,7 @@ from calibrated_explanations.plugins.plots import (
 )
 from calibrated_explanations.utils.exceptions import ConfigurationError
 
+from ._version import PACKAGE_VERSION, PROVIDER
 from .alternative_feature_summary import (
     AlternativeFeatureSummaryPlotBuilder,
     AlternativeFeatureSummaryPlotRenderer,
@@ -68,6 +69,96 @@ _LOCAL_CARD_RENDERERS = {
 
 def _as_options(value: Any) -> dict[str, Any]:
     return dict(value or {}) if isinstance(value, Mapping) else {}
+
+
+def _slice_rows(values: Any, indices: list[int]) -> Any:
+    if hasattr(values, "iloc"):
+        return values.iloc[indices]
+    try:
+        import numpy as np  # noqa: PLC0415
+
+        return np.asarray(values)[indices]
+    except (TypeError, ValueError, IndexError):
+        sequence = list(values)
+        return [sequence[index] for index in indices]
+
+
+def _first_explanation(collection: Any) -> Any:
+    explanations = getattr(collection, "explanations", None)
+    if explanations is not None:
+        return list(explanations)[0]
+    try:
+        return collection[0]
+    except (TypeError, IndexError, KeyError):
+        return collection
+
+
+def _set_original_index(explanation: Any, instance_index: int) -> Any:
+    try:
+        explanation.index = instance_index
+    except (AttributeError, TypeError):
+        pass
+    return explanation
+
+
+def _precompute_from_runtime(
+    explainer: Any,
+    x: Any,
+    selected_indices: list[int],
+    threshold: Any,
+    options: dict[str, Any],
+) -> Any:
+    """Precompute local explanations via the documented CE runtime context.
+
+    CE >=1.0.0rc2 grants trusted dashboard plugins the originating public
+    explainer and request data through ``context.runtime``; this replaces the
+    host-installed ``_ce_compat`` bridge precomputation.
+    """
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    factual_explanations: list[Any] = []
+    alternative_explanations: list[Any] = []
+    include_factual = bool(options.get("include_factual", True))
+    include_alternatives = bool(options.get("include_alternatives", True))
+    max_rule_size = options.get("max_rule_size")
+
+    for instance_index in selected_indices:
+        row = _slice_rows(x, [instance_index])
+        if include_factual and callable(getattr(explainer, "explain_factual", None)):
+            factual_kwargs = dict(options.get("factual_options", {}) or {})
+            if threshold is not None:
+                factual_kwargs.setdefault("threshold", threshold)
+            factual_explanations.append(
+                _set_original_index(
+                    _first_explanation(explainer.explain_factual(row, **factual_kwargs)),
+                    instance_index,
+                )
+            )
+        if include_alternatives and callable(getattr(explainer, "explore_alternatives", None)):
+            alternative_kwargs = dict(options.get("alternative_options", {}) or {})
+            if threshold is not None:
+                alternative_kwargs.setdefault("threshold", threshold)
+            if max_rule_size is not None:
+                alternative_kwargs.setdefault("max_rule_size", max_rule_size)
+            alternative_explanations.append(
+                _set_original_index(
+                    _first_explanation(explainer.explore_alternatives(row, **alternative_kwargs)),
+                    instance_index,
+                )
+            )
+
+    first_collection = None
+    for explanation in [*factual_explanations, *alternative_explanations]:
+        first_collection = getattr(explanation, "calibrated_explanations", None)
+        if first_collection is not None:
+            break
+    return SimpleNamespace(
+        explanations=factual_explanations,
+        factual_explanations=factual_explanations,
+        alternative_explanations=alternative_explanations,
+        feature_names=getattr(first_collection, "feature_names", ()),
+        batch_metadata=getattr(first_collection, "batch_metadata", {}),
+    )
 
 
 def _as_sequence(value: Any) -> list[Any]:
@@ -332,13 +423,13 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.dashboard",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "dashboard",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -355,11 +446,22 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
         if layout_preset not in _VALID_LAYOUTS:
             raise ConfigurationError("layout_preset must be one of default, wide, or compact.")
 
+        runtime = _as_options(getattr(context, "runtime", None))
+
         global_descriptor = find_dashboard_card("instance_explorer")
         assert global_descriptor is not None
         global_options = dict(global_descriptor.default_options)
         global_options.update(_as_options(options.get("global_options")))
         global_options["include_instance_records"] = True
+        # CE >=1.0.0rc2 native dispatch publishes the validated global payload
+        # under the reserved top-level "payload" option; forward it to the
+        # nested global build together with the runtime threshold.
+        if "payload" not in global_options and "payload" in options:
+            global_options["payload"] = options["payload"]
+        if "threshold" not in global_options and "threshold" in runtime:
+            global_options["threshold"] = runtime["threshold"]
+        if "task" not in global_options:
+            global_options["task"] = options.get("task", "auto")
         global_context = PlotRenderContext(
             explanation=context.explanation,
             instance_metadata=MappingProxyType(
@@ -378,11 +480,31 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
         descriptors = _selected_descriptors(options)
         record_by_index = {int(record["instance_index"]): record for record in records}
 
+        # When CE grants trusted runtime access (native dispatch), precompute
+        # local explanations from the originating public explainer instead of
+        # expecting a host-precomputed payload in context.explanation.
+        local_payload = context.explanation
+        if runtime.get("explainer") is not None and runtime.get("x") is not None:
+            precompute_options = dict(options)
+            precompute_options["include_factual"] = bool(
+                options.get("include_factual", True)
+            ) and any("factual_explanation" in set(d.requires) for d in descriptors)
+            precompute_options["include_alternatives"] = bool(
+                options.get("include_alternatives", True)
+            ) and any("alternative_explanation" in set(d.requires) for d in descriptors)
+            local_payload = _precompute_from_runtime(
+                runtime["explainer"],
+                runtime["x"],
+                selected_indices,
+                runtime.get("threshold"),
+                precompute_options,
+            )
+
         precomputed: dict[str, Any] = {}
         for instance_index in selected_indices:
             record = record_by_index[instance_index]
             cards = [
-                _build_card_artifact(context.explanation, instance_index, descriptor, options)
+                _build_card_artifact(local_payload, instance_index, descriptor, options)
                 for descriptor in descriptors
                 if descriptor.supports_task(record.get("metadata", {}).get("task"))
             ][: int(options.get("max_cards_per_instance", 4))]
@@ -690,7 +812,7 @@ def build_dashboard_html(artifact: PlotArtifact) -> str:
 def _display_html(html_content: str) -> bool:
     try:
         from IPython.display import HTML, display
-    except Exception:
+    except ImportError:
         return False
     display(HTML(html_content))
     return True
@@ -710,8 +832,8 @@ class InstanceWorkspaceDashboardRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.dashboard",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],

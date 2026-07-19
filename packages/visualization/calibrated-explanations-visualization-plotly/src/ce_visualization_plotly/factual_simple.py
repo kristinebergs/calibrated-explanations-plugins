@@ -25,6 +25,7 @@ from calibrated_explanations.plugins.plots import (
     PlotRenderResult,
 )
 
+from ._version import PACKAGE_VERSION, PROVIDER
 from .factual_bars import (
     _as_float,
     _is_alternative_explanation,
@@ -76,13 +77,13 @@ class LocalFactualSimplePlotBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "factual",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -113,7 +114,7 @@ class LocalFactualSimplePlotBuilder(PlotBuilder):
             is_one_sided_fn = getattr(local_explanation, "is_one_sided", None)
             if callable(is_one_sided_fn):
                 _is_one_sided = False
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(TypeError, ValueError):
                     _is_one_sided = bool(is_one_sided_fn())
                 if _is_one_sided:
                     raise Warning(
@@ -227,8 +228,8 @@ class LocalFactualSimplePlotRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],

@@ -16,26 +16,29 @@ from calibrated_explanations.plugins.plots import (
     PlotRenderResult,
 )
 
+from ._version import PACKAGE_VERSION, PROVIDER
+
 STYLE_ID = "plotly.local.factual_bars"
 BUILDER_ID = "official.visualization.plotly.local.factual_bars.builder"
 RENDERER_ID = "official.visualization.plotly.local.factual_bars.renderer"
 ARTIFACT_VERSION = "0.1.0"
 
 _LOGGER = logging.getLogger(__name__)
-# Task-specific bar colors matching matplotlib tab palette for visual parity.
-# Classification: positive contribution → red, negative → blue (CE default).
-# Regression: positive contribution → blue, negative → red (CE default).
-_CLF_POS_COLOR = "#d62728"   # tab:red
-_CLF_NEG_COLOR = "#1f77b4"   # tab:blue
-_REG_POS_COLOR = "#1f77b4"   # tab:blue
-_REG_NEG_COLOR = "#d62728"   # tab:red
-# Body interval overlay colors — parity with CE matplotlib fill_betweenx at alpha 0.2.
-# Classification body: positive contribution range → red alpha 0.2, negative → blue alpha 0.2.
-# Regression body: positive → blue alpha 0.2, negative → red alpha 0.2.
-_CLF_POS_INTERVAL = "rgba(214, 39, 40, 0.40)"   # red, alpha 0.4 — visible in extension beyond solid
-_CLF_NEG_INTERVAL = "rgba(31, 119, 180, 0.40)"  # blue, alpha 0.4
-_REG_POS_INTERVAL = "rgba(31, 119, 180, 0.40)"  # blue, alpha 0.4
-_REG_NEG_INTERVAL = "rgba(214, 39, 40, 0.40)"   # red, alpha 0.4
+# Task-specific bar colors — exact parity with CE's matplotlib adapter
+# defaults (parity ledger BARS-017): "red"/"r" (#ff0000) and "blue"/"b"
+# (#0000ff), as exported by mpl_adapter.render(export_drawn_primitives=True).
+# Classification: positive contribution → red, negative → blue.
+# Regression: positive contribution → blue, negative → red (legacy swap).
+_CLF_POS_COLOR = "#ff0000"   # matplotlib "red"
+_CLF_NEG_COLOR = "#0000ff"   # matplotlib "blue"
+_REG_POS_COLOR = "#0000ff"   # matplotlib "b"
+_REG_NEG_COLOR = "#ff0000"   # matplotlib "r"
+# Body interval overlay colors — CE draws fill_betweenx overlays at alpha 0.2
+# in the same hue as the solid bar.
+_CLF_POS_INTERVAL = "rgba(255, 0, 0, 0.20)"
+_CLF_NEG_INTERVAL = "rgba(0, 0, 255, 0.20)"
+_REG_POS_INTERVAL = "rgba(0, 0, 255, 0.20)"
+_REG_NEG_INTERVAL = "rgba(255, 0, 0, 0.20)"
 
 
 def _warn_fallback(reason: str) -> None:
@@ -181,72 +184,68 @@ def _compute_ranking(
     highs = list(rules.get("weight_high", rules.get("high", [])))
     width: Any = None
     if len(lows) == n and len(highs) == n:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(TypeError, ValueError):
             low_arr = np.array([_as_float(v) or 0.0 for v in lows])
             high_arr = np.array([_as_float(v) or 0.0 for v in highs])
             width = np.nan_to_num(high_arr - low_arr, nan=0.0)
 
+    # CE's public ranking implementations are authoritative; no inline replica
+    # is kept. ``CalibratedExplanation.rank_features`` never touches ``self``,
+    # so payloads that don't expose the method are ranked by calling the
+    # public CE implementation unbound. Failures propagate — a silent
+    # substitute ranking would conceal a defect.
+    from calibrated_explanations.explanations.explanation import (  # noqa: PLC0415
+        CalibratedExplanation,
+    )
+    from calibrated_explanations.utils.helper import calculate_metrics  # noqa: PLC0415
+
     rank_fn = getattr(local_explanation, "rank_features", None)
+    if not callable(rank_fn):
+        def rank_fn(feature_weights=None, width=None, num_to_show=None):  # type: ignore[misc]
+            return CalibratedExplanation.rank_features(
+                local_explanation,
+                feature_weights=feature_weights,
+                width=width,
+                num_to_show=num_to_show,
+            )
 
     if rnk_metric == "feature_weight":
-        if callable(rank_fn):
-            with contextlib.suppress(Exception):
-                raw = rank_fn(fw, width=width, num_to_show=filter_top)
-                indices = list(raw.tolist() if hasattr(raw, "tolist") else list(raw))
-                return list(reversed(indices))
-        # Fallback: replicate CE rank_features logic inline
-        if width is not None:
-            paired = list(zip(np.abs(fw), width, strict=False))
-            sorted_idx = sorted(range(n), key=lambda i: (paired[i][0], paired[i][1]))
+        raw = rank_fn(fw, width=width, num_to_show=filter_top)
+        indices = list(raw.tolist() if hasattr(raw, "tolist") else list(raw))
+        return list(reversed(indices))
+
+    # CE ensured/uncertainty path: calculate_metrics score, then rank_features.
+    predict_lows = list(rules.get("predict_low", []))
+    predict_highs = list(rules.get("predict_high", []))
+    predict_vals = list(rules.get("predict", []))
+
+    uncertainty_vals: list[float] = []
+    for i in range(n):
+        pl = _as_float(_sequence_get(predict_lows, i))
+        ph = _as_float(_sequence_get(predict_highs, i))
+        if pl is not None and ph is not None:
+            uncertainty_vals.append(float(ph) - float(pl))
+        elif width is not None and i < len(width):
+            uncertainty_vals.append(float(width[i]))
         else:
-            sorted_idx = sorted(range(n), key=lambda i: float(np.abs(fw[i])))
-        top_k = sorted_idx[-filter_top:]
-        return list(reversed(top_k))
+            uncertainty_vals.append(0.0)
 
-    # Non-feature_weight: try calculate_metrics (CE ensured/uncertainty path)
-    with contextlib.suppress(Exception):
-        from calibrated_explanations.utils.helper import calculate_metrics  # noqa: PLC0415
+    prediction_vals = (
+        [_as_float(v) or 0.0 for v in predict_vals]
+        if predict_vals
+        else [float(fw[i]) for i in range(n)]
+    )
 
-        predict_lows = list(rules.get("predict_low", []))
-        predict_highs = list(rules.get("predict_high", []))
-        predict_vals = list(rules.get("predict", []))
-
-        uncertainty_vals: list[float] = []
-        for i in range(n):
-            pl = _as_float(_sequence_get(predict_lows, i))
-            ph = _as_float(_sequence_get(predict_highs, i))
-            if pl is not None and ph is not None:
-                uncertainty_vals.append(float(ph) - float(pl))
-            elif width is not None and i < len(width):
-                uncertainty_vals.append(float(width[i]))
-            else:
-                uncertainty_vals.append(0.0)
-
-        prediction_vals = (
-            [_as_float(v) or 0.0 for v in predict_vals]
-            if predict_vals
-            else [float(fw[i]) for i in range(n)]
-        )
-
-        ranking = calculate_metrics(
-            uncertainty=uncertainty_vals,
-            prediction=prediction_vals,
-            w=rnk_weight,
-            metric=rnk_metric,
-        )
-        rank_arr = np.nan_to_num(np.array(ranking, dtype=float), nan=0.0)
-        if callable(rank_fn):
-            raw = rank_fn(width=rank_arr, num_to_show=filter_top)
-            indices = list(raw.tolist() if hasattr(raw, "tolist") else list(raw))
-            return list(reversed(indices))
-        sorted_idx = sorted(range(n), key=lambda i: float(rank_arr[i]))
-        top_k = sorted_idx[-filter_top:]
-        return list(reversed(top_k))
-
-    # Final fallback: sort by abs weight
-    sorted_idx = sorted(range(n), key=lambda i: float(np.abs(fw[i])))
-    top_k = sorted_idx[-filter_top:]
-    return list(reversed(top_k))
+    ranking = calculate_metrics(
+        uncertainty=uncertainty_vals,
+        prediction=prediction_vals,
+        w=rnk_weight,
+        metric=rnk_metric,
+    )
+    rank_arr = np.nan_to_num(np.array(ranking, dtype=float), nan=0.0)
+    raw = rank_fn(width=rank_arr, num_to_show=filter_top)
+    indices = list(raw.tolist() if hasattr(raw, "tolist") else list(raw))
+    return list(reversed(indices))
 
 
 def _prediction_header(
@@ -294,7 +293,7 @@ def _prediction_header(
         )
         class_labels = None
         if callable(get_cls_fn):
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(TypeError, ValueError, AttributeError):
                 class_labels = get_cls_fn()
 
         # Determine predicted class for multiclass: use prediction["classes"] if present
@@ -302,40 +301,71 @@ def _prediction_header(
         if isinstance(prediction, dict):
             predicted_class = prediction.get("classes", prediction.get("class"))
 
-        # Label priority:
-        # 1. pos_caption / neg_caption on the explanation (user-set, already formatted)
-        # 2. class_labels from get_class_labels(), wrapped as P(Y=…) / P(Y!=…)
-        # 3. prediction["classes"] index, wrapped as P(Y=…) / P(Y!=…)
-        # 4. threshold labels (keep existing format)
-        # 5. generic P(Y=1) / P(Y!=1) fallback
+        # Header caption contract (parity ledger BARS-021) — mirrors CE
+        # plotting.py `_plot_probabilistic` caption resolution:
+        # 1. pos_caption / neg_caption on the explanation (user-set, formatted)
+        # 2. thresholded: scalar → P(y<=t)/P(y>t) with .2f, interval →
+        #    "{lo} < y_hat <= {hi}" / "y_hat <= {lo} || y_hat > {hi}" with .3f
+        # 3. class labels: multiclass P(y={label})/P(y!={label}); binary
+        #    P(y={labels[1]}) vs P(y={labels[0]})
+        # 4. predicted class without labels: P(y={class})/P(y!={class})
+        # 5. generic binary fallback: P(y=1) / P(y=0)
         pos_caption = getattr(local_explanation, "pos_caption", None)
         neg_caption = getattr(local_explanation, "neg_caption", None)
+
+        is_thresholded_fn = getattr(local_explanation, "is_thresholded", None)
+        is_thresholded = bool(callable(is_thresholded_fn) and is_thresholded_fn())
+        threshold_val = getattr(local_explanation, "y_threshold", None)
 
         if pos_caption is not None and neg_caption is not None:
             target_label = str(pos_caption)
             complement_label = str(neg_caption)
-        elif class_labels is not None and len(class_labels) >= 2:
-            target_idx = 1  # binary default
-            if predicted_class is not None:
-                with contextlib.suppress(Exception):
-                    target_idx = int(predicted_class)
-            target_label = f"P(Y={class_labels[target_idx]})"
-            complement_label = f"P(Y!={class_labels[target_idx]})"
-        elif label is not None:
-            target_label = f"P(Y={label})"
-            complement_label = f"P(Y!={label})"
-        else:
-            is_thresholded_fn = getattr(local_explanation, "is_thresholded", None)
-            threshold_val = getattr(local_explanation, "y_threshold", None)
-            if callable(is_thresholded_fn) and is_thresholded_fn() and threshold_val is not None:
-                threshold_label = _format_number(threshold_val)
-                if threshold_label == "unavailable":
-                    threshold_label = str(threshold_val)
-                target_label = f"P(Y<={threshold_label})"
-                complement_label = f"P(Y>{threshold_label})"
+        elif is_thresholded:
+            if isinstance(threshold_val, (list, tuple)) and len(threshold_val) >= 2:
+                try:
+                    lo_t, hi_t = float(threshold_val[0]), float(threshold_val[1])
+                    target_label = f"{lo_t:.3f} < y_hat <= {hi_t:.3f}"
+                    complement_label = f"y_hat <= {lo_t:.3f} || y_hat > {hi_t:.3f}"
+                except (TypeError, ValueError):
+                    target_label = "P(y<=threshold)"
+                    complement_label = "P(y>threshold)"
             else:
-                target_label = "P(Y=1)"
-                complement_label = "P(Y!=1)"
+                thr_scalar = _as_float(threshold_val)
+                if thr_scalar is not None:
+                    target_label = f"P(y<={thr_scalar:.2f})"
+                    complement_label = f"P(y>{thr_scalar:.2f})"
+                else:
+                    target_label = "P(y<=threshold)"
+                    complement_label = "P(y>threshold)"
+        elif class_labels is not None and len(class_labels) >= 2:
+            if len(class_labels) > 2:
+                # Multiclass one-vs-rest: caption the predicted class.
+                target_idx = 0
+                if predicted_class is not None:
+                    with contextlib.suppress(TypeError, ValueError):
+                        target_idx = int(predicted_class)
+                try:
+                    label_val = class_labels[target_idx]
+                except (IndexError, TypeError):
+                    label_val = predicted_class
+                target_label = f"P(y={label_val})"
+                complement_label = f"P(y!={label_val})"
+            else:
+                target_label = f"P(y={class_labels[1]})"
+                complement_label = f"P(y={class_labels[0]})"
+        else:
+            # CE uses P(y!=<class>) only for multiclass; binary without class
+            # labels falls back to P(y=1) / P(y=0).
+            is_mc = getattr(local_explanation, "is_multiclass", None)
+            if callable(is_mc):
+                with contextlib.suppress(TypeError, ValueError):
+                    is_mc = is_mc()
+            if is_mc and label is not None:
+                target_label = f"P(y={label})"
+                complement_label = f"P(y!={label})"
+            else:
+                target_label = "P(y=1)"
+                complement_label = "P(y=0)"
         bars: list[dict[str, Any]] = []
         if p is not None:
             target_bar: dict[str, Any] = {"label": target_label, "value": p}
@@ -367,7 +397,7 @@ def _prediction_header(
         result["bars"] = bars
         x_range: list[float] | None = None
         if y_minmax is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(TypeError, ValueError, IndexError):
                 lo = float(y_minmax[0])
                 hi = float(y_minmax[1])
                 if p_low is not None:
@@ -382,7 +412,7 @@ def _prediction_header(
         confidence = None
         get_conf = getattr(collection, "get_confidence", None)
         if callable(get_conf):
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(TypeError, ValueError, AttributeError):
                 confidence = get_conf()
         if confidence is not None:
             result["x_label"] = f"Prediction interval with {confidence}% confidence"
@@ -598,13 +628,13 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "factual",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -633,7 +663,7 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
             is_one_sided_fn = getattr(local_explanation, "is_one_sided", None)
             if callable(is_one_sided_fn):
                 _is_one_sided = False
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(TypeError, ValueError):
                     _is_one_sided = bool(is_one_sided_fn())
                 if _is_one_sided:
                     raise Warning(
@@ -651,7 +681,7 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
                 collection, "y_minmax", None
             )
             if y_minmax_raw is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(TypeError, ValueError, IndexError):
                     y_minmax = [float(y_minmax_raw[0]), float(y_minmax_raw[1])]
             if y_minmax is None:
                 for _cal_attr in ("y_cal", "y"):
@@ -659,7 +689,7 @@ class LocalFactualBarsPlotBuilder(PlotBuilder):
                         collection, _cal_attr, None
                     )
                     if _y is not None:
-                        with contextlib.suppress(Exception):
+                        with contextlib.suppress(TypeError, ValueError):
                             _arr = list(_y)
                             if _arr:
                                 y_minmax = [float(min(_arr)), float(max(_arr))]
@@ -940,7 +970,7 @@ def _add_prediction_header_traces(
     kind = prediction.get("kind")
     # Regression header uses red to match CE legacy (fill_betweenx color="r").
     # Probabilistic header uses teal for probability bars.
-    _default_color = "#2a9d8f" if kind == "probabilistic" else "#d62728"
+    _default_color = "#2a9d8f" if kind == "probabilistic" else _REG_NEG_COLOR
     bar_color = color if color is not None else _default_color
 
     for bar in bars:
@@ -1099,7 +1129,7 @@ def build_figure(artifact: PlotArtifact, options: dict[str, Any]) -> Any:
             for item in items
         ]
         # Regression header uses red to match CE legacy fill_betweenx color="r"
-        header_bar_colors = ["#d62728"]
+        header_bar_colors = [_REG_NEG_COLOR]
 
     header_bars = list(prediction.get("bars", ()) or []) if show_prediction_header else []
 
@@ -1279,8 +1309,8 @@ class LocalFactualBarsPlotRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],

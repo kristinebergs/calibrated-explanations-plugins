@@ -142,6 +142,10 @@ def _alt_rules() -> dict:
         "predict": [0.20, 0.85, 0.30, 0.70],
         "predict_low": [0.10, 0.75, 0.20, 0.60],
         "predict_high": [0.30, 0.95, 0.40, 0.80],
+        # CE alternative rules always carry weights (predict - base_predict here)
+        "weight": [-0.55, 0.10, -0.45, -0.05],
+        "weight_low": [-0.60, 0.05, -0.50, -0.10],
+        "weight_high": [-0.50, 0.15, -0.40, 0.00],
     }
 
 
@@ -609,11 +613,11 @@ def test_default_ranking_is_ensured_metric(monkeypatch):
 
 
 def test_feature_weight_ranking(monkeypatch):
-    """rnk_metric='feature_weight' falls back to |predict - base_predict| when weight absent."""
+    """rnk_metric='feature_weight' ranks by |weight| via CE's public rank_features."""
     _load_plugin(monkeypatch)
     plugin = registry.find_plot_plugin(STYLE_ID)
 
-    # base_predict=0.75; deltas: [0.55, 0.10, 0.45, 0.05]
+    # |weight|: [0.55, 0.10, 0.45, 0.05]
     # expected order: feat0 <= 10, feat2 <= 30, feat1 > 20, feat3 > 40
     artifact = plugin.build(
         _alt_context(_dummy_alternative_explanation(), rnk_metric="feature_weight")

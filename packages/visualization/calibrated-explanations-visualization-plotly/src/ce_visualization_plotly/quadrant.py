@@ -15,7 +15,10 @@ from calibrated_explanations.plugins.plots import (
     PlotRenderResult,
 )
 
+from ._version import PACKAGE_VERSION, PROVIDER
+
 STYLE_ID = "plotly.local.uncertainty_quadrant"
+ARTIFACT_VERSION = "0.1.0"
 BUILDER_ID = "official.visualization.plotly.local.uncertainty_quadrant.builder"
 RENDERER_ID = "official.visualization.plotly.local.uncertainty_quadrant.renderer"
 
@@ -270,13 +273,13 @@ class UncertaintyQuadrantPlotBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": "0.1.0",
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "factual",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -340,6 +343,7 @@ class UncertaintyQuadrantPlotBuilder(PlotBuilder):
         mode_metadata = _mode_metadata(context.explanation, local_explanation)
         return {
             "artifact_type": STYLE_ID,
+            "artifact_version": ARTIFACT_VERSION,
             "style": STYLE_ID,
             "prediction": _prediction_header(local_explanation),
             "items": sorted_items,
@@ -368,8 +372,8 @@ class UncertaintyQuadrantPlotRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": "0.1.0",
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],

@@ -94,11 +94,32 @@ def _resolve_static_value(node: ast.AST, constants: dict[str, object]) -> object
     raise ValueError(f"Unsupported static expression: {ast.dump(node, include_attributes=False)}")
 
 
+def _collect_imported_constants(tree: ast.Module, module_path: Path) -> dict[str, object]:
+    """Resolve constants imported from sibling modules (e.g. ``from ._version import X``)."""
+    constants: dict[str, object] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        leaf = node.module.rsplit(".", 1)[-1]
+        sibling_path = module_path.with_name(f"{leaf}.py")
+        if not sibling_path.exists():
+            continue
+        sibling_tree = ast.parse(
+            sibling_path.read_text(encoding="utf-8"), filename=str(sibling_path)
+        )
+        sibling_constants = _collect_module_constants(sibling_tree)
+        for alias in node.names:
+            if alias.name in sibling_constants:
+                constants[alias.asname or alias.name] = sibling_constants[alias.name]
+    return constants
+
+
 def static_plugin_meta(package_path: Path, target: str) -> dict[str, Any]:
     module_path = module_path_for_target(package_path, target)
     _, _, object_name = target.partition(":")
     tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
-    constants = _collect_module_constants(tree)
+    constants = _collect_imported_constants(tree, module_path)
+    constants.update(_collect_module_constants(tree))
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == object_name:
             for statement in node.body:
@@ -183,6 +204,14 @@ def configure_trust(package_path: Path) -> None:
     if callable(clear_warnings):
         clear_warnings()
     registry.load_entrypoint_plugins(include_untrusted=False)
+
+    if family == "visualization":
+        # Import has no registration side effects by design; the bootstrap
+        # exposes an explicit register() hook.
+        bootstrap = load_entrypoint_target(next(iter(main_entries.values())))
+        register_hook = getattr(bootstrap, "register", None)
+        if callable(register_hook):
+            register_hook()
 
 
 def make_classification_fixture() -> tuple["np.ndarray", "np.ndarray", "np.ndarray", "np.ndarray"]:
@@ -350,12 +379,23 @@ def validate_visualization_runtime(package_path: Path) -> None:
         # validated at registry level only; their heavier runtime is covered by
         # the package test suite.
         intent = str(builder_meta.get("intent", "factual"))
-        if intent == "dashboard":
-            print(f"Registry-validated dashboard style {style_id!r} (no smoke render)")
-            continue
 
         if explainer is None:
             explainer, x_test = build_explainer(task="classification")
+
+        if intent == "dashboard":
+            # Smoke-render the standalone (non-Dash) dashboard to HTML.
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                out_path = Path(tmp_dir) / "dashboard_smoke.html"
+                explainer.plot(x_test, style=style_id, show=False, path=str(out_path))
+                if not out_path.exists() or out_path.stat().st_size == 0:
+                    raise RuntimeError(
+                        f"Dashboard style {style_id!r} did not write standalone HTML"
+                    )
+            print(f"Smoke-rendered dashboard style {style_id!r} to standalone HTML")
+            continue
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")

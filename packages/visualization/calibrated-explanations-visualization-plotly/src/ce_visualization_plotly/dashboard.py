@@ -65,7 +65,7 @@ def _slice_rows(x: Any, indices: Sequence[int]) -> Any:
         import numpy as np
 
         return np.asarray(x)[list(indices)]
-    except Exception:
+    except (TypeError, ValueError, IndexError):
         values = list(x)
         return [values[index] for index in indices]
 
@@ -184,7 +184,7 @@ def _first_explanation(collection: Any) -> Any:
         return list(explanations)[0]
     try:
         return collection[0]
-    except Exception:
+    except (TypeError, IndexError, KeyError):
         return collection
 
 

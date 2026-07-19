@@ -15,6 +15,7 @@ from calibrated_explanations.plugins.plots import (
     PlotRenderResult,
 )
 
+from ._version import PACKAGE_VERSION, PROVIDER
 from .alternative_feature_summary import (
     _as_float,
     _collection_for,
@@ -127,6 +128,16 @@ def _default_options(options: dict[str, Any]) -> dict[str, Any]:
     rnk_weight = 0.5 if rnk_weight_raw is None else float(rnk_weight_raw)
     if not 0.0 <= rnk_weight <= 1.0:
         raise ValueError("rnk_weight must be in [0.0, 1.0].")
+    if "show_uncertainty" in options:
+        # Parity ledger BARS-025: CE core has no such toggle for alternative
+        # plots — calibrated intervals are always drawn. Accepting the option
+        # silently would suggest it does something.
+        message = (
+            "show_uncertainty has no effect for plotly.local.alternative_bars: "
+            "calibrated prediction intervals are always shown, matching CE core."
+        )
+        _LOGGER.info(message)
+        warnings.warn(message, UserWarning, stacklevel=4)
     # CE core maps "uncertainty" to "ensured" with rnk_weight=1.0
     if rnk_metric == "uncertainty":
         rnk_metric = "ensured"
@@ -147,42 +158,89 @@ def _rank_items(
     rnk_weight: float,
     base_predict: float | None,
     is_classification: bool,
+    local_explanation: Any = None,
 ) -> list[dict[str, Any]]:
-    """Rank items to match CE's rnk_metric/rnk_weight ranking for alternatives.
+    """Rank items through CE's public ranking APIs (parity ledger BARS-004).
 
-    "ensured" (default): score = rnk_weight * effective_predict + (1-rnk_weight) * interval_width
-      where effective_predict is flipped (1-p) for classification when base_predict < 0.5.
-    "feature_weight": score = |predict - base_predict| (delta magnitude from base).
+    Mirrors ``AlternativeExplanation.plot`` on CE 1.0.x exactly:
 
-    Items are returned sorted descending (highest score → top row).
+    * ``feature_weight``: ``rank_features(weights, width=weight_high-weight_low)``
+      — |weight| primary key, weight-interval width as tie-break.
+    * ``ensured`` (the ``uncertainty`` alias is mapped to ``ensured`` with
+      ``rnk_weight=1.0`` in ``_default_options``, as in CE core):
+      ``calculate_metrics`` score ``(1-w)*(1-interval_width) + w*prediction``
+      with the prediction flipped to ``1-p`` when the base prediction is
+      <= 0.5 (classification and thresholded regression), then
+      ``rank_features(width=score)``.
+
+    ``rank_features`` and ``calculate_metrics`` are CE's public, documented
+    ranking implementations; no local re-implementation is kept, so ordering
+    (including NaN/inf coercion and tie behaviour) cannot drift from CE.
+    ``rank_features`` returns ascending order; CE reverses it so the highest
+    score is displayed first.
+
+    Missing values are coerced the same way CE's plot path would receive them
+    from the rules payload: absent weights/predictions become 0.0 and an
+    absent interval bound yields a 0.0 width contribution.
     """
-    flip = is_classification and base_predict is not None and base_predict < 0.5
+    if not items:
+        return []
+
+    import numpy as np  # noqa: PLC0415
+    from calibrated_explanations.explanations.explanation import (  # noqa: PLC0415
+        CalibratedExplanation,
+    )
+    from calibrated_explanations.utils.helper import calculate_metrics  # noqa: PLC0415
+
+    n = len(items)
+    rank_fn = getattr(local_explanation, "rank_features", None)
+    if not callable(rank_fn):
+        # ``CalibratedExplanation.rank_features`` never touches ``self``;
+        # calling the public CE implementation unbound keeps CE authoritative
+        # even for explanation payloads that don't subclass it.
+        def rank_fn(feature_weights=None, width=None, num_to_show=None):  # type: ignore[misc]
+            return CalibratedExplanation.rank_features(
+                local_explanation,
+                feature_weights=feature_weights,
+                width=width,
+                num_to_show=num_to_show,
+            )
 
     if rnk_metric == "feature_weight":
-        def _key(item: dict[str, Any]) -> float:
-            w = _as_float(item.get("weight"))
-            if w is not None:
-                return abs(w)
-            # Fallback when weight field absent: use |predict - base_predict|
-            p = _as_float(item.get("predict"))
-            if p is None or base_predict is None:
-                return 0.0
-            return abs(p - base_predict)
+        weights = np.array(
+            [_as_float(item.get("weight")) or 0.0 for item in items], dtype=float
+        )
+        widths = np.array(
+            [
+                (_as_float(item.get("weight_high")) or 0.0)
+                - (_as_float(item.get("weight_low")) or 0.0)
+                for item in items
+            ],
+            dtype=float,
+        )
+        order = rank_fn(feature_weights=weights, width=widths, num_to_show=n)
     else:
-        def _key(item: dict[str, Any]) -> float:
-            p = _as_float(item.get("predict"))
-            lo = _as_float(item.get("predict_low"))
-            hi = _as_float(item.get("predict_high"))
-            width = (hi - lo) if (lo is not None and hi is not None) else 0.0
-            if p is None:
-                eff_p = 0.0
-            elif flip:
-                eff_p = 1.0 - p
-            else:
-                eff_p = p
-            return rnk_weight * eff_p + (1.0 - rnk_weight) * width
+        prediction = [_as_float(item.get("predict")) or 0.0 for item in items]
+        # CE core: "Always rank base on predicted class" — flip when the base
+        # prediction is <= 0.5 for classification or thresholded regression.
+        if is_classification and base_predict is not None and base_predict <= 0.5:
+            prediction = [1.0 - p for p in prediction]
+        uncertainty = [
+            (_as_float(item.get("predict_high")) or 0.0)
+            - (_as_float(item.get("predict_low")) or 0.0)
+            for item in items
+        ]
+        ranking = calculate_metrics(
+            uncertainty=uncertainty,
+            prediction=prediction,
+            w=rnk_weight,
+            metric=rnk_metric,
+        )
+        order = rank_fn(width=np.asarray(ranking, dtype=float), num_to_show=n)
 
-    return sorted(items, key=_key, reverse=True)
+    indices = list(order.tolist() if hasattr(order, "tolist") else order)
+    indices.reverse()
+    return [items[i] for i in indices]
 
 
 def _build_hover(
@@ -303,18 +361,25 @@ def _filter_identical_to_base(
     """
     if base_predict is None or base_low is None or base_high is None:
         return list(items)
+
+    import numpy as np  # noqa: PLC0415
+
     result = []
     for item in items:
         predict = _as_float(item.get("predict"))
         low = _as_float(item.get("predict_low"))
         high = _as_float(item.get("predict_high"))
+        # CE core drops rows via np.isclose (rtol=1e-5, atol=1e-8) on all
+        # three values; keep the identical tolerances for ordering parity.
         if (
             predict is None
             or low is None
             or high is None
-            or abs(predict - base_predict) >= 1e-10
-            or abs(low - base_low) >= 1e-10
-            or abs(high - base_high) >= 1e-10
+            or not (
+                np.isclose(predict, base_predict)
+                and np.isclose(low, base_low)
+                and np.isclose(high, base_high)
+            )
         ):
             result.append(item)
     return result
@@ -332,13 +397,13 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "alternative",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -391,14 +456,17 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
             except (TypeError, IndexError, ValueError):
                 y_minmax = None
 
-        # Confidence level for regression axis label — try attribute access then get_confidence()
+        # Confidence level for the regression axis label — attribute access,
+        # then get_confidence(). Only meaningful (and only safe to call) for
+        # regression: CE's get_confidence() asserts low_high_percentiles,
+        # which classification collections never set.
         conf_raw = getattr(collection, "confidence_level", None) or getattr(
             collection, "confidence", None
         )
-        if conf_raw is None:
+        if conf_raw is None and is_regression:
             get_conf_fn = getattr(collection, "get_confidence", None)
             if callable(get_conf_fn):
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(TypeError, ValueError, AttributeError):
                     conf_raw = get_conf_fn()
         confidence_pct = 95
         if conf_raw is not None:
@@ -419,7 +487,9 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
                     collection, "get_class_labels", None
                 )
                 if callable(get_cls_fn):
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(
+                        TypeError, ValueError, AttributeError, IndexError, KeyError
+                    ):
                         _raw_cls = get_cls_fn()
                         if isinstance(_raw_cls, (list, tuple)) and len(_raw_cls) >= 2:
                             pred_label = _raw_cls[1]
@@ -433,6 +503,7 @@ class LocalAlternativeBarsPlotBuilder(PlotBuilder):
             rnk_weight=float(options["rnk_weight"]),
             base_predict=base_predict,
             is_classification=not is_regression,
+            local_explanation=local_explanation,
         )
         if options["filter_top"] is not None:
             items = items[: int(options["filter_top"])]
@@ -804,8 +875,8 @@ class LocalAlternativeBarsPlotRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],

@@ -1,5 +1,111 @@
 # Maturity evidence — calibrated-explanations-visualization-plotly
 
+## 0.3.2 re-audit — status set to `experimental` (2026-07-19)
+
+Full skeptical re-audit at commit `f4b9a2b` treating the previous `mature`
+label, classifiers, and all prior evidence as untrusted claims. The code and
+test evidence below now satisfies the technical promotion criteria, but the
+lifecycle status is deliberately **demoted to `experimental`** because the
+publication criteria cannot be satisfied from the repository alone:
+
+**Blocking (human actions outside the repo):**
+
+1. PyPI name `calibrated-explanations-visualization-plotly` is unclaimed —
+   verified `HTTP 404` from `pypi.org/pypi/<name>/json` on 2026-07-19. The
+   pending publisher bound to `.github/workflows/release-pypi.yml` (which
+   correctly uses `environment: pypi` + `id-token: write` OIDC publishing)
+   must be created under the maintainer account before the first tag.
+2. No release exists, so the documented install command has never been
+   verified against a real distribution; README now avoids presenting it as
+   usable.
+3. Continuous two-boundary CI (3.11 + 3.14, added to `ci.yml` this audit)
+   has not yet run on GitHub-hosted runners.
+4. Maintainer acceptance of the re-audited scope (this document) is pending
+   explicit sign-off.
+
+When 1–4 complete, re-promotion needs a maturity-promotion PR flipping
+`status` and the classifier back, plus a clean-environment install check
+from PyPI; the metapackage curation decision remains separate.
+
+**Defects found and fixed in this re-audit** (all previously hidden behind
+the `mature` label):
+
+- **Alternative ranking diverged from CE** (parity ledger BARS-004): the
+  inline `_rank_items` scored ensured ranking as `w·p + (1−w)·width`
+  (preferring *wide* intervals) where CE's `calculate_metrics` scores
+  `(1−w)·(1−width) + w·p` (preferring *narrow* ones); the classification
+  flip fired at `base < 0.5` where CE flips at `base ≤ 0.5`; identical-to-
+  base rows used a 1e-10 cutoff where CE uses `np.isclose`. `_rank_items`
+  now calls CE's public `rank_features`/`calculate_metrics` (no replica);
+  `factual_bars._compute_ranking`'s silent inline-replica fallback was
+  removed the same way. Evidence:
+  `tests/parity/test_alternative_ranking_parity.py` (13 hand-computed
+  oracle cases) plus updated `test_alternative_bars.py` fixtures.
+- **Factual bar colours were wrong** (BARS-017): tab:red/tab:blue
+  (`#d62728`/`#1f77b4`) instead of the mpl adapter's `red`/`blue`
+  (`#ff0000`/`#0000ff`); interval overlays used alpha 0.40 vs CE's 0.20.
+  Corrected; parity tests compare against exported mpl primitives.
+- **Threshold/caption strings diverged** (BARS-021): uppercase `P(Y…)`,
+  wrong precision, wrong binary fallback (`P(Y!=1)` vs CE's `P(y=0)`), and
+  no interval-threshold `y_hat` format. The caption block now mirrors CE
+  `plotting.py` branch-for-branch, with unit tests per branch.
+- **`show_uncertainty` no-op** (BARS-025): now warns visibly (UserWarning +
+  INFO) instead of being silently accepted.
+- **Component metadata was wrong**: all 16 builders/renderers declared
+  `capabilities: ["plot:renderer"]` (builders now `plot:builder`, matching
+  CE builtins vocabulary); `plugin_meta["version"]` reported artifact-schema
+  versions (0.1.0/0.2.0) instead of the distribution version; provider
+  `plotly.local`/`plotly.global`/`plotly.dashboard` implied a Plotly-org
+  identity (now `calibrated-explanations-plugins` from `_version.py`).
+  `tests/test_package_contract.py` now runs every entry-point component
+  through CE's public `validate_plugin_meta` +
+  `validate_plot_builder_metadata`/`validate_plot_renderer_metadata` and
+  fails on any version/capability/provider drift.
+- **Import side effects removed**: importing `ce_visualization_plotly` (or
+  `.plugin`) no longer registers styles or monkey-patches CE.
+  `register_plotly_visualization_components()` (also exposed as
+  `PlotlyVisualizationBootstrap.register()`) is the explicit, idempotent
+  entry; `install_compat_bridges=False` opts out of the CE 1.0.x bridges.
+  The bridges are version-gated (CE major must be 1) and warn visibly when
+  not installed. New test:
+  `test_root_import_registers_nothing_and_patches_nothing`.
+- **Dependency boundaries corrected**: NumPy (directly imported at runtime)
+  is now declared (`>=1.24`, CE's own floor); runtime depends on base
+  `calibrated-explanations` (matplotlib was never imported at runtime — the
+  `[viz]` extra moved to the new `test` extra used by the parity suite).
+- **Multiclass claims made executable**: `tests/test_multiclass.py` runs a
+  real 3-class CE workflow through every style claiming limited multiclass
+  support (7 tests; one-vs-rest headers assert `P(y=<label>)` captions).
+- **Fallback audit**: broad `contextlib.suppress(Exception)`/`except
+  Exception` sites narrowed to precise types (metadata probes) or removed
+  (ranking); the classification-collection `get_confidence()` probe no
+  longer relies on swallowing CE's `AssertionError`. The two notebook
+  display probes remain broad by design with justifying comments.
+- **Evidence infrastructure**: the wheel gate now smoke-renders the
+  dashboard style to standalone HTML (previously registry-validated only);
+  `ci.yml` runs changed packages on a {3.11, 3.14} matrix;
+  `validate_repo_structure.py` resolves cross-module plugin_meta constants.
+
+**Validation (observed 2026-07-19, dev env Python 3.11.9, CE 1.0.0rc1):**
+`ruff check src tests` clean; `python -m pytest -q` 233 passed / 2 skipped
+(parity subset: 43 passed / 2 skipped; ranking parity 13 passed; multiclass
+7 passed); `validate_repo_structure.py`, `lifecycle.py check`,
+`lifecycle.py index --check`, and repo policy tests (29) all pass. Wheel
+gate (`scripts/runtime_check_package.py`, fresh venv, CE from PyPI): exit 0
+— wheel built and installed, `pip check` clean, entry-point discovery and
+trust registration validated, **all 8 styles smoke-rendered including the
+dashboard standalone-HTML path** (new in this audit; previously
+registry-validated only), 233 passed / 2 skipped from the **installed
+wheel** at 84.35 % coverage, 100 % plugin docstring coverage.
+`pip-audit --strict` on the declared dependency set
+(CE>=1.0.0rc1,<2 / numpy>=1.24 / plotly>=5.18 / dash>=3.1): no known
+vulnerabilities (2026-07-19; point-in-time scan, not a certification).
+Registered-styles count unchanged (8 styles + 1 deprecated alias). The
+3.11/3.14 boundary-venv runs recorded for 0.3.1 were not repeated for
+0.3.2; the new CI matrix supersedes them once it runs on GitHub.
+
+---
+
 ## 0.3.1 hardening review (2026-07-18)
 
 Independent re-audit of the 0.3.0 promotion; the `mature` status was treated

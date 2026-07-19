@@ -20,6 +20,8 @@ from calibrated_explanations.plugins.plots import (
 from calibrated_explanations.utils.helper import calculate_metrics
 from calibrated_explanations.viz.builders import build_triangular_plotspec
 
+from ._version import PACKAGE_VERSION, PROVIDER
+
 STYLE_ID = "plotly.local.ensured"
 ALIAS_STYLE_ID = "plotly.local.ensured_triangular"
 BUILDER_ID = "official.visualization.plotly.local.ensured.builder"
@@ -626,13 +628,13 @@ class LocalEnsuredPlotBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "alternative",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -1217,7 +1219,7 @@ def _set_trace_visible(fig: Any, index: int, visible: bool) -> None:
         trace.kwargs["visible"] = visible
     try:
         trace.visible = visible
-    except Exception:
+    except (AttributeError, TypeError):
         return
 
 
@@ -1851,7 +1853,8 @@ def _display_html_shell(html_content: str) -> bool:
         return False
     try:
         display(HTML(html_content))
-    except Exception:
+    except Exception:  # display backends raise arbitrary types; caller falls
+        # back to the non-notebook display path, so nothing is concealed.
         return False
     return True
 
@@ -1862,8 +1865,8 @@ class LocalEnsuredPlotRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],
