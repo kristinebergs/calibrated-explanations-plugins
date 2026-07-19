@@ -15,6 +15,7 @@ from calibrated_explanations.plugins.plots import (
 )
 from calibrated_explanations.utils.exceptions import ConfigurationError
 
+from ._version import PACKAGE_VERSION, PROVIDER
 from .alternative_feature_summary import (
     AlternativeFeatureSummaryPlotBuilder,
     AlternativeFeatureSummaryPlotRenderer,
@@ -332,13 +333,13 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.dashboard",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "dashboard",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -690,7 +691,7 @@ def build_dashboard_html(artifact: PlotArtifact) -> str:
 def _display_html(html_content: str) -> bool:
     try:
         from IPython.display import HTML, display
-    except Exception:
+    except ImportError:
         return False
     display(HTML(html_content))
     return True
@@ -710,8 +711,8 @@ class InstanceWorkspaceDashboardRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.dashboard",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],

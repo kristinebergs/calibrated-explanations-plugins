@@ -323,9 +323,11 @@ def collect_imported_metadata_constants(tree: ast.Module, module_path: Path) -> 
     for node in tree.body:
         if not isinstance(node, ast.ImportFrom) or node.module is None:
             continue
-        if not node.module.endswith(".metadata"):
-            continue
-        metadata_path = module_path.with_name("metadata.py")
+        # Follow sibling-module imports within the same package (e.g.
+        # ``from .metadata import X`` or ``from ._version import Y``) so
+        # plugin_meta may reference package-level constants.
+        leaf = node.module.rsplit(".", 1)[-1]
+        metadata_path = module_path.with_name(f"{leaf}.py")
         if not metadata_path.exists():
             continue
         metadata_tree = ast.parse(

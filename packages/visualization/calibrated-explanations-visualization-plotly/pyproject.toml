@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization-plotly"
-version = "0.3.1"
+version = "0.3.2"
 description = "Plotly visualization plugin layouts for calibrated-explanations"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -13,7 +13,7 @@ maintainers = [
     { name = "Tuwe Löfström", email = "tuwe.lofstrom@ju.se" },
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -23,8 +23,16 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Visualization",
 ]
+# Lower bounds: CE >=1.0.0rc1 is the first release with the public plugin
+# plot contract this package targets (<2 because the _ce_compat bridges are
+# written against 1.x dispatch); plotly >=5.18 is the oldest line exercised by
+# the floor-boundary environment; numpy >=1.24 matches CE's own floor and is a
+# direct runtime import (array coercion in builders/bridges). Matplotlib is
+# NOT a runtime dependency — CE's [viz] extra is needed only by the parity
+# test suite (see [project.optional-dependencies].test).
 dependencies = [
-    "calibrated-explanations[viz]>=1.0.0rc1,<2",
+    "calibrated-explanations>=1.0.0rc1,<2",
+    "numpy>=1.24",
     "plotly>=5.18",
 ]
 
@@ -38,7 +46,17 @@ Documentation = "https://github.com/kristinebergs/calibrated_explanations"
 
 [project.optional-dependencies]
 live = [
+    # dash <3.1 pins Flask/Werkzeug lines carrying known vulnerabilities
+    # (PYSEC-2024-35 exposure documented in MATURITY.md); >=3.1 is the oldest
+    # line scanned clean and exercised by the floor-boundary environment.
     "dash>=3.1",
+]
+test = [
+    # Parity suite renders CE's matplotlib adapter as the oracle.
+    "calibrated-explanations[viz]>=1.0.0rc1,<2",
+    "pytest",
+    "pytest-cov",
+    "scikit-learn",
 ]
 
 [project.entry-points."calibrated_explanations.plugins"]
@@ -74,5 +92,9 @@ markers = [
 
 [tool.ce_plugin_repo]
 family = "visualization"
-status = "mature"
+# Held at "experimental" until the publication criteria are met: the PyPI
+# name is unclaimed (verified 404 on 2026-07-19), no release exists to verify
+# the documented install command against, and the trusted publisher is not
+# yet configured. See MATURITY.md for the full re-audit evidence.
+status = "experimental"
 import_name = "ce_visualization_plotly"

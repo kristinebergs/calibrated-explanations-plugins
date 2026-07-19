@@ -42,6 +42,9 @@ bridge boundary tests when raising the CE floor.
 from __future__ import annotations
 
 import contextlib
+import logging
+import re
+import warnings
 from functools import wraps
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
@@ -97,6 +100,20 @@ from .instance_workspace import (
 
 _PLOT_BRIDGE_VERSION = 2
 
+_LOGGER = logging.getLogger(__name__)
+
+
+def _warn_bridge_unavailable(surface: str) -> None:
+    message = (
+        "ce_visualization_plotly: CE plot-dispatch bridge not installed — the "
+        f"expected public CE surface ({surface}) is missing from this "
+        "calibrated-explanations installation. explanation.plot(style="
+        "'plotly.…') dispatch will not work; use the builder/renderer API or "
+        "install a supported CE (>=1.0.0rc1,<2)."
+    )
+    _LOGGER.info(message)
+    warnings.warn(message, UserWarning, stacklevel=3)
+
 # Local styles dispatched through the explanation-level bridges, with the
 # direct builder/renderer pair used when no plugin manager is reachable.
 _FACTUAL_STYLE_FALLBACKS = {
@@ -127,10 +144,37 @@ _SKIP_OPTION_KEYS = {
 
 
 def install_ce_plot_bridges() -> None:
-    """Install all CE plot-dispatch bridges (idempotent)."""
+    """Install all CE plot-dispatch bridges (idempotent, version-gated).
+
+    The bridges are written for calibrated-explanations >= 1.0.0rc1, < 2. On
+    any other CE major version they are not installed and a ``UserWarning``
+    plus INFO log explain what to do instead.
+    """
+    if not _ce_version_supported():
+        return
     _install_plot_global_bridge()
     _install_alternative_plot_bridge()
     _install_factual_plot_bridge()
+
+
+def _ce_version_supported() -> bool:
+    import calibrated_explanations as _ce  # noqa: PLC0415
+
+    raw = str(getattr(_ce, "__version__", ""))
+    match = re.match(r"(\d+)", raw)
+    if match is not None and int(match.group(1)) == 1:
+        return True
+    message = (
+        "ce_visualization_plotly: not installing CE plot-dispatch bridges — "
+        f"calibrated-explanations {raw or 'unknown'} is outside the supported "
+        "range (>=1.0.0rc1,<2) these bridges were written for. Explicit "
+        "renderer/builder APIs still work; if CE's native dispatch now "
+        "forwards all plot kwargs, the bridges are unnecessary (see "
+        "_ce_compat module docstring for the removal condition)."
+    )
+    _LOGGER.info(message)
+    warnings.warn(message, UserWarning, stacklevel=3)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +186,8 @@ def _install_factual_plot_bridge() -> None:
     """Route explicit factual styles (bars, simple) through the plugin before CE consumes kwargs."""
     try:
         from calibrated_explanations.explanations.explanation import FactualExplanation
-    except Exception:  # pragma: no cover - depends on installed CE version
+    except ImportError:  # pragma: no cover - depends on installed CE version
+        _warn_bridge_unavailable("FactualExplanation")
         return
 
     if getattr(FactualExplanation.plot, "_factual_bars_bridge", False):
@@ -178,7 +223,8 @@ def _install_alternative_plot_bridge() -> None:
     """
     try:
         from calibrated_explanations.explanations.explanation import AlternativeExplanation
-    except Exception:  # pragma: no cover - depends on installed CE version
+    except ImportError:  # pragma: no cover - depends on installed CE version
+        _warn_bridge_unavailable("AlternativeExplanation")
         return
 
     if getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False) and getattr(
@@ -302,7 +348,8 @@ def _install_plot_global_bridge() -> None:
     """
     try:
         import calibrated_explanations.plotting as ce_plotting
-    except Exception:  # pragma: no cover - depends on installed CE version
+    except ImportError:  # pragma: no cover - depends on installed CE version
+        _warn_bridge_unavailable("plotting.plot_global")
         return
 
     if getattr(ce_plotting.plot_global, "_plotly_bridge_version", 0) < _PLOT_BRIDGE_VERSION:
@@ -440,7 +487,7 @@ def _slice_rows(values: Any, indices: list[int]) -> Any:
         import numpy as np  # noqa: PLC0415
 
         return np.asarray(values)[indices]
-    except Exception:
+    except (TypeError, ValueError, IndexError):
         sequence = list(values)
         return [sequence[index] for index in indices]
 
@@ -451,12 +498,12 @@ def _first_explanation(collection: Any) -> Any:
         return list(explanations)[0]
     try:
         return collection[0]
-    except Exception:
+    except (TypeError, IndexError, KeyError):
         return collection
 
 
 def _set_original_index(explanation: Any, instance_index: int) -> Any:
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(AttributeError, TypeError):
         explanation.index = instance_index
     return explanation
 

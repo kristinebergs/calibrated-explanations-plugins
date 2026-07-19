@@ -473,8 +473,49 @@ def test_thresholded_regression_prediction_header_uses_y_threshold_labels(monkey
 
     bars = artifact["prediction"]["bars"]
     assert len(bars) == 2
-    assert bars[0]["label"] == "P(Y<=5.12346)"
-    assert bars[1]["label"] == "P(Y>5.12346)"
+    # CE plotting.py caption contract: scalar thresholds use lowercase y and .2f
+    assert bars[0]["label"] == "P(y<=5.12)"
+    assert bars[1]["label"] == "P(y>5.12)"
+
+
+def test_interval_threshold_header_uses_ce_caption_format(monkeypatch):
+    """Interval thresholds use CE's y_hat range captions with .3f (BARS-021)."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    collection = _dummy_thresholded_regression_explanation()
+    collection.explanations[0].y_threshold = (2.5, 7.25)
+    artifact = plugin.build(_context(collection))
+
+    bars = artifact["prediction"]["bars"]
+    assert bars[0]["label"] == "2.500 < y_hat <= 7.250"
+    assert bars[1]["label"] == "y_hat <= 2.500 || y_hat > 7.250"
+
+
+def test_binary_class_label_header_uses_ce_caption_format(monkeypatch):
+    """Binary headers caption both classes as P(y=<label>) like CE core (BARS-021)."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    collection = _dummy_explanation()
+    collection.get_class_labels = lambda: ["No", "Yes"]
+    artifact = plugin.build(_context(collection))
+
+    bars = artifact["prediction"]["bars"]
+    assert bars[0]["label"] == "P(y=Yes)"
+    assert bars[1]["label"] == "P(y=No)"
+
+
+def test_binary_without_labels_header_uses_ce_fallback_captions(monkeypatch):
+    """Without class labels the binary header falls back to P(y=1)/P(y=0) (BARS-021)."""
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    artifact = plugin.build(_context(_dummy_explanation()))
+
+    bars = artifact["prediction"]["bars"]
+    assert bars[0]["label"] == "P(y=1)"
+    assert bars[1]["label"] == "P(y=0)"
 
 
 def test_show_prediction_header_false_suppresses_header_traces(monkeypatch):

@@ -176,6 +176,8 @@ def installed_check(package_path: Path, run_pytest: bool) -> None:
     )
     if run_pytest:
         run_checked([sys.executable, "-m", "pip", "install", "pytest", "pytest-cov"])
+    # Declared dependency ranges must be mutually consistent in the gate venv.
+    run_checked([sys.executable, "-m", "pip", "check"])
     validate_runtime(package_path)
     check_plugin_docstrings(package_path)
     if run_pytest:

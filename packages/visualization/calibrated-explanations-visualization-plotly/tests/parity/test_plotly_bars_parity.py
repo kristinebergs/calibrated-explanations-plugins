@@ -642,3 +642,65 @@ def test_alternative_probabilistic_cross_05_produces_two_bar_segments(
     )
     # More specifically, n_bar_traces > n_items means at least one bar was split
     assert plotly["n_bar_traces"] > plotly["n_items"] or plotly["n_bar_traces"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# BARS-017: factual bar colour parity
+# ---------------------------------------------------------------------------
+
+_MPL_COLOR_HEX = {"red": "#ff0000", "r": "#ff0000", "blue": "#0000ff", "b": "#0000ff"}
+
+
+def _rgba_to_hex_alpha(color: str) -> tuple[str, float | None]:
+    """Normalise 'rgba(r, g, b, a)' / '#rrggbb' to (hex, alpha)."""
+    color = str(color).strip().lower()
+    if color.startswith("rgba"):
+        parts = color[color.find("(") + 1 : color.find(")")].split(",")
+        r, g, b = (int(float(p)) for p in parts[:3])
+        return f"#{r:02x}{g:02x}{b:02x}", round(float(parts[3]), 4)
+    return color, None
+
+
+@pytest.mark.parametrize("case", FACTUAL_CASES, ids=lambda c: c.name)
+def test_factual_bars_solid_colors_match_plotspec(case: FactualBarsParityCase) -> None:
+    """Solid bar colours equal the mpl adapter's exported primitive colours (BARS-017)."""
+    spec = _collect_factual_plotspec_primitives(case)
+    plotly = _collect_factual_plotly_primitives(case)
+
+    for solid in spec["solids"]:
+        expected = _MPL_COLOR_HEX[str(solid["color"]).lower()]
+        actual = str(plotly["bar_colors"][solid["index"]]).lower()
+        assert actual == expected, (
+            f"row {solid['index']}: PlotSpec draws {expected}, Plotly draws {actual}"
+        )
+
+
+@pytest.mark.parametrize("case", FACTUAL_CASES, ids=lambda c: c.name)
+def test_factual_bars_overlay_colors_match_plotspec(case: FactualBarsParityCase) -> None:
+    """Uncertainty overlays use the same hue and alpha 0.2 as mpl fill_betweenx (BARS-017)."""
+    spec = _collect_factual_plotspec_primitives(case)
+    if not spec["overlays"]:
+        pytest.skip("No interval overlays in this case")
+
+    explanation = _factual_fake_explanation(case)
+    extra = {"show_uncertainty": True} if case.interval else {}
+    fig = _call_plotly_plugin(explanation, _FACTUAL_STYLE, **extra)
+    interval_traces = [
+        t for t in _extract_bar_traces(fig) if t["name"] == "contribution interval"
+    ]
+
+    expected = sorted(
+        (_MPL_COLOR_HEX[str(o["color"]).lower()], round(float(o["alpha"]), 4))
+        for o in spec["overlays"]
+    )
+    actual: list[tuple[str, float | None]] = []
+    for trace in interval_traces:
+        colors = trace["color"]
+        if isinstance(colors, (list, tuple)):
+            actual.extend(_rgba_to_hex_alpha(c) for c in colors)
+        elif colors is not None:
+            n_entries = len(trace["y"]) if trace["y"] else 1
+            actual.extend([_rgba_to_hex_alpha(colors)] * n_entries)
+    assert sorted(actual) == expected, (
+        f"PlotSpec overlays {expected} vs Plotly interval colours {sorted(actual)}"
+    )

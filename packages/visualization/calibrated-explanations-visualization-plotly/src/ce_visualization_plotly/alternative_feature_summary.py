@@ -16,6 +16,8 @@ from calibrated_explanations.plugins.plots import (
     PlotRenderResult,
 )
 
+from ._version import PACKAGE_VERSION, PROVIDER
+
 STYLE_ID = "plotly.local.alternative_feature_summary"
 BUILDER_ID = "official.visualization.plotly.local.alternative_feature_summary.builder"
 RENDERER_ID = "official.visualization.plotly.local.alternative_feature_summary.renderer"
@@ -505,13 +507,13 @@ class AlternativeFeatureSummaryPlotBuilder(PlotBuilder):
     plugin_meta = {
         "schema_version": 1,
         "name": BUILDER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "style": STYLE_ID,
         "intent": "alternative",
         "output_formats": ("html",),
-        "capabilities": ["plot:renderer"],
+        "capabilities": ["plot:builder"],
         "dependencies": (),
         "trusted": False,
         "trust": False,
@@ -751,8 +753,8 @@ class AlternativeFeatureSummaryPlotRenderer(PlotRenderer):
     plugin_meta = {
         "schema_version": 1,
         "name": RENDERER_ID,
-        "version": ARTIFACT_VERSION,
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
         "output_formats": ("html",),
         "capabilities": ["plot:renderer"],

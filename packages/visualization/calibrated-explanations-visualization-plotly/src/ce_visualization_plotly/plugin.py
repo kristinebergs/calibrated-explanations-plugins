@@ -10,6 +10,7 @@ from calibrated_explanations.plugins.registry import (
 )
 
 from ._ce_compat import install_ce_plot_bridges
+from ._version import PACKAGE_VERSION, PROVIDER
 from .alternative_bars import (
     BUILDER_ID as ALTERNATIVE_BARS_BUILDER_ID,
 )
@@ -116,22 +117,49 @@ BOOTSTRAP_ID = "official.visualization.plotly.bootstrap"
 
 
 class PlotlyVisualizationBootstrap:
-    """Bootstrap entry point for Plotly visualization layouts."""
+    """Bootstrap entry point for Plotly visualization layouts.
+
+    CE 1.0.x entry-point discovery loads and validates this class but does not
+    invoke anything on it, so discovery alone does not register the styles.
+    Hosts that want the styles must call :meth:`register` (equivalently
+    ``register_plotly_visualization_components()``) explicitly.
+    """
+
+    @staticmethod
+    def register(*, install_compat_bridges: bool = True) -> None:
+        """Register all Plotly styles (and, by default, the CE 1.0.x bridges)."""
+        register_plotly_visualization_components(
+            install_compat_bridges=install_compat_bridges
+        )
 
     plugin_meta = {
         "schema_version": 1,
         "name": BOOTSTRAP_ID,
-        "version": "0.3.1",
-        "provider": "plotly.local",
+        "version": PACKAGE_VERSION,
+        "provider": PROVIDER,
         "data_modalities": ("tabular",),
-        "capabilities": ["plot:bootstrap"],
+        # Capability vocabulary follows CE's own builtins
+        # (calibrated_explanations.plugins.builtins uses "plot:builder" /
+        # "plot:renderer"); this bootstrap provides components of both kinds.
+        "capabilities": ["plot:builder", "plot:renderer"],
         "trusted": False,
         "trust": False,
     }
 
 
-def register_plotly_visualization_components() -> None:
-    """Register Plotly visualization builders, renderers, and styles."""
+def register_plotly_visualization_components(*, install_compat_bridges: bool = True) -> None:
+    """Register Plotly visualization builders, renderers, and styles.
+
+    This is an explicit call — importing ``ce_visualization_plotly`` (or this
+    module) has no registration or CE-patching side effects. Registration is
+    idempotent.
+
+    By default this also installs the CE 1.0.x plot-dispatch compatibility
+    bridges (see ``_ce_compat``): without them, CE's explanation-level
+    ``.plot(style="plotly.…")`` and ``plot_global`` consume or drop the
+    options this package needs before plugin dispatch. Pass
+    ``install_compat_bridges=False`` to register the styles only.
+    """
     if find_plot_builder_descriptor(BUILDER_ID) is None:
         register_plot_builder(BUILDER_ID, UncertaintyQuadrantPlotBuilder(), source="entrypoint")
     if find_plot_renderer_descriptor(RENDERER_ID) is None:
@@ -337,8 +365,5 @@ def register_plotly_visualization_components() -> None:
                 "default_for": (),
             },
         )
-    install_ce_plot_bridges()
-
-
-
-register_plotly_visualization_components()
+    if install_compat_bridges:
+        install_ce_plot_bridges()

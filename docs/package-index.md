@@ -23,7 +23,7 @@ In a family metapackage; installable individually from PyPI once released.
 
 Releasable to PyPI individually; not part of a metapackage.
 
-- `calibrated-explanations-visualization-plotly` 0.3.1 — `packages/visualization/calibrated-explanations-visualization-plotly`
+- None.
 
 ## Experimental plugins
 
@@ -38,6 +38,7 @@ Not published to PyPI; install from a repository checkout.
 - `calibrated-explanations-visualization-dashboard` 0.1.1 — `packages/visualization/calibrated-explanations-visualization-dashboard`
 - `calibrated-explanations-visualization-example` 0.1.1 — `packages/visualization/calibrated-explanations-visualization-example`
 - `calibrated-explanations-visualization-factual-shap` 0.1.1 — `packages/visualization/calibrated-explanations-visualization-factual-shap`
+- `calibrated-explanations-visualization-plotly` 0.3.2 — `packages/visualization/calibrated-explanations-visualization-plotly`
 
 ## Deprecated plugins
 
