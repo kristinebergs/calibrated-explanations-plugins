@@ -1,5 +1,23 @@
 # Maturity evidence — calibrated-explanations-visualization-plotly
 
+## Version bump to 0.3.3 — CI policy fix (2026-07-20, later still)
+
+Pushing this branch surfaced a real CI failure independent of everything
+above: `scripts/check_version_bumps.py` (repository policy, not part of this
+package's own gates) correctly flagged that both this package and
+`packages/meta/calibrated-explanations-visualization` changed materially
+against `main` (`f4f7cc84561b032bbc01034f4056543f4bd438b1`) without a version
+bump. Fixed by bumping `project.version` (and the mirrored
+`_version.PACKAGE_VERSION`) to `0.3.3` for this package and to `0.2.2` for the
+metapackage, then regenerating `docs/package-index.md`
+(`scripts/lifecycle.py index`). Re-verified locally against the real base:
+`check_version_bumps.py`, `lifecycle.py check`, `lifecycle.py index --check`,
+`validate_repo_structure.py`, `ruff check`, and the full package test suite
+(254 passed / 2 skipped) all pass. All version references in the sections
+below predate this bump and were written when the package version was still
+`0.3.2` — the bump is a version-string-only change with no behavioural
+effect, so that evidence remains valid as written.
+
 ## CE 1.0.0rc2 published to PyPI — real-release verification (2026-07-20, later same day)
 
 The section below ("RC2 no-bridge adoption re-audit") was written earlier the
