@@ -450,33 +450,20 @@ def test_root_import_registers_nothing_and_patches_nothing():
     assert "NO_SIDE_EFFECTS" in result.stdout
 
 
-def test_bridges_coexist_with_foreign_wrapper_and_reinstall(monkeypatch):
-    """Reinstalling the bridges is a no-op, and a third-party wrapper applied
-    on top of them survives reinstallation (markers propagate via
-    functools.wraps, so install never strips an outer wrapper)."""
-    import functools
-
+def test_registration_never_replaces_ce_plotting_callables(monkeypatch):
+    """CE >=1.0.0rc2 native dispatch requires no bridge: registering (and
+    re-registering) the Plotly components must never touch
+    ``FactualExplanation.plot``, even under the legacy
+    ``install_compat_bridges=True`` call shape kept for compatibility."""
     from calibrated_explanations.explanations.explanation import FactualExplanation
 
     module = _load_plugin(monkeypatch)
-    bridged = FactualExplanation.plot
-    assert getattr(bridged, "_factual_bars_bridge", False), "bridge must be installed"
+    original = FactualExplanation.plot
 
     module.register_plotly_visualization_components()
-    assert FactualExplanation.plot is bridged, "reinstall must be idempotent"
+    assert FactualExplanation.plot is original, "registration must not replace CE callables"
 
-    calls: list[int] = []
-
-    @functools.wraps(bridged)
-    def foreign(self, *args, **kwargs):
-        calls.append(1)
-        return bridged(self, *args, **kwargs)
-
-    FactualExplanation.plot = foreign
-    try:
-        module.register_plotly_visualization_components()
-        assert FactualExplanation.plot is foreign, (
-            "reinstall must not strip or replace a third-party wrapper"
-        )
-    finally:
-        FactualExplanation.plot = bridged
+    module.register_plotly_visualization_components(install_compat_bridges=True)
+    assert FactualExplanation.plot is original, (
+        "install_compat_bridges=True must remain a no-op post-rc2"
+    )

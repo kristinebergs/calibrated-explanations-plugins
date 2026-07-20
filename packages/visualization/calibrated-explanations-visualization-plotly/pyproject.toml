@@ -23,15 +23,17 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Visualization",
 ]
-# Lower bounds: CE >=1.0.0rc1 is the first release with the public plugin
-# plot contract this package targets (<2 because the _ce_compat bridges are
-# written against 1.x dispatch); plotly >=5.18 is the oldest line exercised by
-# the floor-boundary environment; numpy >=1.24 matches CE's own floor and is a
-# direct runtime import (array coercion in builders/bridges). Matplotlib is
-# NOT a runtime dependency — CE's [viz] extra is needed only by the parity
-# test suite (see [project.optional-dependencies].test).
+# Lower bounds: CE >=1.0.0rc2 is required for native third-party plot-plugin
+# dispatch (full option/runtime fidelity through the public factual,
+# alternative, and global/dashboard plotting APIs without the removed
+# _ce_compat bridges); <2 keeps the ceiling at the 1.x dispatch contract;
+# plotly >=5.18 is the oldest line exercised by the floor-boundary
+# environment; numpy >=1.24 matches CE's own floor and is a direct runtime
+# import (array coercion in builders). Matplotlib is NOT a runtime
+# dependency — CE's [viz] extra is needed only by the parity test suite (see
+# [project.optional-dependencies].test).
 dependencies = [
-    "calibrated-explanations>=1.0.0rc1,<2",
+    "calibrated-explanations>=1.0.0rc2,<2",
     "numpy>=1.24",
     "plotly>=5.18",
 ]

@@ -569,13 +569,18 @@ def test_html_export_creates_file(monkeypatch, tmp_path):
 
 
 def test_bridge_is_installed(monkeypatch):
-    _load_plugin(monkeypatch)
+    """CE >=1.0.0rc2: registration must not replace AlternativeExplanation.plot;
+    native dispatch reaches this style without any bridge marker."""
     try:
         from calibrated_explanations.explanations.explanation import AlternativeExplanation
-
-        assert getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False)
     except ImportError:
         pytest.skip("AlternativeExplanation not accessible in this CE version")
+
+    original = AlternativeExplanation.plot
+    _load_plugin(monkeypatch)
+
+    assert AlternativeExplanation.plot is original
+    assert not getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False)
 
 
 def test_bridge_passes_non_alternative_bars_styles_through(monkeypatch):
