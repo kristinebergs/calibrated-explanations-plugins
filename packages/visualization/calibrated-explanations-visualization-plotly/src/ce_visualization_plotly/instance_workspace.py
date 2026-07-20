@@ -122,10 +122,18 @@ def _precompute_from_runtime(
     include_alternatives = bool(options.get("include_alternatives", True))
     max_rule_size = options.get("max_rule_size")
 
+    # Plot-level keys must not leak into CE explain-time kwargs: real CE
+    # explanation plugins reject undeclared keyword arguments.
+    plot_only_keys = {"filter_top", "style", "show", "uncertainty", "rnk_metric", "rnk_weight"}
+
     for instance_index in selected_indices:
         row = _slice_rows(x, [instance_index])
         if include_factual and callable(getattr(explainer, "explain_factual", None)):
-            factual_kwargs = dict(options.get("factual_options", {}) or {})
+            factual_kwargs = {
+                key: value
+                for key, value in dict(options.get("factual_options", {}) or {}).items()
+                if key not in plot_only_keys
+            }
             if threshold is not None:
                 factual_kwargs.setdefault("threshold", threshold)
             factual_explanations.append(
@@ -135,7 +143,11 @@ def _precompute_from_runtime(
                 )
             )
         if include_alternatives and callable(getattr(explainer, "explore_alternatives", None)):
-            alternative_kwargs = dict(options.get("alternative_options", {}) or {})
+            alternative_kwargs = {
+                key: value
+                for key, value in dict(options.get("alternative_options", {}) or {}).items()
+                if key not in plot_only_keys
+            }
             if threshold is not None:
                 alternative_kwargs.setdefault("threshold", threshold)
             if max_rule_size is not None:
