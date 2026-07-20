@@ -274,13 +274,13 @@ def test_renderer_exports_standalone_html(monkeypatch, tmp_path):
     assert "Uncertainty Quadrant" in html
 
 
-class _BridgeLearner:
+class _RuntimeLearner:
     def predict_proba(self, _x):
         return []
 
 
-class _BridgeExplainer:
-    learner = _BridgeLearner()
+class _RuntimeExplainer:
+    learner = _RuntimeLearner()
     class_labels = None
 
     def __init__(self):
@@ -337,52 +337,85 @@ class _BridgeExplainer:
         return collection
 
 
-def test_dashboard_plot_bridge_consumes_style_and_precomputes(monkeypatch, tmp_path):
+def test_dashboard_builder_precomputes_via_runtime_context(monkeypatch, tmp_path):
+    """CE >=1.0.0rc2 native dispatch: the builder reads the originating
+    explainer/x/threshold from ``context.runtime`` and precomputes local
+    explanations directly, with no compatibility bridge involved."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
-    from ce_visualization_plotly import _ce_compat
 
-    explainer = _BridgeExplainer()
-
-    result = _ce_compat._render_instance_workspace_dashboard(
-        explainer,
-        [[1, 2], [3, 4]],
-        [0, 1],
-        None,
-        {
-            "style": STYLE_ID,
-            "dashboard_mode": "standalone_html",
-            "precompute": "selected",
-            "selected_instance_indices": [1],
-            "available_cards": ["local_uncertainty_quadrant"],
-            "path": tmp_path / "workspace",
-            "show": False,
-        },
+    explainer = _RuntimeExplainer()
+    context = PlotRenderContext(
+        explanation=None,
+        instance_metadata=MappingProxyType({"type": "global"}),
+        style=STYLE_ID,
+        intent=MappingProxyType({"type": "dashboard"}),
+        show=False,
+        path=str(tmp_path / "workspace"),
+        save_ext=None,
+        options=MappingProxyType(
+            {
+                "dashboard_mode": "standalone_html",
+                "precompute": "selected",
+                "selected_instance_indices": [1],
+                "available_cards": ["local_factual_bars", "alternative_feature_summary"],
+                "low_high_percentiles": (20, 80),
+                # CE's reserved global payload (see plotting._dispatch_explicit_global_plot_style):
+                # the instance-explorer sub-build consumes this via
+                # options.get("payload"), not context.explanation, once forwarded
+                # into global_options by the dashboard builder.
+                "payload": {
+                    "proba": [[0.4, 0.6], [0.3, 0.7]],
+                    "predict": None,
+                    "low": [0.5, 0.6],
+                    "high": [0.7, 0.8],
+                    "is_regularized": True,
+                },
+            }
+        ),
+        runtime=MappingProxyType(
+            {
+                "scope": "global",
+                "explainer": explainer,
+                "x": [[1, 2], [3, 4]],
+                "threshold": None,
+                "bins": [10, 20],
+            }
+        ),
     )
 
-    assert result.saved_paths == (str(tmp_path / "workspace.html"),)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+    artifact = plugin.build(context)
+
     assert len(explainer.factual_calls) == 1
-    assert explainer.alternative_calls == []
-    assert result.artifact["precomputed_local"]["1"]["cards"][0]["available"] is True
+    assert len(explainer.alternative_calls) == 1
+    factual_row, factual_kwargs = explainer.factual_calls[0]
+    alternative_row, alternative_kwargs = explainer.alternative_calls[0]
+    assert factual_row.tolist() == [[3, 4]]
+    assert alternative_row.tolist() == [[3, 4]]
+    assert factual_kwargs["low_high_percentiles"] == (20, 80)
+    assert alternative_kwargs["low_high_percentiles"] == (20, 80)
+    assert factual_kwargs["bins"].tolist() == [20]
+    assert alternative_kwargs["bins"].tolist() == [20]
+    assert artifact["instance_records"][1]["metadata"]["percentiles"] == (20, 80)
+    assert all(card["available"] is True for card in artifact["precomputed_local"]["1"]["cards"])
 
 
-def test_registration_patches_plot_global_only_not_ce_classes(monkeypatch):
-    """Registration bridges the plotting module attribute, never CE class methods.
-
-    CE >= 1.0 resolves ``plot_global`` from the plotting module at call time in
-    ``CalibratedExplainer.plot`` (and ``WrapCalibratedExplainer.plot`` delegates
-    with kwargs intact), so the class methods must stay untouched.
-    """
+def test_registration_never_patches_plot_global_or_ce_classes(monkeypatch):
+    """CE >=1.0.0rc2 dispatches natively: registration must never replace
+    ``plotting.plot_global`` or any CE class's ``plot`` method."""
     plugin_module = _load_plugin(monkeypatch)
     import calibrated_explanations.plotting as ce_plotting
-    from calibrated_explanations.core.calibrated_explainer import CalibratedExplainer
-    from calibrated_explanations.core.wrap_explainer import WrapCalibratedExplainer
+    from calibrated_explanations import CalibratedExplainer, WrapCalibratedExplainer
 
+    original_plot_global = ce_plotting.plot_global
+    original_explainer_plot = CalibratedExplainer.plot
+    original_wrap_plot = WrapCalibratedExplainer.plot
     plugin_module.register_plotly_visualization_components()
 
-    assert getattr(ce_plotting.plot_global, "_plotly_bridge_version", 0) >= 2
-    assert not hasattr(CalibratedExplainer.plot, "_plotly_bridge_version")
-    assert not hasattr(WrapCalibratedExplainer.plot, "_plotly_bridge_version")
+    assert ce_plotting.plot_global is original_plot_global
+    assert CalibratedExplainer.plot is original_explainer_plot
+    assert WrapCalibratedExplainer.plot is original_wrap_plot
 
 
 def test_dashboard_html_treats_hostile_labels_as_text(monkeypatch, tmp_path):

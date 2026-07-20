@@ -17,8 +17,8 @@ from calibrated_explanations.plugins.plots import (
     PlotRenderer,
     PlotRenderResult,
 )
-from calibrated_explanations.utils.helper import calculate_metrics
-from calibrated_explanations.viz.builders import build_triangular_plotspec
+from calibrated_explanations.utils import calculate_metrics
+from calibrated_explanations.viz import build_triangular_plotspec
 
 from ._version import PACKAGE_VERSION, PROVIDER
 

@@ -9,7 +9,6 @@ from calibrated_explanations.plugins.registry import (
     register_plot_style,
 )
 
-from ._ce_compat import install_ce_plot_bridges
 from ._version import PACKAGE_VERSION, PROVIDER
 from .alternative_bars import (
     BUILDER_ID as ALTERNATIVE_BARS_BUILDER_ID,
@@ -126,11 +125,9 @@ class PlotlyVisualizationBootstrap:
     """
 
     @staticmethod
-    def register(*, install_compat_bridges: bool = True) -> None:
-        """Register all Plotly styles (and, by default, the CE 1.0.x bridges)."""
-        register_plotly_visualization_components(
-            install_compat_bridges=install_compat_bridges
-        )
+    def register() -> None:
+        """Register all Plotly styles through CE's public plot-plugin contract."""
+        register_plotly_visualization_components()
 
     plugin_meta = {
         "schema_version": 1,
@@ -147,18 +144,17 @@ class PlotlyVisualizationBootstrap:
     }
 
 
-def register_plotly_visualization_components(*, install_compat_bridges: bool = True) -> None:
+def register_plotly_visualization_components() -> None:
     """Register Plotly visualization builders, renderers, and styles.
 
     This is an explicit call — importing ``ce_visualization_plotly`` (or this
     module) has no registration or CE-patching side effects. Registration is
     idempotent.
 
-    By default this also installs the CE 1.0.x plot-dispatch compatibility
-    bridges (see ``_ce_compat``): without them, CE's explanation-level
-    ``.plot(style="plotly.…")`` and ``plot_global`` consume or drop the
-    options this package needs before plugin dispatch. Pass
-    ``install_compat_bridges=False`` to register the styles only.
+    CE >=1.0.0rc2 dispatches explicit third-party styles natively through the
+    public registry with the complete option set and (for trusted plugins) a
+    documented runtime context, so no compatibility bridge is installed and
+    no CE plotting callable is ever replaced.
     """
     if find_plot_builder_descriptor(BUILDER_ID) is None:
         register_plot_builder(BUILDER_ID, UncertaintyQuadrantPlotBuilder(), source="entrypoint")
@@ -365,5 +361,3 @@ def register_plotly_visualization_components(*, install_compat_bridges: bool = T
                 "default_for": (),
             },
         )
-    if install_compat_bridges:
-        install_ce_plot_bridges()

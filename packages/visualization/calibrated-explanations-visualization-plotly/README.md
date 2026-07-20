@@ -4,11 +4,13 @@ Family: `visualization`
 
 Status: `experimental`
 
-> The code, tests, and parity evidence below target promotion to `mature`,
-> but the lifecycle status is held at `experimental` until the publication
-> criteria are met: the PyPI distribution name is still unclaimed, no release
-> exists to verify the install command against, and the trusted publisher is
-> not yet configured. See `MATURITY.md` for the audit trail.
+> The code and test evidence below target promotion to `mature`, and
+> `calibrated-explanations>=1.0.0rc2` (the CE release this package's dispatch
+> model requires) is now published on PyPI and installs cleanly. The
+> lifecycle status remains `experimental` because this package's own PyPI
+> distribution is still unclaimed with no trusted publisher configured, and
+> GitHub-hosted CI has not yet run on this branch. See `MATURITY.md` for the
+> full, dated audit trail.
 
 Interactive Plotly visualization layouts for
 [`calibrated-explanations`](https://github.com/kristinebergs/calibrated_explanations) (CE).
@@ -31,7 +33,7 @@ difference is visual (hover cards, HTML output), not semantic.
 
 **Not yet on PyPI.** The distribution name
 `calibrated-explanations-visualization-plotly` is intended for this package
-but is unclaimed and no release has been published (verified 2026-07-19).
+but is unclaimed and no release has been published (verified 2026-07-20).
 Once the first release exists, installation will be `pip install` of that
 distribution name (with the `[live]` extra for the Dash dashboard). Until
 then, install from a checkout of this repository:
@@ -39,6 +41,11 @@ then, install from a checkout of this repository:
 ```bash
 pip install packages/visualization/calibrated-explanations-visualization-plotly
 ```
+
+`calibrated-explanations>=1.0.0rc2,<2` (this package's dependency floor) is
+now published on PyPI, so the command above resolves and installs cleanly in
+a normal environment — verified in a fresh venv (`pip check` clean, full test
+suite passing from the installed wheel; see `MATURITY.md`).
 
 Plotly and NumPy are mandatory dependencies and are installed automatically;
 Dash is needed only for the optional live dashboard (`[live]` extra).
@@ -55,11 +62,13 @@ import ce_visualization_plotly as cevp
 cevp.register_plotly_visualization_components()
 ```
 
-By default this also installs the CE 1.0.x plot-dispatch compatibility
-bridges (see *Assumptions and limitations*); pass
-`install_compat_bridges=False` to register the styles without touching any
-CE symbol (explanation-level `.plot(style=…)` dispatch then stays on CE's
-native path, which drops the options this package needs on CE 1.0.x).
+Registration only adds builders/renderers/styles to CE's public registry. CE
+`>=1.0.0rc2` dispatches explicit third-party styles (e.g.
+`style="plotly.local.factual_bars"`) natively, with the complete option set
+forwarded verbatim through `context.options` — this package never wraps,
+monkey-patches, or otherwise touches `FactualExplanation.plot`,
+`AlternativeExplanation.plot`, `CalibratedExplainer.plot`,
+`WrapCalibratedExplainer.plot`, or `plotting.plot_global`.
 
 ## Quick start
 
@@ -222,9 +231,9 @@ auto-show unless `show` is passed explicitly.
 
 | Dependency | Declared range | Tested versions |
 |---|---|---|
-| Python | `>=3.11` | 3.11.9 (0.3.2 wheel gate); 3.14.4 (0.3.1 boundary venv) |
-| calibrated-explanations | `>=1.0.0rc1,<2` | 1.0.0rc1 |
-| numpy | `>=1.24` (CE's own floor; direct runtime import) | 2.x line via CE |
+| Python | `>=3.11` | 3.11.9, 3.14.4 |
+| calibrated-explanations | `>=1.0.0rc2,<2` | `1.0.0rc2` (installed from real PyPI, `pip check` clean) |
+| numpy | `>=1.24` (CE's own floor; direct runtime import) | 2.4.6, 2.5.1 |
 | plotly | `>=5.18` | 5.18.0, 6.7.0, 6.9.0 |
 | dash (optional, `[live]`) | `>=3.1` | 3.1.0, 4.4.0 (base install verified without dash) |
 
@@ -232,8 +241,20 @@ The dash floor is `>=3.1` because dash 2.x/3.0 pin Flask/Werkzeug versions
 with known published vulnerabilities; dash 3.1 is the first release whose
 dependency range admits the patched Flask 3.1.3+/Werkzeug 3.1.4+.
 
-Earlier CE versions relied on plugin-side monkey-patch bridges that this
-release removed; CE `>=1.0.0rc1` is the verified minimum.
+**CE `>=1.0.0rc2` is required, and is not optional or backward-compatible to
+`rc1`.** CE `1.0.0rc1`'s public plotting API drops or rewrites several options
+(`filter_top`, `uncertainty`, `rnk_metric`, `rnk_weight`, `style` itself on the
+alternative path) before this package's plugin is ever invoked, and provides
+no `context.runtime` for the dashboard. There is no compatibility shim for
+`rc1` in this package (an earlier, since-removed version had one); installing
+against `rc1` will silently drop options rather than error, so the dependency
+floor is enforced rather than merely recommended.
+
+`calibrated-explanations==1.0.0rc2` is now published on PyPI (verified
+2026-07-20); this package's own dependency floor resolves and installs
+cleanly from a normal `pip install`. See `MATURITY.md` for the full
+reproducible evidence, including the earlier-that-day audit trail from before
+the release existed.
 
 ## Assumptions and limitations
 
@@ -249,18 +270,23 @@ release removed; CE `>=1.0.0rc1` is the verified minimum.
   figure objects and standalone HTML. Use Plotly's own export tooling
   (e.g. kaleido) at your own discretion.
 - Only horizontal bar orientations are supported for the bar styles.
-- CE's explanation-level `.plot()` consumes some kwargs before plugin
-  dispatch; this package therefore wraps (via `functools.wraps`, preserving
-  behaviour for all other styles) the public `FactualExplanation.plot`,
-  `AlternativeExplanation.plot`, and the `plotting.plot_global` module
-  attribute when `register_plotly_visualization_components()` is called
-  (never at import; opt out with `install_compat_bridges=False`). This is
-  deliberate monkey-patching of
-  public CE symbols, isolated in one compatibility module
-  (`ce_visualization_plotly._ce_compat`) that documents why each bridge
-  exists, the CE range that needs it (`>=1.0.0rc1,<2`), and the upstream
-  condition under which it will be removed. Installation is idempotent and
-  import-order independent; no CE-private members are used at runtime.
+- Registration (`register_plotly_visualization_components()`) only adds
+  builders, renderers, and styles to CE's public registry. It never
+  replaces, wraps, or otherwise touches any CE plotting callable —
+  `FactualExplanation.plot`, `AlternativeExplanation.plot`,
+  `CalibratedExplainer.plot`, `WrapCalibratedExplainer.plot`, and
+  `plotting.plot_global` all keep their original identity before and after
+  registration, and after rendering every style (see
+  `tests/test_no_bridge_proof.py`). CE `>=1.0.0rc2` dispatches explicit
+  third-party styles through its own public registry-resolution machinery
+  with the complete option set, so no adapter or compatibility layer is
+  needed on this package's side.
+- CE's *collection*-level `.plot(...)` (e.g. `explanations.plot(...)`) warns
+  visibly (`UserWarning`) on an unrecognised keyword argument. A single
+  indexed explanation's `.plot(...)` (e.g. `explanations[0].plot(...)`)
+  currently does **not** — an unrecognised kwarg is silently dropped. This is
+  a CE-core behaviour, not something this plugin can change; see
+  `MATURITY.md` "Known limitations" for the executable proof.
 
 ## Failure modes
 
@@ -278,9 +304,6 @@ release removed; CE `>=1.0.0rc1` is the verified minimum.
 - **Ranking is CE's own code**: both bar styles rank via CE's public
   `rank_features`/`calculate_metrics`; there is no plugin-side replica, and
   ranking failures propagate as errors rather than silently reordering.
-- **Unsupported CE version for the dispatch bridges** (CE major != 1) or a
-  missing public CE surface: bridges are not installed and a visible
-  `UserWarning` plus INFO log states the consequence and remedy.
 - **Rules without two-sided weight intervals** in `uncertainty_quadrant`:
   omitted with a visible `UserWarning`; `ValueError` if nothing remains.
 - Rule labels, feature names, and hover text are rendered as Plotly text

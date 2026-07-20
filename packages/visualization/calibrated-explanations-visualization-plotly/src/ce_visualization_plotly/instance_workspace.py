@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from html import escape
 from pathlib import Path
@@ -69,6 +70,133 @@ _LOCAL_CARD_RENDERERS = {
 
 def _as_options(value: Any) -> dict[str, Any]:
     return dict(value or {}) if isinstance(value, Mapping) else {}
+
+
+def _slice_rows(values: Any, indices: list[int]) -> Any:
+    if hasattr(values, "iloc"):
+        return values.iloc[indices]
+    try:
+        import numpy as np  # noqa: PLC0415
+
+        return np.asarray(values)[indices]
+    except (TypeError, ValueError, IndexError):
+        sequence = list(values)
+        return [sequence[index] for index in indices]
+
+
+def _first_explanation(collection: Any) -> Any:
+    explanations = getattr(collection, "explanations", None)
+    if explanations is not None:
+        return list(explanations)[0]
+    try:
+        return collection[0]
+    except (TypeError, IndexError, KeyError):
+        return collection
+
+
+def _set_original_index(explanation: Any, instance_index: int) -> Any:
+    with contextlib.suppress(AttributeError, TypeError):
+        explanation.index = instance_index
+    return explanation
+
+
+def _instance_bins(bins: Any, instance_index: int) -> Any:
+    """Return scalar bins unchanged and slice batch bins to one selected row."""
+    if bins is None:
+        return None
+    try:
+        import numpy as np  # noqa: PLC0415
+
+        if np.isscalar(bins) or np.asarray(bins).ndim == 0:
+            return bins
+    except (TypeError, ValueError):
+        return bins
+    return _slice_rows(bins, [instance_index])
+
+
+def _precompute_from_runtime(
+    explainer: Any,
+    x: Any,
+    selected_indices: list[int],
+    threshold: Any,
+    bins: Any,
+    options: dict[str, Any],
+) -> Any:
+    """Precompute local explanations via the documented CE runtime context.
+
+    CE >=1.0.0rc2 grants trusted dashboard plugins the originating public
+    explainer and request data through ``context.runtime``, so this package
+    can precompute the dashboard's local cards directly from the public
+    explainer API without a compatibility bridge.
+    """
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    factual_explanations: list[Any] = []
+    alternative_explanations: list[Any] = []
+    include_factual = bool(options.get("include_factual", True))
+    include_alternatives = bool(options.get("include_alternatives", True))
+    max_rule_size = options.get("max_rule_size")
+
+    # Plot-level keys must not leak into CE explain-time kwargs: real CE
+    # explanation plugins reject undeclared keyword arguments.
+    plot_only_keys = {"filter_top", "style", "show", "uncertainty", "rnk_metric", "rnk_weight"}
+
+    for instance_index in selected_indices:
+        row = _slice_rows(x, [instance_index])
+        row_bins = _instance_bins(bins, instance_index)
+        if include_factual and callable(getattr(explainer, "explain_factual", None)):
+            factual_kwargs = {
+                key: value
+                for key, value in dict(options.get("factual_options", {}) or {}).items()
+                if key not in plot_only_keys
+            }
+            if threshold is not None:
+                factual_kwargs.setdefault("threshold", threshold)
+            if options.get("low_high_percentiles") is not None:
+                factual_kwargs.setdefault("low_high_percentiles", options["low_high_percentiles"])
+            if row_bins is not None:
+                factual_kwargs.setdefault("bins", row_bins)
+            factual_explanations.append(
+                _set_original_index(
+                    _first_explanation(explainer.explain_factual(row, **factual_kwargs)),
+                    instance_index,
+                )
+            )
+        if include_alternatives and callable(getattr(explainer, "explore_alternatives", None)):
+            alternative_kwargs = {
+                key: value
+                for key, value in dict(options.get("alternative_options", {}) or {}).items()
+                if key not in plot_only_keys
+            }
+            if threshold is not None:
+                alternative_kwargs.setdefault("threshold", threshold)
+            if options.get("low_high_percentiles") is not None:
+                alternative_kwargs.setdefault(
+                    "low_high_percentiles", options["low_high_percentiles"]
+                )
+            if row_bins is not None:
+                alternative_kwargs.setdefault("bins", row_bins)
+            if max_rule_size is not None:
+                alternative_kwargs.setdefault("max_rule_size", max_rule_size)
+            alternative_explanations.append(
+                _set_original_index(
+                    _first_explanation(explainer.explore_alternatives(row, **alternative_kwargs)),
+                    instance_index,
+                )
+            )
+
+    first_collection = None
+    for explanation in [*factual_explanations, *alternative_explanations]:
+        first_collection = getattr(explanation, "calibrated_explanations", None)
+        if first_collection is not None:
+            break
+    return SimpleNamespace(
+        explanations=factual_explanations,
+        factual_explanations=factual_explanations,
+        alternative_explanations=alternative_explanations,
+        feature_names=getattr(first_collection, "feature_names", ()),
+        batch_metadata=getattr(first_collection, "batch_metadata", {}),
+    )
 
 
 def _as_sequence(value: Any) -> list[Any]:
@@ -356,11 +484,27 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
         if layout_preset not in _VALID_LAYOUTS:
             raise ConfigurationError("layout_preset must be one of default, wide, or compact.")
 
+        runtime = _as_options(getattr(context, "runtime", None))
+
         global_descriptor = find_dashboard_card("instance_explorer")
         assert global_descriptor is not None
         global_options = dict(global_descriptor.default_options)
         global_options.update(_as_options(options.get("global_options")))
         global_options["include_instance_records"] = True
+        # CE >=1.0.0rc2 native dispatch publishes the validated global payload
+        # under the reserved top-level "payload" option; forward it to the
+        # nested global build together with the runtime threshold.
+        if "payload" not in global_options and "payload" in options:
+            global_options["payload"] = options["payload"]
+        if "threshold" not in global_options and "threshold" in runtime:
+            global_options["threshold"] = runtime["threshold"]
+        if (
+            "low_high_percentiles" not in global_options
+            and options.get("low_high_percentiles") is not None
+        ):
+            global_options["low_high_percentiles"] = options["low_high_percentiles"]
+        if "task" not in global_options:
+            global_options["task"] = options.get("task", "auto")
         global_context = PlotRenderContext(
             explanation=context.explanation,
             instance_metadata=MappingProxyType(
@@ -379,11 +523,32 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
         descriptors = _selected_descriptors(options)
         record_by_index = {int(record["instance_index"]): record for record in records}
 
+        # When CE grants trusted runtime access (native dispatch), precompute
+        # local explanations from the originating public explainer instead of
+        # expecting a host-precomputed payload in context.explanation.
+        local_payload = context.explanation
+        if runtime.get("explainer") is not None and runtime.get("x") is not None:
+            precompute_options = dict(options)
+            precompute_options["include_factual"] = bool(
+                options.get("include_factual", True)
+            ) and any("factual_explanation" in set(d.requires) for d in descriptors)
+            precompute_options["include_alternatives"] = bool(
+                options.get("include_alternatives", True)
+            ) and any("alternative_explanation" in set(d.requires) for d in descriptors)
+            local_payload = _precompute_from_runtime(
+                runtime["explainer"],
+                runtime["x"],
+                selected_indices,
+                runtime.get("threshold"),
+                runtime.get("bins"),
+                precompute_options,
+            )
+
         precomputed: dict[str, Any] = {}
         for instance_index in selected_indices:
             record = record_by_index[instance_index]
             cards = [
-                _build_card_artifact(context.explanation, instance_index, descriptor, options)
+                _build_card_artifact(local_payload, instance_index, descriptor, options)
                 for descriptor in descriptors
                 if descriptor.supports_task(record.get("metadata", {}).get("task"))
             ][: int(options.get("max_cards_per_instance", 4))]

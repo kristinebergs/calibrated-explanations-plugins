@@ -1,5 +1,378 @@
 # Maturity evidence — calibrated-explanations-visualization-plotly
 
+## Version bump to 0.3.3 — CI policy fix (2026-07-20, later still)
+
+Pushing this branch surfaced a real CI failure independent of everything
+above: `scripts/check_version_bumps.py` (repository policy, not part of this
+package's own gates) correctly flagged that both this package and
+`packages/meta/calibrated-explanations-visualization` changed materially
+against `main` (`f4f7cc84561b032bbc01034f4056543f4bd438b1`) without a version
+bump. Fixed by bumping `project.version` (and the mirrored
+`_version.PACKAGE_VERSION`) to `0.3.3` for this package and to `0.2.2` for the
+metapackage, then regenerating `docs/package-index.md`
+(`scripts/lifecycle.py index`). Re-verified locally against the real base:
+`check_version_bumps.py`, `lifecycle.py check`, `lifecycle.py index --check`,
+`validate_repo_structure.py`, `ruff check`, and the full package test suite
+(254 passed / 2 skipped) all pass. All version references in the sections
+below predate this bump and were written when the package version was still
+`0.3.2` — the bump is a version-string-only change with no behavioural
+effect, so that evidence remains valid as written.
+
+## CE 1.0.0rc2 published to PyPI — real-release verification (2026-07-20, later same day)
+
+The section below ("RC2 no-bridge adoption re-audit") was written earlier the
+same day and correctly reported, as verified fact at that time, that
+`calibrated-explanations==1.0.0rc2` did not exist on PyPI or as any tagged
+release — that section's dynamic evidence was gathered against a `--no-deps`
+substitute wheel for exactly that reason. Later the same day,
+`calibrated-explanations==1.0.0rc2` was published to PyPI. This section
+re-verifies the primary blocker's resolution against the **real, unmodified**
+release, superseding (not replacing — left intact below for the audit trail)
+the substitute-wheel evidence.
+
+**Verification performed independently, not taken on assertion:**
+
+```text
+python -c "import urllib.request, json; \
+  print(sorted(json.load(urllib.request.urlopen( \
+    'https://pypi.org/pypi/calibrated-explanations/json'))['releases'].keys())[-3:])"
+-> ['1.0.0rc1', '1.0.0rc2', ...checked full list, no other post-rc1 entries]
+```
+
+### Real-release compatibility matrix (supersedes the substitute-wheel matrix below)
+
+All three environments rebuilt from scratch, installing `calibrated-
+explanations[viz]>=1.0.0rc2,<2` (and, for the base-install row, bare
+`calibrated-explanations>=1.0.0rc2,<2` via this package's own declared
+dependency) **directly from PyPI, no workarounds**:
+
+| Environment | Python | CE (PyPI) | plotly | numpy | `pip check` | Result |
+|---|---|---|---|---|---|---|
+| Floor boundary | 3.11.9 | `1.0.0rc2` | 6.7.0 (resolved) | 2.4.6 | clean | 253 passed, 3 skipped, 86.08% cov |
+| Newest boundary | 3.14.4 | `1.0.0rc2` | 6.9.0 | 2.5.1 | clean | 253 passed, 3 skipped |
+| Base install (no `[live]`) | 3.11.9 | `1.0.0rc2` | 6.7.0 | 2.4.6 | clean | Dash confirmed absent; `factual_bars` renders through the real public API; `launch_instance_workspace(...)` raises the same actionable `RuntimeError` |
+
+`pip-audit` (not `--strict`, since this unreleased package itself is
+correctly unauditable from PyPI and `--strict` treats that as fatal): **no
+known vulnerabilities** in any real dependency (plotly, numpy, or their
+transitive closure) in either environment, after upgrading the venvs' own
+bootstrap `pip`/`setuptools` (the only flagged CVEs, and not declared
+dependencies of this package).
+
+**The authoritative release gate now passes for real:**
+
+```text
+python scripts/runtime_check_package.py \
+  --package-path packages/visualization/calibrated-explanations-visualization-plotly
+```
+
+Exit 0. Wheel built and installed into a fresh venv with CE pulled from real
+PyPI (`>=1.0.0rc2,<2` resolves to `1.0.0rc2`, no substitution); `pip check`
+clean; all 8 styles smoke-rendered through public CE APIs including the
+dashboard standalone-HTML path; 253 passed / 3 skipped from the installed
+wheel at 85.93% coverage; 100% plugin docstring coverage.
+
+### Effect on the promotion decision
+
+Blocker #1 from the section below ("CE 1.0.0rc2 must be tagged and
+published") is **resolved**, verified independently. Blockers #3–#5 are
+**not** resolved by this event and still require action outside this
+session's authorization:
+
+- GitHub-hosted CI has still not been run on this branch (not pushed).
+- The PyPI pending publisher for **this package's own** distribution
+  (`calibrated-explanations-visualization-plotly`) is still not configured;
+  the name is still unclaimed (re-verify before publishing).
+- Maintainer sign-off on the documented scope is still outstanding.
+
+**Status remains `experimental`** pending those three. See "Promotion
+decision" in the section below for the full checklist, now with item 1
+crossed off.
+
+---
+
+## RC2 no-bridge adoption re-audit — status remains `experimental` (2026-07-20)
+
+Skeptical re-audit performed on branch `tmp/no-bridge-proof`, treating every
+prior maturity claim (including the "technical promotion criteria satisfied"
+language in the 2026-07-19 entry below) as unverified until reproduced. Parent
+commit `e72e67c` (merge of `origin/main` `f4f7cc8` into this branch); this
+audit's own changes land in the commit(s) that include this file — see `git
+log` for the exact SHA, since it cannot be self-referential.
+
+**Environment at audit time:** Python 3.11.9 (dev), Python 3.14.4 (newest
+boundary venv, interpreter discovered at
+`AppData/Local/Python/pythoncore-3.14-64`). Package version: `0.3.2`
+(unchanged — no functional release is being cut this audit; see "Promotion
+decision" below for why).
+
+### The central finding: CE 1.0.0rc2 does not exist as an installable artifact
+
+This package's entire promotion premise is that `calibrated-explanations`
+gained a native third-party plot-dispatch contract in `1.0.0rc2`, removing the
+need for `_ce_compat`'s monkey-patch bridges. That CE-side fix is real and
+verified (see CE's own
+`development/capabilities/evidence/evidence_plot_plugin_dispatch_v1.0.0rc2.md`,
+merged into `Moffran/calibrated_explanations` at commit `5bfeae85`/`e7b5c836`)
+— but **`calibrated-explanations==1.0.0rc2` has never been tagged or published
+anywhere**:
+
+- PyPI's latest published version is `1.0.0rc1` (verified via
+  `https://pypi.org/pypi/calibrated-explanations/json` on 2026-07-20; full
+  release list checked, no `1.0.0rc2`, no `1.0.0` final).
+- The CE repository's own `pyproject.toml` still declares `version =
+  "1.0.0-dev"` at the commit containing the fix; no `v1.0.0rc2` tag exists on
+  `Moffran/calibrated_explanations` (the authoritative release repository) as
+  of this audit.
+- CE's own release plan (`development/current-work/v1.0.0-rc2_plan.md`) lists
+  "Tag and publish" and "Full CI matrix green on the exact pushed candidate
+  commit" as still-open checklist items, not completed ones.
+
+**Consequence, demonstrated executably, not asserted:** running the real
+installed-wheel gate against actual PyPI —
+
+```text
+python scripts/runtime_check_package.py \
+  --package-path packages/visualization/calibrated-explanations-visualization-plotly
+```
+
+— fails with `ERROR: Could not find a version that satisfies the requirement
+calibrated-explanations<2,>=1.0.0rc2 ... No matching distribution found for
+calibrated-explanations<2,>=1.0.0rc2` (full log retained in session
+scratchpad). This is not a defect in this package's declared floor — Phase 3's
+non-negotiable requirement (`>=1.0.0rc2,<2`) is the *correct* contract once CE
+publishes it — but it means **the installed-wheel gate cannot pass against
+PyPI today, and will not until CE ships the release**. Declaring this package
+mature while its primary compatibility gate is unsatisfiable from PyPI would
+be exactly the kind of exaggerated claim this audit is required to catch.
+
+### What was verified instead, and how
+
+Since no real `1.0.0rc2` artifact exists, dynamic verification used a wheel
+built directly from the CE source that implements the fix
+(`Moffran/calibrated_explanations` at commit `e7b5c836`, editable checkout at
+`C:\Users\loftuw\Documents\Github\moffran\calibrated_explanations`, built via
+`python -m build --wheel`; the resulting artifact self-identifies as
+`calibrated_explanations-1.0.0.dev0` because that is the source tree's actual
+`pyproject.toml` version — the release-preflight tooling that stamps the real
+`rc2` string has deliberately not been run, per CE's own release process).
+This wheel was installed with `pip install --no-deps` (bypassing the
+unresolvable version constraint, since PyPI has nothing to resolve it to) into
+three clean virtual environments together with this package's own
+freshly-built wheel. Every environment below shows `pip check` reporting the
+*exact* expected mismatch:
+
+```text
+calibrated-explanations-visualization-plotly 0.3.2 has requirement
+calibrated-explanations<2,>=1.0.0rc2, but you have calibrated-explanations
+1.0.0.dev0.
+```
+
+This is reported here, not hidden — it is proof that the version-string gate
+correctly fires, while the tests below prove the *behavioural* contract
+(native dispatch, no bridge) genuinely holds against the code that will become
+`1.0.0rc2`.
+
+### Compatibility matrix (this audit, 2026-07-20)
+
+| Environment | Python | CE (source) | plotly | dash | numpy | Result |
+|---|---|---|---|---|---|---|
+| Floor boundary | 3.11.9 | `1.0.0.dev0` @ `e7b5c836` (no-deps wheel) | 5.18.0 | 3.1.0 | 2.4.6 | 253 passed, 3 skipped, 86.08% cov; `pip-audit --strict` clean (after upgrading the venv's own pip/setuptools — those two, not this package's deps, were the only flagged CVEs) |
+| Newest boundary | 3.14.4 | `1.0.0.dev0` @ `e7b5c836` (no-deps wheel) | 6.9.0 | 4.4.0 | 2.5.1 | 253 passed, 3 skipped, 86.08% cov; `pip-audit --strict` clean |
+| Base install (no `[live]`) | 3.11.9 | `1.0.0.dev0` @ `e7b5c836` (no-deps wheel) | 5.18+ | **absent** | 2.4.6 | 209 passed, 2 skipped (viz-parity and live-dashboard tests requiring matplotlib/dash skip cleanly); Dash import confirmed absent; all non-live styles (factual_bars, alternative_bars, instance_explorer, standalone dashboard) render through the real public CE API; `launch_instance_workspace(...)` raises `RuntimeError: Dash is required for live Plotly dashboards. Install the Plotly visualization package with its live dashboard extra.` |
+| Real PyPI (`runtime_check_package.py`, unmodified) | 3.11.9 | attempted `>=1.0.0rc2,<2` from PyPI | — | — | — | **Fails at dependency resolution**, as documented above. This is the authoritative, unmodified release gate — its failure is the accurate signal, not a bug to work around. |
+
+### No-bridge dispatch evidence
+
+`tests/test_no_bridge_proof.py` (new, 14 tests) is the consolidated proof
+required by the promotion audit:
+
+- **Symbol-integrity**: `FactualExplanation.plot`, `AlternativeExplanation.plot`,
+  `CalibratedExplainer.plot`, `WrapCalibratedExplainer.plot`, and
+  `calibrated_explanations.plotting.plot_global` are snapshotted before any
+  import and re-asserted identical after package import, plugin-module
+  import, entry-point discovery, first registration, repeated registration,
+  and after rendering all eight styles through real `CalibratedExplainer`
+  objects (not fakes). `_ce_compat.py` is asserted absent both from `src/`
+  (static) and from the built wheel's file listing (`zipfile` inspection of a
+  freshly built artifact).
+- **Dispatch fidelity**: every one of the eight required surfaces (single and
+  collection factual `.plot()`, single and collection alternative `.plot()`,
+  explainer-level global plotting, standalone-HTML dashboard, repeated
+  registration, built-in style after Plotly registration) is exercised
+  through CE's real public API with non-default option values
+  (`filter_top`, `uncertainty`, `rnk_metric`, `rnk_weight`,
+  `include_instance_records`, `aggregate_positions`, `precompute`,
+  `available_cards`), asserting on `options_used` echoes, row/record counts,
+  and saved-file existence — not just "a figure exists".
+- **Negative tests**: an unregistered style raises `ConfigurationError` naming
+  the identifier; a typoed kwarg (`filter_tp`) is proven to emit CE's governed
+  `UserWarning` at the **collection**-level dispatch path. A companion test
+  (`test_typoed_option_on_single_explanation_is_a_known_ce_gap`) documents,
+  executably, that the **single-explanation** `.plot()` path currently
+  forwards the same typo with *no* warning at all — a real CE-core gap
+  (config lives in `plotting.py`'s dispatch machinery, not in this plugin),
+  recorded here rather than silently assumed away. See "Known limitations".
+- **Built-in-after-Plotly isolation**: `LocalFactualBarsPlotBuilder.build` is
+  monkeypatched to raise; CE's own `style="regular"` renders successfully
+  without ever touching it.
+
+### Public-API boundary audit (Phase 4)
+
+Static AST scan of every `src/ce_visualization_plotly/*.py` import
+(`tests/test_public_api_boundary.py`, new) found and fixed three real
+deep-import violations, all now on documented public façades:
+
+| File | Before | After |
+|---|---|---|
+| `ensured.py` | `calibrated_explanations.utils.helper.calculate_metrics` | `calibrated_explanations.utils.calculate_metrics` |
+| `ensured.py` | `calibrated_explanations.viz.builders.build_triangular_plotspec` | `calibrated_explanations.viz.build_triangular_plotspec` |
+| `alternative_bars.py`, `factual_bars.py` (lazy imports) | `calibrated_explanations.explanations.explanation.CalibratedExplanation` | `calibrated_explanations.explanations.CalibratedExplanation` |
+
+Several test files (`test_alternative_bars.py`, `test_instance_workspace.py`,
+`test_package_contract.py`) had the same deep-import pattern for identity
+checks; fixed the same way (`CalibratedExplainer`/`WrapCalibratedExplainer`
+now imported from the top-level `calibrated_explanations` package rather than
+`calibrated_explanations.core.*`). `calibrated_explanations.plotting` remains
+imported in tests only, for the documented `plot_global` identity check — it
+is the module CE's own contributor docs name explicitly
+(`docs/contributor/plugin-contract.md`) for this purpose, so it is treated as
+a documented (if not top-level-re-exported) surface for that narrow use.
+
+The inline colour specification in `alternative_bars.py` (`_ce_fill_color`)
+was already plugin-owned (not a CE import) from the prior audit, but its
+*only* correctness oracle was a diagnostic comparison against CE's private
+`viz.builders._legacy_get_fill_color`, which would silently stop testing
+anything if CE ever removed that symbol. Added
+`test_fill_color_matches_golden_values` (hardcoded expected hex outputs for
+nine representative probabilities plus both regression constants) as the
+required, non-CE-dependent oracle; the CE-comparison test is retained,
+renamed to `..._diagnostic`, and documented as optional. Also added exact
+colour/opacity golden-value tests for `factual_bars.py` (`#ff0000`/`#0000ff`
+classification/regression bar colours, `rgba(0,0,0,0.20)` uncertainty overlay)
+and a static guard (`test_no_source_string_implies_causal_interpretation`)
+that no source string uses causal language ("causes", "leads to", "due to",
+"results in") for predictive-movement descriptions.
+
+### Compatibility architecture removal (Phase 2)
+
+- `src/ce_visualization_plotly/_ce_compat.py` **deleted** (`git rm`), not just
+  unreferenced.
+- `install_compat_bridges` parameter **removed entirely** from
+  `PlotlyVisualizationBootstrap.register()` and
+  `register_plotly_visualization_components()` — not kept as a deprecated
+  no-op, since this package has never been released and there is no
+  compatibility need to preserve.
+- All bridge-marker assertions (`_factual_bars_bridge`,
+  `_alternative_bars_bridge`, `_plotly_bridge_version`) replaced with direct
+  callable-identity assertions, which is strictly stronger evidence.
+- Eight example notebooks were **actually re-executed** (`jupyter nbconvert
+  --execute`) against the RC2-dispatch CE source, not merely inspected:
+  `local_alternative_bars`, `local_factual_bars`, `local_factual_simple`,
+  `global_instance_explorer`, `local_alternative_feature_summary`,
+  `local_ensured_plotly`, `local_uncertainty_quadrant`, and
+  `dashboard_instance_workspace_standalone`. This surfaced and fixed real,
+  independent bugs predating this audit, unrelated to the bridge removal
+  itself:
+  - Three notebooks imported `ce_visualization_plotly.plugin` but never
+    called `register_plotly_visualization_components()` — the import-only
+    comment ("registers Plotly styles") was simply wrong, since this package
+    deliberately has no import-time side effects. Fixed by adding the
+    explicit call.
+  - `global_instance_explorer.ipynb` never imported the plugin at all and
+    would have raised `ConfigurationError` on first run.
+  - Two notebooks (`local_alternative_feature_summary`, `local_ensured_plotly`)
+    had a broken dev-convenience cell that popped modules from
+    `sys.modules` and then called `importlib.reload()` on them — which raises
+    `ImportError: module ... not in sys.modules`. Replaced with the same
+    plain import+register pattern used elsewhere (registration is already
+    idempotent, so the reload dance was unnecessary).
+  - Two notebooks had a stale, factually incorrect comment ("Importing the
+    package registers its Plotly styles with calibrated-explanations")
+    surviving from before import-side-effect removal; corrected/removed.
+  - Five notebooks had an *active* (uncommented) `pip install -e .` cell that
+    now fails for the same PyPI-resolution reason described above; commented
+    out with an explanatory note, matching the pattern three other notebooks
+    already used.
+  `dashboard_instance_workspace_live.ipynb` (launches a blocking live Dash
+  server) was fixed structurally (register call restored, stale comment
+  removed) but **not** re-executed via `nbconvert`, since doing so would hang
+  on the live server; this remains a documented, deliberate gap.
+
+### Repository gates (this audit, 2026-07-20)
+
+All run and observed directly, not carried over from a prior claim:
+
+```text
+ruff check packages/visualization/calibrated-explanations-visualization-plotly    -> All checks passed
+python scripts/validate_repo_structure.py                                        -> passed
+python scripts/lifecycle.py check                                                -> passed
+python scripts/lifecycle.py index --check                                       -> up to date
+python scripts/check_version_bumps.py --base 681894d <pkg>                      -> passed
+python -m pytest tests -q            (repo policy tests)                        -> 29 passed
+python -m pytest -q                   (package suite, dev env)                   -> 254 passed, 2 skipped
+```
+
+Plugin entry-point docstring coverage: **100%** (`plugin.py`, computed via
+`scripts.runtime_check_package.plugin_docstring_coverage`).
+
+**Not run this audit:** GitHub-hosted CI. This branch has not been pushed;
+doing so was outside this session's authorization, and — per the central
+finding above — the `changed-packages` CI job would fail identically to the
+local `runtime_check_package.py` run, since GitHub-hosted runners resolve
+dependencies from the same public PyPI index. Pushing and observing a red CI
+run would not add new information beyond what is already documented here;
+getting it to go *green* requires the upstream CE release, not a CI
+configuration change.
+
+### Known limitations (new, this audit)
+
+1. **CE 1.0.0rc2 is unreleased.** This is the primary blocker; see above.
+2. **Single-explanation typo warnings**: CE's collection-level `.plot()`
+   warns on unrecognised kwargs; the single indexed explanation's `.plot()`
+   does not (executable proof:
+   `test_typoed_option_on_single_explanation_is_a_known_ce_gap`). This is a
+   CE-core gap, not fixable from this plugin.
+3. **Live dashboard notebook not executed** this audit (see above).
+4. PyPI name `calibrated-explanations-visualization-plotly` still unclaimed
+   (re-verified `HTTP 404` on 2026-07-20); no pending publisher configured.
+5. Carried over from prior audits, still true: `instance_explorer` is
+   hover-only; multiclass is one-vs-rest only; no image/PNG export.
+
+### Promotion decision
+
+**Status remains `experimental`.** The repository-controlled technical work
+(no-bridge dispatch, public-API boundary, golden-value semantic tests,
+three-environment compatibility matrix, all local gates) is complete and
+green. Flipping to `mature` is blocked entirely by human/upstream actions this
+agent cannot perform or fabricate:
+
+1. ~~`calibrated-explanations` `1.0.0rc2` must be tagged and published to
+   PyPI~~ — **done**, verified independently; see the dated section at the
+   top of this file.
+2. ~~Once published, re-run the **unmodified**
+   `scripts/runtime_check_package.py` against the real PyPI artifact and
+   confirm exit 0~~ — **done**, exit 0, see top section (253 passed / 3
+   skipped, 85.93% cov, `pip check` clean against real `1.0.0rc2`).
+3. Push this branch (or its successor) and obtain a green GitHub-hosted CI run
+   on the actual `{3.11, 3.14}` matrix — required per
+   `docs/plugin-lifecycle.md`; local success does not substitute. **Still
+   outstanding.**
+4. Configure the PyPI pending publisher for the exact distribution/
+   repository/workflow/environment (`docs/maintainer-release.md`). **Still
+   outstanding** — name still unclaimed as of this audit.
+5. Maintainer sign-off on the documented scope (this file + README). **Still
+   outstanding.**
+
+No PyPI ownership, CI execution, or maintainer approval is claimed or
+fabricated here. Items 1–2 are now genuinely satisfied; items 3–5 remain the
+sole blockers. When they are complete, promotion is a maturity-promotion PR
+per the template, plus a version bump to the next unused patch (`0.3.3`) —
+metapackage curation stays a separate, later decision per
+`docs/plugin-lifecycle.md`.
+
+---
+
 ## 0.3.2 re-audit — status set to `experimental` (2026-07-19)
 
 Full skeptical re-audit at commit `f4b9a2b` treating the previous `mature`

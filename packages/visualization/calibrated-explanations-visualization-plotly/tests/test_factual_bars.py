@@ -905,3 +905,88 @@ def test_regression_header_label_fallback_without_confidence(monkeypatch):
     artifact = plugin.build(_context(_dummy_regression_explanation()))
 
     assert artifact["prediction"]["x_label"] == "Prediction interval"
+
+
+def _bar_marker_colors(figure) -> list[str]:
+    colors = []
+    for trace in figure.traces:
+        marker = trace.kwargs.get("marker")
+        if not isinstance(marker, dict):
+            continue
+        color = marker.get("color")
+        if color is None:
+            continue
+        if isinstance(color, (list, tuple)):
+            colors.extend(color)
+        else:
+            colors.append(color)
+    return colors
+
+
+def test_classification_contribution_bars_use_exact_ce_legacy_colours(monkeypatch):
+    """Classification positive/negative contribution bars must use the exact
+    matplotlib-legacy colours ("red"/"blue"), not a computed gradient."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    rules = {
+        "weight": [0.4, -0.2],
+        "weight_low": [0.3, -0.3],
+        "weight_high": [0.5, -0.1],
+        "rule": ["pos rule", "neg rule"],
+        "feature": [0, 1],
+        "value": [1.5, -0.5],
+        "feature_value": [1.5, -0.5],
+    }
+    context = _context(_dummy_explanation(rules, task="classification"))
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=context)
+
+    bar_colors = _bar_marker_colors(result.figure)
+    assert "#ff0000" in bar_colors, f"expected legacy red among bar colours, got {bar_colors}"
+    assert "#0000ff" in bar_colors, f"expected legacy blue among bar colours, got {bar_colors}"
+
+
+def test_regression_contribution_bars_use_exact_ce_legacy_colours(monkeypatch):
+    """Regression flips the classification convention: positive contributions
+    are blue, negative are red (matching CE legacy fill_betweenx colours)."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    rules = {
+        "weight": [0.4, -0.2],
+        "weight_low": [0.3, -0.3],
+        "weight_high": [0.5, -0.1],
+        "rule": ["pos rule", "neg rule"],
+        "feature": [0, 1],
+        "value": [1.5, -0.5],
+        "feature_value": [1.5, -0.5],
+    }
+    artifact = plugin.build(_context(_dummy_explanation(rules, task="regression")))
+    result = plugin.render(artifact, context=_context(_dummy_explanation(rules, task="regression")))
+
+    bar_colors = _bar_marker_colors(result.figure)
+    assert "#0000ff" in bar_colors, f"expected legacy blue for positive, got {bar_colors}"
+    assert "#ff0000" in bar_colors, f"expected legacy red for negative, got {bar_colors}"
+
+
+def test_uncertainty_overlay_band_uses_ce_legacy_opacity(monkeypatch):
+    """The base-prediction uncertainty overlay band must use CE's exact
+    legacy alpha of 0.20 (``rgba(0,0,0,0.20)``), not an arbitrary opacity."""
+    _install_fake_plotly(monkeypatch)
+    _load_plugin(monkeypatch)
+    plugin = registry.find_plot_plugin(STYLE_ID)
+
+    context = _context(_dummy_explanation(), show_uncertainty=True)
+    artifact = plugin.build(context)
+    result = plugin.render(artifact, context=_context(_dummy_explanation(), show_uncertainty=True))
+
+    overlay_calls = [
+        call
+        for call in result.figure.vlines
+        if call.get("fillcolor") is not None
+    ]
+    assert len(overlay_calls) == 1, f"expected exactly one overlay band, got {overlay_calls}"
+    assert overlay_calls[0]["fillcolor"] == "rgba(0,0,0,0.20)"

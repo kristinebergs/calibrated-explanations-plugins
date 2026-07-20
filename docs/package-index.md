@@ -11,7 +11,7 @@ Curated PyPI products; family metapackages contain only mature plugins.
 - `calibrated-explanations-calibration` 0.2.0
 - `calibrated-explanations-explanation` 0.2.0
 - `calibrated-explanations-plugins` 0.2.0
-- `calibrated-explanations-visualization` 0.2.1
+- `calibrated-explanations-visualization` 0.2.2
 
 ## Mature curated plugins
 
@@ -38,7 +38,7 @@ Not published to PyPI; install from a repository checkout.
 - `calibrated-explanations-visualization-dashboard` 0.1.1 — `packages/visualization/calibrated-explanations-visualization-dashboard`
 - `calibrated-explanations-visualization-example` 0.1.1 — `packages/visualization/calibrated-explanations-visualization-example`
 - `calibrated-explanations-visualization-factual-shap` 0.1.1 — `packages/visualization/calibrated-explanations-visualization-factual-shap`
-- `calibrated-explanations-visualization-plotly` 0.3.2 — `packages/visualization/calibrated-explanations-visualization-plotly`
+- `calibrated-explanations-visualization-plotly` 0.3.3 — `packages/visualization/calibrated-explanations-visualization-plotly`
 
 ## Deprecated plugins
 
