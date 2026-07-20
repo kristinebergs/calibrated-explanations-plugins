@@ -412,21 +412,24 @@ def test_artifact_schema_versions_are_declared_separately():
 
 
 def test_root_import_registers_nothing_and_patches_nothing():
-    """Importing the package must not register plot styles or wrap CE plot
-    symbols; registration and bridge install are explicit calls."""
+    """Importing the package must not register plot styles or replace any CE
+    plotting callable; registration is always an explicit call."""
     script = (
         "import calibrated_explanations.plotting as ce_plotting\n"
-        "from calibrated_explanations.explanations.explanation import (\n"
+        "from calibrated_explanations.explanations import (\n"
         "    AlternativeExplanation, FactualExplanation)\n"
         "import calibrated_explanations.plugins.registry as registry\n"
+        "original_plot_global = ce_plotting.plot_global\n"
+        "original_factual_plot = FactualExplanation.plot\n"
+        "original_alternative_plot = AlternativeExplanation.plot\n"
         "import ce_visualization_plotly  # noqa: F401\n"
         "import ce_visualization_plotly.plugin  # noqa: F401\n"
-        "assert not getattr(ce_plotting.plot_global, '_plotly_bridge_version', 0), (\n"
-        "    'import must not wrap plot_global')\n"
-        "assert not getattr(FactualExplanation.plot, '_factual_bars_bridge', False), (\n"
-        "    'import must not wrap FactualExplanation.plot')\n"
-        "assert not getattr(AlternativeExplanation.plot, '_alternative_bars_bridge', False), (\n"
-        "    'import must not wrap AlternativeExplanation.plot')\n"
+        "assert ce_plotting.plot_global is original_plot_global, (\n"
+        "    'import must not replace plot_global')\n"
+        "assert FactualExplanation.plot is original_factual_plot, (\n"
+        "    'import must not replace FactualExplanation.plot')\n"
+        "assert AlternativeExplanation.plot is original_alternative_plot, (\n"
+        "    'import must not replace AlternativeExplanation.plot')\n"
         "assert registry.find_plot_style_descriptor('plotly.local.factual_bars') is None, (\n"
         "    'import must not register styles')\n"
         "print('NO_SIDE_EFFECTS')\n"
@@ -454,7 +457,7 @@ def test_registration_never_replaces_ce_plotting_callables(monkeypatch):
     """CE >=1.0.0rc2 native dispatch requires no bridge: registering (and
     re-registering) the Plotly components must never touch
     ``FactualExplanation.plot``."""
-    from calibrated_explanations.explanations.explanation import FactualExplanation
+    from calibrated_explanations.explanations import FactualExplanation
 
     module = _load_plugin(monkeypatch)
     original = FactualExplanation.plot
@@ -463,4 +466,6 @@ def test_registration_never_replaces_ce_plotting_callables(monkeypatch):
     assert FactualExplanation.plot is original, "registration must not replace CE callables"
 
     module.register_plotly_visualization_components()
-    assert FactualExplanation.plot is original, "repeated registration must not replace CE callables"
+    assert FactualExplanation.plot is original, (
+        "repeated registration must not replace CE callables"
+    )

@@ -10,10 +10,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     # Curation policy: only plugins with status = "mature" may be listed here.
-    # calibrated-explanations-visualization-plotly is mature but not yet
-    # published to PyPI (name unclaimed, trusted publisher pending), so the
-    # curated set stays empty until its first release exists — a metapackage
-    # dependency must be resolvable from PyPI.
+    # calibrated-explanations-visualization-plotly is still "experimental"
+    # (see its pyproject.toml [tool.ce_plugin_repo]): it has not completed a
+    # maturity-promotion review, has no PyPI release, and curation is a
+    # separate decision from promotion in any case (docs/plugin-lifecycle.md).
+    # The curated set stays empty until a plugin is both promoted to mature
+    # and resolvable from PyPI.
 ]
 
 [tool.hatch.build.targets.wheel]

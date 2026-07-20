@@ -565,14 +565,14 @@ def test_html_export_creates_file(monkeypatch, tmp_path):
     assert result.figure is result.extras["figure"]
 
 
-# ── Bridge ────────────────────────────────────────────────────────────────────
+# ── No-bridge dispatch ──────────────────────────────────────────────────────
 
 
-def test_bridge_is_installed(monkeypatch):
-    """CE >=1.0.0rc2: registration must not replace AlternativeExplanation.plot;
-    native dispatch reaches this style without any bridge marker."""
+def test_registration_never_replaces_alternative_explanation_plot(monkeypatch):
+    """CE >=1.0.0rc2 dispatches this style natively: registering it must not
+    replace, wrap, or mark ``AlternativeExplanation.plot``."""
     try:
-        from calibrated_explanations.explanations.explanation import AlternativeExplanation
+        from calibrated_explanations.explanations import AlternativeExplanation
     except ImportError:
         pytest.skip("AlternativeExplanation not accessible in this CE version")
 
@@ -580,21 +580,6 @@ def test_bridge_is_installed(monkeypatch):
     _load_plugin(monkeypatch)
 
     assert AlternativeExplanation.plot is original
-    assert not getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False)
-
-
-def test_bridge_passes_non_alternative_bars_styles_through(monkeypatch):
-    """Bridge must not intercept calls for unrelated styles."""
-    _load_plugin(monkeypatch)
-    try:
-        from calibrated_explanations.explanations.explanation import AlternativeExplanation
-    except ImportError:
-        pytest.skip("AlternativeExplanation not accessible in this CE version")
-
-    if not hasattr(AlternativeExplanation.plot, "__wrapped__"):
-        pytest.skip("Cannot test bridge pass-through without access to wrapped function")
-
-    assert getattr(AlternativeExplanation.plot, "_alternative_bars_bridge", False)
 
 
 # ── Ranking ───────────────────────────────────────────────────────────────────
@@ -785,12 +770,47 @@ def test_identical_to_base_filtered_after_ranking_and_filter_top(monkeypatch):
     assert "good_alt" in rule_names, "Non-identical rule within filter_top must be kept"
 
 
-def test_inline_fill_color_matches_ce_legacy_implementation(monkeypatch):
-    """The inline legacy-color copy must match CE's implementation exactly.
+def test_fill_color_matches_golden_values(monkeypatch):
+    """Golden-value regression test for the plugin-owned fill-color spec.
 
-    The plugin deliberately does NOT import the private CE symbol
-    ``viz.builders._legacy_get_fill_color`` at runtime; this test uses it only
-    as the parity oracle so drift in either copy is caught here.
+    ``_ce_fill_color`` is a plugin-owned visual specification (not a CE
+    import — see the module-level comment in ``alternative_bars.py``), so its
+    correctness oracle must not depend on CE exposing any particular private
+    symbol. These expected values were computed directly from the current
+    implementation and pinned here; any future change to the algorithm must
+    update this test deliberately.
+    """
+    _load_plugin(monkeypatch)
+    from ce_visualization_plotly import alternative_bars as ab
+
+    golden = {
+        0.0: "#5639e5",
+        0.05: "#6348e7",
+        0.25: "#9583ef",
+        0.499: "#d4cdf8",
+        0.5: "#f8d1ce",
+        0.5001: "#f8d1cd",
+        0.75: "#ef8c83",
+        0.95: "#e75548",
+        1.0: "#ff0000",
+    }
+    for probability, expected in golden.items():
+        assert ab._ce_fill_color(probability) == expected, (
+            f"fill color regression at p={probability}"
+        )
+
+    assert ab._ce_fill_color(0.9, 0.15) == "#fbe3e1"
+    assert ab._ce_fill_color(0.2, 0.5) == "#aa9cf2"
+    assert ab._REGRESSION_BAR_COLOR == "#ff0000"
+    assert ab._REGRESSION_BASE_COLOR == "#fbe3e1"
+
+
+def test_inline_fill_color_matches_ce_legacy_implementation_diagnostic(monkeypatch):
+    """Optional diagnostic only: compares the plugin-owned fill-color spec
+    against CE's private legacy helper, when available, to catch accidental
+    drift early. This is NOT the correctness oracle (see
+    ``test_fill_color_matches_golden_values`` for that) and must remain
+    skippable, since CE may remove the private symbol at any time.
     """
     _load_plugin(monkeypatch)
     from ce_visualization_plotly import alternative_bars as ab
@@ -798,7 +818,7 @@ def test_inline_fill_color_matches_ce_legacy_implementation(monkeypatch):
     ce_builders = pytest.importorskip("calibrated_explanations.viz.builders")
     legacy_fill = getattr(ce_builders, "_legacy_get_fill_color", None)
     if legacy_fill is None:
-        pytest.skip("CE no longer exposes _legacy_get_fill_color; parity oracle unavailable")
+        pytest.skip("CE no longer exposes _legacy_get_fill_color; diagnostic oracle unavailable")
 
     probabilities = [index / 50 for index in range(51)] + [0.999999999, 1.0]
     for probability in probabilities:

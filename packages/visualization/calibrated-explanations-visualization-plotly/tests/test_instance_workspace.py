@@ -274,13 +274,13 @@ def test_renderer_exports_standalone_html(monkeypatch, tmp_path):
     assert "Uncertainty Quadrant" in html
 
 
-class _BridgeLearner:
+class _RuntimeLearner:
     def predict_proba(self, _x):
         return []
 
 
-class _BridgeExplainer:
-    learner = _BridgeLearner()
+class _RuntimeExplainer:
+    learner = _RuntimeLearner()
     class_labels = None
 
     def __init__(self):
@@ -339,12 +339,12 @@ class _BridgeExplainer:
 
 def test_dashboard_builder_precomputes_via_runtime_context(monkeypatch, tmp_path):
     """CE >=1.0.0rc2 native dispatch: the builder reads the originating
-    explainer/x/threshold from ``context.runtime`` (no ``_ce_compat`` bridge
-    involved) and precomputes local explanations directly."""
+    explainer/x/threshold from ``context.runtime`` and precomputes local
+    explanations directly, with no compatibility bridge involved."""
     _install_fake_plotly(monkeypatch)
     _load_plugin(monkeypatch)
 
-    explainer = _BridgeExplainer()
+    explainer = _RuntimeExplainer()
     context = PlotRenderContext(
         explanation=None,
         instance_metadata=MappingProxyType({"type": "global"}),
@@ -402,20 +402,20 @@ def test_dashboard_builder_precomputes_via_runtime_context(monkeypatch, tmp_path
 
 
 def test_registration_never_patches_plot_global_or_ce_classes(monkeypatch):
-    """CE >=1.0.0rc2: registration must not touch ``plotting.plot_global`` or
-    any CE class method -- the former ``_ce_compat`` bridge is gone."""
+    """CE >=1.0.0rc2 dispatches natively: registration must never replace
+    ``plotting.plot_global`` or any CE class's ``plot`` method."""
     plugin_module = _load_plugin(monkeypatch)
     import calibrated_explanations.plotting as ce_plotting
-    from calibrated_explanations.core.calibrated_explainer import CalibratedExplainer
-    from calibrated_explanations.core.wrap_explainer import WrapCalibratedExplainer
+    from calibrated_explanations import CalibratedExplainer, WrapCalibratedExplainer
 
     original_plot_global = ce_plotting.plot_global
+    original_explainer_plot = CalibratedExplainer.plot
+    original_wrap_plot = WrapCalibratedExplainer.plot
     plugin_module.register_plotly_visualization_components()
 
     assert ce_plotting.plot_global is original_plot_global
-    assert not hasattr(ce_plotting.plot_global, "_plotly_bridge_version")
-    assert not hasattr(CalibratedExplainer.plot, "_plotly_bridge_version")
-    assert not hasattr(WrapCalibratedExplainer.plot, "_plotly_bridge_version")
+    assert CalibratedExplainer.plot is original_explainer_plot
+    assert WrapCalibratedExplainer.plot is original_wrap_plot
 
 
 def test_dashboard_html_treats_hostile_labels_as_text(monkeypatch, tmp_path):

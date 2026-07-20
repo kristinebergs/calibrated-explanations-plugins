@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from html import escape
 from pathlib import Path
@@ -94,10 +95,8 @@ def _first_explanation(collection: Any) -> Any:
 
 
 def _set_original_index(explanation: Any, instance_index: int) -> Any:
-    try:
+    with contextlib.suppress(AttributeError, TypeError):
         explanation.index = instance_index
-    except (AttributeError, TypeError):
-        pass
     return explanation
 
 
@@ -126,8 +125,9 @@ def _precompute_from_runtime(
     """Precompute local explanations via the documented CE runtime context.
 
     CE >=1.0.0rc2 grants trusted dashboard plugins the originating public
-    explainer and request data through ``context.runtime``; this replaces the
-    host-installed ``_ce_compat`` bridge precomputation.
+    explainer and request data through ``context.runtime``, so this package
+    can precompute the dashboard's local cards directly from the public
+    explainer API without a compatibility bridge.
     """
     from types import SimpleNamespace  # noqa: PLC0415
 

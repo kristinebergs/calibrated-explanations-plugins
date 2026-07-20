@@ -194,10 +194,10 @@ def _compute_ranking(
     # so payloads that don't expose the method are ranked by calling the
     # public CE implementation unbound. Failures propagate — a silent
     # substitute ranking would conceal a defect.
-    from calibrated_explanations.explanations.explanation import (  # noqa: PLC0415
+    from calibrated_explanations.explanations import (  # noqa: PLC0415
         CalibratedExplanation,
     )
-    from calibrated_explanations.utils.helper import calculate_metrics  # noqa: PLC0415
+    from calibrated_explanations.utils import calculate_metrics  # noqa: PLC0415
 
     rank_fn = getattr(local_explanation, "rank_features", None)
     if not callable(rank_fn):

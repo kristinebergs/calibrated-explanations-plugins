@@ -187,10 +187,10 @@ def _rank_items(
         return []
 
     import numpy as np  # noqa: PLC0415
-    from calibrated_explanations.explanations.explanation import (  # noqa: PLC0415
+    from calibrated_explanations.explanations import (  # noqa: PLC0415
         CalibratedExplanation,
     )
-    from calibrated_explanations.utils.helper import calculate_metrics  # noqa: PLC0415
+    from calibrated_explanations.utils import calculate_metrics  # noqa: PLC0415
 
     n = len(items)
     rank_fn = getattr(local_explanation, "rank_features", None)
