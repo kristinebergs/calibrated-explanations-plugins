@@ -358,7 +358,8 @@ def test_dashboard_builder_precomputes_via_runtime_context(monkeypatch, tmp_path
                 "dashboard_mode": "standalone_html",
                 "precompute": "selected",
                 "selected_instance_indices": [1],
-                "available_cards": ["local_uncertainty_quadrant"],
+                "available_cards": ["local_factual_bars", "alternative_feature_summary"],
+                "low_high_percentiles": (20, 80),
                 # CE's reserved global payload (see plotting._dispatch_explicit_global_plot_style):
                 # the instance-explorer sub-build consumes this via
                 # options.get("payload"), not context.explanation, once forwarded
@@ -373,7 +374,13 @@ def test_dashboard_builder_precomputes_via_runtime_context(monkeypatch, tmp_path
             }
         ),
         runtime=MappingProxyType(
-            {"scope": "global", "explainer": explainer, "x": [[1, 2], [3, 4]], "threshold": None}
+            {
+                "scope": "global",
+                "explainer": explainer,
+                "x": [[1, 2], [3, 4]],
+                "threshold": None,
+                "bins": [10, 20],
+            }
         ),
     )
 
@@ -381,8 +388,17 @@ def test_dashboard_builder_precomputes_via_runtime_context(monkeypatch, tmp_path
     artifact = plugin.build(context)
 
     assert len(explainer.factual_calls) == 1
-    assert explainer.alternative_calls == []
-    assert artifact["precomputed_local"]["1"]["cards"][0]["available"] is True
+    assert len(explainer.alternative_calls) == 1
+    factual_row, factual_kwargs = explainer.factual_calls[0]
+    alternative_row, alternative_kwargs = explainer.alternative_calls[0]
+    assert factual_row.tolist() == [[3, 4]]
+    assert alternative_row.tolist() == [[3, 4]]
+    assert factual_kwargs["low_high_percentiles"] == (20, 80)
+    assert alternative_kwargs["low_high_percentiles"] == (20, 80)
+    assert factual_kwargs["bins"].tolist() == [20]
+    assert alternative_kwargs["bins"].tolist() == [20]
+    assert artifact["instance_records"][1]["metadata"]["percentiles"] == (20, 80)
+    assert all(card["available"] is True for card in artifact["precomputed_local"]["1"]["cards"])
 
 
 def test_registration_never_patches_plot_global_or_ce_classes(monkeypatch):

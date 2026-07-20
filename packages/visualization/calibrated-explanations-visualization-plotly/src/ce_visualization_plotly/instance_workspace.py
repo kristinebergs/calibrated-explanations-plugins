@@ -101,11 +101,26 @@ def _set_original_index(explanation: Any, instance_index: int) -> Any:
     return explanation
 
 
+def _instance_bins(bins: Any, instance_index: int) -> Any:
+    """Return scalar bins unchanged and slice batch bins to one selected row."""
+    if bins is None:
+        return None
+    try:
+        import numpy as np  # noqa: PLC0415
+
+        if np.isscalar(bins) or np.asarray(bins).ndim == 0:
+            return bins
+    except (TypeError, ValueError):
+        return bins
+    return _slice_rows(bins, [instance_index])
+
+
 def _precompute_from_runtime(
     explainer: Any,
     x: Any,
     selected_indices: list[int],
     threshold: Any,
+    bins: Any,
     options: dict[str, Any],
 ) -> Any:
     """Precompute local explanations via the documented CE runtime context.
@@ -128,6 +143,7 @@ def _precompute_from_runtime(
 
     for instance_index in selected_indices:
         row = _slice_rows(x, [instance_index])
+        row_bins = _instance_bins(bins, instance_index)
         if include_factual and callable(getattr(explainer, "explain_factual", None)):
             factual_kwargs = {
                 key: value
@@ -136,6 +152,10 @@ def _precompute_from_runtime(
             }
             if threshold is not None:
                 factual_kwargs.setdefault("threshold", threshold)
+            if options.get("low_high_percentiles") is not None:
+                factual_kwargs.setdefault("low_high_percentiles", options["low_high_percentiles"])
+            if row_bins is not None:
+                factual_kwargs.setdefault("bins", row_bins)
             factual_explanations.append(
                 _set_original_index(
                     _first_explanation(explainer.explain_factual(row, **factual_kwargs)),
@@ -150,6 +170,12 @@ def _precompute_from_runtime(
             }
             if threshold is not None:
                 alternative_kwargs.setdefault("threshold", threshold)
+            if options.get("low_high_percentiles") is not None:
+                alternative_kwargs.setdefault(
+                    "low_high_percentiles", options["low_high_percentiles"]
+                )
+            if row_bins is not None:
+                alternative_kwargs.setdefault("bins", row_bins)
             if max_rule_size is not None:
                 alternative_kwargs.setdefault("max_rule_size", max_rule_size)
             alternative_explanations.append(
@@ -472,6 +498,11 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
             global_options["payload"] = options["payload"]
         if "threshold" not in global_options and "threshold" in runtime:
             global_options["threshold"] = runtime["threshold"]
+        if (
+            "low_high_percentiles" not in global_options
+            and options.get("low_high_percentiles") is not None
+        ):
+            global_options["low_high_percentiles"] = options["low_high_percentiles"]
         if "task" not in global_options:
             global_options["task"] = options.get("task", "auto")
         global_context = PlotRenderContext(
@@ -509,6 +540,7 @@ class InstanceWorkspaceDashboardBuilder(PlotBuilder):
                 runtime["x"],
                 selected_indices,
                 runtime.get("threshold"),
+                runtime.get("bins"),
                 precompute_options,
             )
 
