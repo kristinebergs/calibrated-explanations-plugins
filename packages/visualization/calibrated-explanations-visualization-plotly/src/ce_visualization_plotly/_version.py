@@ -15,5 +15,5 @@ the plugin monorepo, not the Plotly organisation; earlier releases used
 ``"plotly.local"`` which could be misread as an upstream Plotly identity.
 """
 
-PACKAGE_VERSION = "0.3.3"
+PACKAGE_VERSION = "0.3.4"
 PROVIDER = "calibrated-explanations-plugins"

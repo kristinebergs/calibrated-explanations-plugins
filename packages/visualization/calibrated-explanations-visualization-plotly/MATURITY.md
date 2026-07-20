@@ -1,5 +1,78 @@
 # Maturity evidence — calibrated-explanations-visualization-plotly
 
+## Promotion to `mature`, version 0.3.4 (2026-07-21)
+
+`status` flipped from `"experimental"` to `"mature"` in `[tool.ce_plugin_repo]`
+(`pyproject.toml`), version bumped `0.3.3` → `0.3.4` (mirrored in
+`_version.PACKAGE_VERSION`; the flip itself is a "material" pyproject.toml
+change under `check_version_bumps.py`, so it requires its own bump even
+though no other code changed). Classifier updated
+`"Development Status :: 4 - Beta"` → `"Development Status :: 5 -
+Production/Stable"` — there is no other `mature` plugin anywhere in this
+repository yet to follow a precedent from; this is a judgement call for
+reviewer sign-off, not a policy-enforced value (`validate_repo_structure.py`
+and `scripts/lifecycle.py` do not check classifiers).
+
+**Basis for promotion** — every criterion in `docs/plugin-lifecycle.md`'s
+"Mature" definition that is repository-verifiable:
+
+- Named maintainer (`project.maintainers`) and licence (`BSD-3-Clause`)
+  declared.
+- Declared runtime dependencies and documented Python/CE compatibility
+  (`>=1.0.0rc2,<2`, verified against the real PyPI release — see the
+  2026-07-20 sections below).
+- README covers purpose, installation, configuration, limitations, support.
+- Tests pass from a built wheel: `python scripts/runtime_check_package.py
+  --package-path packages/visualization/calibrated-explanations-visualization-plotly`
+  — exit 0 against real PyPI `1.0.0rc2` (see below).
+- No known use of undocumented private CE APIs: static AST audit
+  (`tests/test_public_api_boundary.py`) plus manual review, both recorded
+  above; human-review box checked.
+- Explicit PyPI name-ownership decision: pending publisher configured by the
+  maintainer (human action, tracked outside this file).
+
+**Repository-side gates re-verified against this promotion commit:**
+
+```text
+ruff check packages/visualization/calibrated-explanations-visualization-plotly  -> All checks passed
+python -m pytest -q (package suite)                                            -> 254 passed, 2 skipped
+python scripts/validate_repo_structure.py                                      -> passed (README "Status: `mature`"
+                                                                                    + bare `pip install` line now present,
+                                                                                    both required once status = mature)
+python scripts/lifecycle.py check                                              -> passed
+python scripts/lifecycle.py index --check                                     -> up to date (plugin now listed under
+                                                                                    "Mature standalone plugins")
+python scripts/check_version_bumps.py --base <main-tip> <pkg>                  -> passed
+python scripts/lifecycle.py release --tag pkg/calibrated-explanations-visualization-plotly/v0.3.4 \
+       --default-branch origin/main                                           -> resolved cleanly (distribution name,
+                                                                                    package path/type, version match)
+```
+
+**Curation status:** deliberately still deferred. This package is not added
+to `packages/meta/calibrated-explanations-visualization`'s dependencies —
+per `docs/plugin-lifecycle.md`, curation is a separate decision from
+promotion, and the metapackage policy requires a curated dependency to be
+"resolvable from PyPI," which this package is not yet (its own release tag
+has not been pushed).
+
+**Outstanding human actions, unchanged from the checklist below except item
+1 (PyPI name ownership), which is in progress separately:**
+
+1. PyPI pending publisher configuration — in progress (maintainer working on
+   this now, per the promotion request).
+2. GitHub-hosted CI green on this exact promotion commit (the CI run that
+   passed previously was for the pre-promotion state; the status/version
+   changes here have not yet been through CI).
+3. This PR/commit reviewed and merged to `main`.
+4. Only after merge: tag `pkg/calibrated-explanations-visualization-plotly/v0.3.4`
+   on the merged commit and push it, per `docs/maintainer-release.md`, to
+   trigger the real build-validate-publish workflow.
+5. Post-publish smoke test (fresh venv, `pip install
+   calibrated-explanations-visualization-plotly`, import + register + render
+   one style) — to be recorded here once step 4 completes.
+
+---
+
 ## Version bump to 0.3.3 — CI policy fix (2026-07-20, later still)
 
 Pushing this branch surfaced a real CI failure independent of everything

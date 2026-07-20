@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization-plotly"
-version = "0.3.3"
+version = "0.3.4"
 description = "Plotly visualization plugin layouts for calibrated-explanations"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -13,7 +13,7 @@ maintainers = [
     { name = "Tuwe Löfström", email = "tuwe.lofstrom@ju.se" },
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -94,9 +94,11 @@ markers = [
 
 [tool.ce_plugin_repo]
 family = "visualization"
-# Held at "experimental" until the publication criteria are met: the PyPI
-# name is unclaimed (verified 404 on 2026-07-19), no release exists to verify
-# the documented install command against, and the trusted publisher is not
-# yet configured. See MATURITY.md for the full re-audit evidence.
-status = "experimental"
+# Promoted to "mature" (2026-07-21): CE 1.0.0rc2 (the dispatch contract this
+# package requires) is published on PyPI, the full compatibility matrix and
+# no-bridge dispatch proof pass against the real release, and this promotion
+# was reviewed via the maturity-promotion PR template. See MATURITY.md for
+# the full audit trail. Curation into the visualization metapackage remains
+# a separate, later decision pending this package's own PyPI release.
+status = "mature"
 import_name = "ce_visualization_plotly"

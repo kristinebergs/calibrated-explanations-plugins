@@ -2,15 +2,17 @@
 
 Family: `visualization`
 
-Status: `experimental`
+Status: `mature`
 
-> The code and test evidence below target promotion to `mature`, and
-> `calibrated-explanations>=1.0.0rc2` (the CE release this package's dispatch
-> model requires) is now published on PyPI and installs cleanly. The
-> lifecycle status remains `experimental` because this package's own PyPI
-> distribution is still unclaimed with no trusted publisher configured, and
-> GitHub-hosted CI has not yet run on this branch. See `MATURITY.md` for the
-> full, dated audit trail.
+> Promoted from `experimental` on 2026-07-21: `calibrated-explanations
+> >=1.0.0rc2` (the CE release this package's dispatch model requires) is
+> published on PyPI, and the full no-bridge dispatch proof and compatibility
+> matrix pass against that real release. This package's own PyPI release is
+> the next step after this promotion merges (see `docs/maintainer-release.md`
+> for the tag-and-publish sequence) — the install command below is the
+> documented target; until the release tag is pushed and published, use the
+> repository-checkout fallback noted in the same section. See `MATURITY.md`
+> for the full, dated audit trail.
 
 Interactive Plotly visualization layouts for
 [`calibrated-explanations`](https://github.com/kristinebergs/calibrated_explanations) (CE).
@@ -31,20 +33,28 @@ difference is visual (hover cards, HTML output), not semantic.
 
 ## Installation
 
-**Not yet on PyPI.** The distribution name
-`calibrated-explanations-visualization-plotly` is intended for this package
-but is unclaimed and no release has been published (verified 2026-07-20).
-Once the first release exists, installation will be `pip install` of that
-distribution name (with the `[live]` extra for the Dash dashboard). Until
-then, install from a checkout of this repository:
+```bash
+pip install calibrated-explanations-visualization-plotly
+```
+
+with the `[live]` extra for the optional Dash dashboard:
+
+```bash
+pip install "calibrated-explanations-visualization-plotly[live]"
+```
+
+**Pending this package's own release tag** (see `docs/maintainer-release.md`
+for the tag-and-publish sequence that follows this promotion), the PyPI
+distribution does not exist yet; until it does, install from a checkout of
+this repository instead:
 
 ```bash
 pip install packages/visualization/calibrated-explanations-visualization-plotly
 ```
 
-`calibrated-explanations>=1.0.0rc2,<2` (this package's dependency floor) is
-now published on PyPI, so the command above resolves and installs cleanly in
-a normal environment — verified in a fresh venv (`pip check` clean, full test
+Either way, `calibrated-explanations>=1.0.0rc2,<2` (this package's dependency
+floor) is published on PyPI, so the dependency itself resolves cleanly in a
+normal environment — verified in a fresh venv (`pip check` clean, full test
 suite passing from the installed wheel; see `MATURITY.md`).
 
 Plotly and NumPy are mandatory dependencies and are installed automatically;
