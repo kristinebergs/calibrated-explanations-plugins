@@ -453,8 +453,7 @@ def test_root_import_registers_nothing_and_patches_nothing():
 def test_registration_never_replaces_ce_plotting_callables(monkeypatch):
     """CE >=1.0.0rc2 native dispatch requires no bridge: registering (and
     re-registering) the Plotly components must never touch
-    ``FactualExplanation.plot``, even under the legacy
-    ``install_compat_bridges=True`` call shape kept for compatibility."""
+    ``FactualExplanation.plot``."""
     from calibrated_explanations.explanations.explanation import FactualExplanation
 
     module = _load_plugin(monkeypatch)
@@ -463,7 +462,5 @@ def test_registration_never_replaces_ce_plotting_callables(monkeypatch):
     module.register_plotly_visualization_components()
     assert FactualExplanation.plot is original, "registration must not replace CE callables"
 
-    module.register_plotly_visualization_components(install_compat_bridges=True)
-    assert FactualExplanation.plot is original, (
-        "install_compat_bridges=True must remain a no-op post-rc2"
-    )
+    module.register_plotly_visualization_components()
+    assert FactualExplanation.plot is original, "repeated registration must not replace CE callables"

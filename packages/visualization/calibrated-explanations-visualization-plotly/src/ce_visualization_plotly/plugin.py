@@ -125,16 +125,9 @@ class PlotlyVisualizationBootstrap:
     """
 
     @staticmethod
-    def register(*, install_compat_bridges: bool = False) -> None:
-        """Register all Plotly styles through CE's public plot-plugin contract.
-
-        ``install_compat_bridges`` is retained for call compatibility and is a
-        no-op: CE >=1.0.0rc2 dispatches explicit third-party styles natively
-        with the complete option set, so no CE symbol is ever replaced.
-        """
-        register_plotly_visualization_components(
-            install_compat_bridges=install_compat_bridges
-        )
+    def register() -> None:
+        """Register all Plotly styles through CE's public plot-plugin contract."""
+        register_plotly_visualization_components()
 
     plugin_meta = {
         "schema_version": 1,
@@ -151,7 +144,7 @@ class PlotlyVisualizationBootstrap:
     }
 
 
-def register_plotly_visualization_components(*, install_compat_bridges: bool = False) -> None:
+def register_plotly_visualization_components() -> None:
     """Register Plotly visualization builders, renderers, and styles.
 
     This is an explicit call — importing ``ce_visualization_plotly`` (or this
@@ -160,9 +153,8 @@ def register_plotly_visualization_components(*, install_compat_bridges: bool = F
 
     CE >=1.0.0rc2 dispatches explicit third-party styles natively through the
     public registry with the complete option set and (for trusted plugins) a
-    documented runtime context, so the former ``_ce_compat`` bridges are no
-    longer imported or installed. ``install_compat_bridges`` is a no-op kept
-    for call compatibility.
+    documented runtime context, so no compatibility bridge is installed and
+    no CE plotting callable is ever replaced.
     """
     if find_plot_builder_descriptor(BUILDER_ID) is None:
         register_plot_builder(BUILDER_ID, UncertaintyQuadrantPlotBuilder(), source="entrypoint")
@@ -369,6 +361,3 @@ def register_plotly_visualization_components(*, install_compat_bridges: bool = F
                 "default_for": (),
             },
         )
-    # CE >=1.0.0rc2: native strict dispatch removes the need for _ce_compat
-    # bridges; install_compat_bridges is intentionally ignored.
-    _ = install_compat_bridges
