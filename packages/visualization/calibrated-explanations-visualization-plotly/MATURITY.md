@@ -1,5 +1,51 @@
 # Maturity evidence — calibrated-explanations-visualization-plotly
 
+## Curation into the visualization family metapackage, version 0.3.5 (2026-07-21)
+
+`calibrated-explanations-visualization-plotly==0.3.4` (below) was confirmed
+published on PyPI (`https://pypi.org/pypi/calibrated-explanations-visualization-plotly/json`,
+release date 2026-07-20), resolving the sole blocker the 0.3.4 entry recorded
+against curation ("resolvable from PyPI"). This package is now added to
+`packages/meta/calibrated-explanations-visualization`'s dependencies
+(`>=0.3.5,<0.4`, base install) and its `[live]` optional-dependency extra
+(`calibrated-explanations-visualization-plotly[live]>=0.3.5,<0.4`) — curation
+never adds `dash` directly to the metapackage; the Plotly plugin's own
+`[live]` extra remains the sole owner of that dependency contract.
+
+Bumped `0.3.4` → `0.3.5` (mirrored in `_version.PACKAGE_VERSION`) because
+correcting this package's own now-stale `[tool.ce_plugin_repo]` pyproject.toml
+comment ("Curation into the visualization metapackage remains a separate,
+later decision pending this package's own PyPI release") is a material
+`pyproject.toml` change under `scripts/check_version_bumps.py`, which does
+not distinguish comment-only edits from code changes. The correction itself
+was necessary: the comment was a factually stale statement this task's
+"reconcile stale repository metadata" requirement covers, not optional
+cleanup. README's promotion blockquote and installation section (which still
+said "the PyPI distribution does not exist yet") were corrected the same way,
+without triggering the gate a second time (README.md changes are not
+"material" under `check_version_bumps.py`).
+
+Re-verified after the bump:
+
+```text
+ruff check packages/visualization/calibrated-explanations-visualization-plotly  -> All checks passed
+python -m pytest -q (package suite)                                            -> 254 passed, 2 skipped
+python scripts/validate_repo_structure.py                                      -> passed
+python scripts/lifecycle.py check                                              -> passed
+python scripts/lifecycle.py index --check                                     -> up to date (plugin now listed under
+                                                                                    "Mature curated plugins")
+```
+
+**Release sequencing implication:** `calibrated-explanations-visualization-plotly`
+`0.3.5` must be tagged, built, and published to PyPI *before*
+`calibrated-explanations-visualization` `0.3.0` (which now depends on
+`>=0.3.5,<0.4`) is published — otherwise the metapackage's dependency floor
+would not resolve. See `docs/maintainer-release.md` for the tag-and-publish
+sequence; this remains a human release action outside this session's
+authorization.
+
+---
+
 ## Promotion to `mature`, version 0.3.4 (2026-07-21)
 
 `status` flipped from `"experimental"` to `"mature"` in `[tool.ce_plugin_repo]`

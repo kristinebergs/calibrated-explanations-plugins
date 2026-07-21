@@ -4,15 +4,35 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-plugins"
-version = "0.2.0"
+version = "0.3.0"
 description = "Umbrella metapackage aggregating the curated calibrated-explanations plugin families"
 readme = "README.md"
+license = "BSD-3-Clause"
 requires-python = ">=3.11"
+maintainers = [
+    { name = "Tuwe Löfström", email = "tuwe.lofstrom@ju.se" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "calibrated-explanations-calibration>=0.1,<1",
     "calibrated-explanations-explanation>=0.1,<1",
-    "calibrated-explanations-visualization>=0.1,<1"
+    "calibrated-explanations-visualization>=0.3,<0.4"
 ]
+
+[project.urls]
+Repository = "https://github.com/kristinebergs/calibrated-explanations-plugins"
+Issues = "https://github.com/kristinebergs/calibrated_explanations/issues"
+Security = "https://github.com/kristinebergs/calibrated_explanations/security/policy"
+Documentation = "https://github.com/kristinebergs/calibrated_explanations"
 
 [tool.hatch.build.targets.wheel]
 bypass-selection = true

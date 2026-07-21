@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibrated-explanations-visualization-plotly"
-version = "0.3.4"
+version = "0.3.5"
 description = "Plotly visualization plugin layouts for calibrated-explanations"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -98,7 +98,8 @@ family = "visualization"
 # package requires) is published on PyPI, the full compatibility matrix and
 # no-bridge dispatch proof pass against the real release, and this promotion
 # was reviewed via the maturity-promotion PR template. See MATURITY.md for
-# the full audit trail. Curation into the visualization metapackage remains
-# a separate, later decision pending this package's own PyPI release.
+# the full audit trail. Published to PyPI at 0.3.4 and curated into the
+# visualization family metapackage (packages/meta/calibrated-explanations-visualization)
+# — curation and promotion were separate decisions, both now complete.
 status = "mature"
 import_name = "ce_visualization_plotly"

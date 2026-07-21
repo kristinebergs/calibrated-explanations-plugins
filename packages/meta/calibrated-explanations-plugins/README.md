@@ -11,3 +11,29 @@ pip install calibrated-explanations-plugins
 ```
 
 Compatibility: `calibrated-explanations>=0.11`
+
+## Dependency closure
+
+This package depends on exactly the three family metapackages:
+`calibrated-explanations-calibration`, `calibrated-explanations-explanation`,
+and `calibrated-explanations-visualization`. Curation happens inside each
+family metapackage, not here — this package never lists an individual plugin
+directly.
+
+As of `0.3.0`, the visualization dependency is pinned to
+`calibrated-explanations-visualization>=0.3,<0.4`, which curates the
+`calibrated-explanations-visualization-plotly` plugin (see that family's
+README). A fresh install of `calibrated-explanations-plugins` therefore now
+also installs the Plotly visualization plugin and its own `plotly`
+dependency — but not Dash, and not any live-dashboard dependency. This
+package does not offer a `[live]` extra; install
+`calibrated-explanations-visualization[live]` directly if live dashboards are
+needed. Older published `calibrated-explanations-plugins` releases (which
+depended on a broader `calibrated-explanations-visualization>=0.1,<1` range)
+will resolve to this new visualization-family release on a fresh install
+once it is published — their already-published dependency metadata itself
+cannot be changed retroactively.
+
+Installing this package does not automatically trust, register, or activate
+any curated plugin; each plugin's own README documents the explicit,
+supported CE trust/registration APIs.

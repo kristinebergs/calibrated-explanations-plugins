@@ -7,12 +7,11 @@ Status: `mature`
 > Promoted from `experimental` on 2026-07-21: `calibrated-explanations
 > >=1.0.0rc2` (the CE release this package's dispatch model requires) is
 > published on PyPI, and the full no-bridge dispatch proof and compatibility
-> matrix pass against that real release. This package's own PyPI release is
-> the next step after this promotion merges (see `docs/maintainer-release.md`
-> for the tag-and-publish sequence) — the install command below is the
-> documented target; until the release tag is pushed and published, use the
-> repository-checkout fallback noted in the same section. See `MATURITY.md`
-> for the full, dated audit trail.
+> matrix pass against that real release. This package is published on PyPI
+> and curated into the `calibrated-explanations-visualization` family
+> metapackage (`packages/meta/calibrated-explanations-visualization`) — both
+> the promotion and the curation decision are complete. See `MATURITY.md` for
+> the full, dated audit trail.
 
 Interactive Plotly visualization layouts for
 [`calibrated-explanations`](https://github.com/kristinebergs/calibrated_explanations) (CE).
@@ -43,19 +42,22 @@ with the `[live]` extra for the optional Dash dashboard:
 pip install "calibrated-explanations-visualization-plotly[live]"
 ```
 
-**Pending this package's own release tag** (see `docs/maintainer-release.md`
-for the tag-and-publish sequence that follows this promotion), the PyPI
-distribution does not exist yet; until it does, install from a checkout of
-this repository instead:
-
-```bash
-pip install packages/visualization/calibrated-explanations-visualization-plotly
-```
-
-Either way, `calibrated-explanations>=1.0.0rc2,<2` (this package's dependency
-floor) is published on PyPI, so the dependency itself resolves cleanly in a
+`calibrated-explanations>=1.0.0rc2,<2` (this package's dependency floor) is
+also published on PyPI, so the dependency itself resolves cleanly in a
 normal environment — verified in a fresh venv (`pip check` clean, full test
 suite passing from the installed wheel; see `MATURITY.md`).
+
+This plugin is also curated into the `calibrated-explanations-visualization`
+family metapackage:
+
+```bash
+pip install calibrated-explanations-visualization
+```
+
+which installs this same base plugin (never Dash); use
+`calibrated-explanations-visualization[live]` for the live-dashboard extra
+instead of depending on this package directly if you want the curated,
+version-managed family line.
 
 Plotly and NumPy are mandatory dependencies and are installed automatically;
 Dash is needed only for the optional live dashboard (`[live]` extra).
