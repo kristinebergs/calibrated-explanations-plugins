@@ -37,9 +37,18 @@ def _load_plugin(monkeypatch):
     reset_catalog = getattr(registry, "reset_plugin_catalog", None)
     if callable(reset_catalog):
         reset_catalog(kind="all")
-    clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
-    if callable(clear_env_cache):
-        clear_env_cache()
+    # CE 1.0.0 removed clear_env_trust_cache() without a replacement, and the
+    # process-level ConfigManager singleton snapshots os.environ once and
+    # never re-reads it, so the monkeypatched CE_TRUST_PLUGIN above has no
+    # effect unless both the singleton and the registry's own env-trust cache
+    # are reset (see development/oss_ce_upstream_log.md).
+    from calibrated_explanations.core.config_manager import (
+        reset_process_config_manager_for_testing,
+    )
+
+    reset_process_config_manager_for_testing()
+    registry._ENV_TRUST_CACHE = None
+    registry._PYPROJECT_TRUST_CACHE = None
     module.register_plotly_visualization_components()
     return module
 

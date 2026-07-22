@@ -342,12 +342,12 @@ def build_calibration_files(
             reset_catalog = getattr(registry, "reset_plugin_catalog", None)
             if callable(reset_catalog):
                 reset_catalog(kind="all")
-            clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
-            if callable(clear_env_cache):
-                clear_env_cache()
-            clear_warnings = getattr(registry, "clear_trust_warnings", None)
-            if callable(clear_warnings):
-                clear_warnings()
+            # CE 1.0.0 removed clear_env_trust_cache()/clear_trust_warnings()
+            # without a replacement; reset the module-level trust caches
+            # directly so CE_TRUST_PLUGIN changes made via monkeypatch take
+            # effect within a test run instead of silently no-oping.
+            registry._ENV_TRUST_CACHE = None
+            registry._PYPROJECT_TRUST_CACHE = None
 
 
         def test_plugin_should_be_runtime_consumable(monkeypatch):
@@ -390,7 +390,7 @@ def build_calibration_files(
             )
             prediction = explainer.predict(x_test[:3], calibrated=True)
             assert np.asarray(prediction).shape == (3,)
-            assert explainer.interval_plugin_identifiers["default"] == "{plugin_identifier}"
+            assert explainer.plugin_manager.interval_plugin_identifiers["default"] == "{plugin_identifier}"
         """
     )
     entry_point_block = dedent(
@@ -517,12 +517,12 @@ def build_explanation_files(
             reset_catalog = getattr(registry, "reset_plugin_catalog", None)
             if callable(reset_catalog):
                 reset_catalog(kind="all")
-            clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
-            if callable(clear_env_cache):
-                clear_env_cache()
-            clear_warnings = getattr(registry, "clear_trust_warnings", None)
-            if callable(clear_warnings):
-                clear_warnings()
+            # CE 1.0.0 removed clear_env_trust_cache()/clear_trust_warnings()
+            # without a replacement; reset the module-level trust caches
+            # directly so CE_TRUST_PLUGIN changes made via monkeypatch take
+            # effect within a test run instead of silently no-oping.
+            registry._ENV_TRUST_CACHE = None
+            registry._PYPROJECT_TRUST_CACHE = None
 
 
         def test_plugin_should_be_runtime_consumable(monkeypatch):
@@ -763,12 +763,12 @@ def build_visualization_files(
             reset_catalog = getattr(registry, "reset_plugin_catalog", None)
             if callable(reset_catalog):
                 reset_catalog(kind="all")
-            clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
-            if callable(clear_env_cache):
-                clear_env_cache()
-            clear_warnings = getattr(registry, "clear_trust_warnings", None)
-            if callable(clear_warnings):
-                clear_warnings()
+            # CE 1.0.0 removed clear_env_trust_cache()/clear_trust_warnings()
+            # without a replacement; reset the module-level trust caches
+            # directly so CE_TRUST_PLUGIN changes made via monkeypatch take
+            # effect within a test run instead of silently no-oping.
+            registry._ENV_TRUST_CACHE = None
+            registry._PYPROJECT_TRUST_CACHE = None
 
 
         def test_plugin_should_be_runtime_consumable(monkeypatch):

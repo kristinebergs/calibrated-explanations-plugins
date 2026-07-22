@@ -13,12 +13,19 @@ def _reset_registry_state() -> None:
     reset_catalog = getattr(registry, "reset_plugin_catalog", None)
     if callable(reset_catalog):
         reset_catalog(kind="all")
-    clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
-    if callable(clear_env_cache):
-        clear_env_cache()
-    clear_warnings = getattr(registry, "clear_trust_warnings", None)
-    if callable(clear_warnings):
-        clear_warnings()
+    # CE 1.0.0 removed clear_env_trust_cache()/clear_trust_warnings() without a
+    # replacement, and the process-level ConfigManager singleton snapshots
+    # os.environ once and never re-reads it, so a monkeypatched
+    # CE_TRUST_PLUGIN has no effect unless both the singleton and the
+    # registry's own env-trust cache are reset (see
+    # development/oss_ce_upstream_log.md).
+    from calibrated_explanations.core.config_manager import (
+        reset_process_config_manager_for_testing,
+    )
+
+    reset_process_config_manager_for_testing()
+    registry._ENV_TRUST_CACHE = None
+    registry._PYPROJECT_TRUST_CACHE = None
 
 
 def test_plugin_should_be_runtime_consumable(monkeypatch):

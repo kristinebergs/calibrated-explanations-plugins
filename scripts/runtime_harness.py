@@ -193,16 +193,21 @@ def configure_trust(package_path: Path) -> None:
     os.environ["CE_TRUST_PLUGIN"] = ",".join(trust_ids)
 
     import calibrated_explanations.plugins.registry as registry
+    from calibrated_explanations.core.config_manager import (
+        reset_process_config_manager_for_testing,
+    )
 
     reset_catalog = getattr(registry, "reset_plugin_catalog", None)
     if callable(reset_catalog):
         reset_catalog(kind="all")
-    clear_env_cache = getattr(registry, "clear_env_trust_cache", None)
-    if callable(clear_env_cache):
-        clear_env_cache()
-    clear_warnings = getattr(registry, "clear_trust_warnings", None)
-    if callable(clear_warnings):
-        clear_warnings()
+    # CE 1.0.0 removed clear_env_trust_cache()/clear_trust_warnings() without a
+    # replacement, and the process-level ConfigManager singleton snapshots
+    # os.environ once and never re-reads it, so setting CE_TRUST_PLUGIN above
+    # has no effect unless both the singleton and the registry's own
+    # env-trust cache are reset (see development/oss_ce_upstream_log.md).
+    reset_process_config_manager_for_testing()
+    registry._ENV_TRUST_CACHE = None
+    registry._PYPROJECT_TRUST_CACHE = None
     registry.load_entrypoint_plugins(include_untrusted=False)
 
     if family == "visualization":
@@ -285,7 +290,7 @@ def validate_calibration_runtime(package_path: Path) -> None:
         prediction = explainer.predict(x_test, calibrated=True)
         if np.asarray(prediction).shape[0] != x_test.shape[0]:
             raise RuntimeError(f"Unexpected calibrated prediction shape for task {task!r}")
-        if explainer.interval_plugin_identifiers.get("default") != plugin_id:
+        if explainer.plugin_manager.interval_plugin_identifiers.get("default") != plugin_id:
             raise RuntimeError(f"CE did not select {plugin_id!r} as the active interval plugin")
 
 
