@@ -1,8 +1,9 @@
----
+﻿---
 name: ce-skill-audit
 description: >
   Audit the skills catalog for frontmatter quality, trigger precision, structural
   hygiene, and registry synchronization.
+model: haiku
 ---
 
 # CE Skill Audit

@@ -49,14 +49,14 @@ from calibrated_explanations.explanations.guarded_options import GuardedOptions
 explanations = explainer.explain_factual(X_query, guarded_options=GuardedOptions())
 ```
 
-> **API note**: `explain_guarded_factual(...)` was REMOVED in v0.11.3. The `guarded=True`
-> boolean kwarg is deprecated (removed in v1.0.0). Always use `guarded_options=GuardedOptions()`.
-
 See `references/adr-032-guarded-semantics.md` for the full guarded semantics.
 Use the guarded variant when:
 - Processing user-submitted data with unknown distribution.
 - Building API endpoints that accept arbitrary inputs.
 - Calibration set coverage is limited.
+
+> **API note**: `explain_guarded_factual(...)` was REMOVED in v0.11.3. The `guarded=True`
+> boolean kwarg was removed in v0.11.5. Always use `guarded_options=GuardedOptions()`.
 
 ---
 
@@ -198,11 +198,8 @@ audit = explanations.get_guarded_audit()
 
 ## Self-Check Before Responding
 
-- [ ] `WrapCalibratedExplainer` instance confirmed (not raw `CalibratedExplainer` or subclass).
-- [ ] `explainer.fitted is True` asserted before explain call — fail fast if not.
-- [ ] `explainer.calibrated is True` asserted before explain call — fail fast if not.
-- [ ] Correct entry point chosen (`explain_factual` vs `explain_factual(guarded=True)`).
-- [ ] Interval invariant `low <= predict <= high` verified for at least one output.
+- [ ] Correct entry point chosen (`explain_factual` vs `explain_factual(..., guarded_options=GuardedOptions())`).
+- [ ] Interval invariant `low  predict  high` verified for at least one output.
 - [ ] `list_rules()` / `get_rules_by_feature()` used for rule introspection (not raw dict keys).
-- [ ] Guarded audit called if `explain_factual(guarded=True)` was used.
+- [ ] Guarded audit called if `guarded_options=GuardedOptions()` was used.
 - [ ] No uncalibrated output returned.

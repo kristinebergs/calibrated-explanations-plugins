@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-test-creator
 description: >
   Design tests to close documented coverage gaps identified by gap analysis,

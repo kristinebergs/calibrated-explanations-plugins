@@ -1,8 +1,9 @@
----
+﻿---
 name: ce-skill-registry-sync
 description: >
   Synchronize all skill registries with filesystem inventory after any skill add,
   remove, rename, or move.
+model: haiku
 ---
 
 # CE Skill Registry Sync

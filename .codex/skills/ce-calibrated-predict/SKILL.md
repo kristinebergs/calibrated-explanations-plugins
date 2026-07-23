@@ -24,24 +24,7 @@ explainer. This is the lightest entry point — no explanation rules are
 generated, just the calibrated prediction and (optionally) its uncertainty
 interval.
 
-## Preconditions — Fail Fast Here
-
-Before calling `predict` or `predict_proba`, verify all three conditions.
-**If any check fails, stop — do not proceed.**
-
-```python
-assert isinstance(explainer, WrapCalibratedExplainer), (
-    "CE-First violation: use WrapCalibratedExplainer, not a subclass or raw CalibratedExplainer"
-)
-assert explainer.fitted is True, (
-    "Explainer not fitted — call explainer.fit(x_proper, y_proper) first"
-)
-assert explainer.calibrated is True, (
-    "Explainer not calibrated — call explainer.calibrate(x_cal, y_cal) first"
-)
-```
-
-If the lifecycle is incomplete, invoke `ce-pipeline-builder` first.
+A fully fit + calibrated `WrapCalibratedExplainer` is required.
 
 ---
 
@@ -161,33 +144,20 @@ See `ce-reject-policy` for full policy documentation.
 
 ---
 
-## Uncalibrated escape hatch — non-canonical output
+## Uncalibrated model — expected warnings
 
-`calibrated=False` is an **explicit opt-out**, not a canonical output mode.
-Never present it as a default, a shortcut, or a fallback without a visible warning.
-
-```python
-# Explicit opt-out — only use when the caller understands they are bypassing calibration:
-y_uncal = explainer.predict(x_test, calibrated=False)
-proba_uncal = explainer.predict_proba(x_test, calibrated=False)
-```
-
-Rules for uncalibrated usage:
-- Never return `calibrated=False` output in a CE-First pipeline as a normal result.
-- Never document it as the first example or the recommended path.
-- Always label uncalibrated results clearly so downstream consumers know the semantics differ.
-
-Calling `predict` / `predict_proba` with the default `calibrated=True` on an
-**uncalibrated** explainer emits a `UserWarning` and falls back to the underlying
-learner. This warning is mandatory (fallback visibility policy — `ce-fallback-impl`).
+Calling `predict` / `predict_proba` with `calibrated=True` (default) on an
+uncalibrated explainer emits a `UserWarning` and falls back to the underlying
+learner's predict method. This is intentional (fallback visibility policy).
 
 ```python
-# Before calibrate() — will warn and return uncalibrated output:
+# Before calibrate() — will warn:
 with pytest.warns(UserWarning):
-    y_hat = explainer.predict(x_test)
+    y_hat = explainer.predict(x_test)   # warns + returns uncalibrated
 ```
 
-Do not suppress this warning. Do not treat the result as a calibrated output.
+Do not suppress this warning — it is a mandatory fallback signal (see
+`ce-fallback-impl`).
 
 ---
 
@@ -207,25 +177,20 @@ significantly cheaper than the explain* entry points.
 
 ## Evaluation Checklist
 
-- [ ] `WrapCalibratedExplainer` instance confirmed (not raw `CalibratedExplainer` or subclass).
-- [ ] `explainer.fitted is True` asserted — fail fast if not.
-- [ ] `explainer.calibrated is True` asserted — fail fast if not.
+- [ ] `fitted=True` and `calibrated=True` confirmed before calling `predict`.
 - [ ] Return type identified: array (no `uq_interval`) vs tuple (with `uq_interval`).
 - [ ] For regression with `uq_interval=True`: invariant `low ≤ predict ≤ high` verified.
 - [ ] For regression `predict_proba(threshold=t)`: result is a probability (0–1), not y-space.
 - [ ] Mondrian `bins=` passed at predict time if calibrated with `mc=`.
-- [ ] `calibrated=False` not used as a default, shortcut, or undocumented result.
 - [ ] Uncalibrated fallback warning handled (not suppressed) in tests.
+
 
 
 ## Self-Check Before Responding
 
-- [ ] `WrapCalibratedExplainer` instance confirmed (not raw `CalibratedExplainer` or subclass).
-- [ ] `explainer.fitted is True` asserted — fail fast if not.
-- [ ] `explainer.calibrated is True` asserted — fail fast if not.
+- [ ] `fitted=True` and `calibrated=True` confirmed before calling `predict`.
 - [ ] Return type identified: array (no `uq_interval`) vs tuple (with `uq_interval`).
 - [ ] For regression with `uq_interval=True`: invariant `low ≤ predict ≤ high` verified.
 - [ ] For regression `predict_proba(threshold=t)`: result is a probability (0–1), not y-space.
 - [ ] Mondrian `bins=` passed at predict time if calibrated with `mc=`.
-- [ ] `calibrated=False` not used as a default, shortcut, or undocumented result.
 - [ ] Uncalibrated fallback warning handled (not suppressed) in tests.

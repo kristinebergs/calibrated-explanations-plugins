@@ -212,3 +212,4 @@ def test_should_preserve_interval_invariant_when_serialized_and_deserialized():
 - [ ] At least one semantic assertion (not just presence/type checks).
 - [ ] CE interval invariant asserted for any prediction-involving test.
 - [ ] No `_private` API calls.
+- [ ] Coverage gate will be satisfied (no new uncovered branches left).

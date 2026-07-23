@@ -171,3 +171,16 @@ Recommended action: (merge as-is | fix blocking violations before merge | adviso
 - [ ] `pytest tests/docs/test_navigation.py` passes.
 - [ ] All blocking violations resolved.
 - [ ] Non-blocking issues logged for follow-up.
+
+
+## Self-Check Before Responding
+
+- [ ] (none)
+- [ ] (none)
+- [ ] `make check-private-members` passes (exit code 0).
+- [ ] `make check-agent-instructions` passes.
+- [ ] `grep` for core imports returns no matches.
+- [ ] Notebooks execute without error (`nbconvert --execute`).
+- [ ] `pytest tests/docs/test_navigation.py` passes.
+- [ ] All blocking violations resolved.
+- [ ] Non-blocking issues logged for follow-up.

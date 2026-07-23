@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-devils-advocate
 description: >
   Adversarially challenge cleanup and test proposals for hidden risk, weak evidence,

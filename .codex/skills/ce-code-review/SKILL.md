@@ -36,13 +36,7 @@ Load `references/review_dimensions.md` for full dimension details with code exam
 6. **Fallback visibility** — CRITICAL: every fallback needs `_LOGGER.info()` + `warnings.warn(UserWarning)`.
 7. **Type hints** — REQUIRED: avoid `Any` without documented reason; prefix private with `_`.
 8. **Deprecation (ADR-011)** — REQUIRED: use `deprecate()` helper; 2 minor releases before removal.
-9. **CE-First compliance** — CRITICAL: check ALL of the following sub-criteria:
-   - **Public contract fidelity** — public methods must return calibrated types and assert `fitted + calibrated` before use. Any method that skips these assertions is a CE-First violation.
-   - **Shadow-API drift** — any helper (e.g. in `ce_agent_utils`) that diverges from the public `WrapCalibratedExplainer` contract without explicit delegation back to it is a CE-First violation.
-   - **Silent kwarg dropping** — if a helper accepts kwargs and silently ignores or adapts them instead of passing them to the public API, that is a CE-First violation.
-   - **Heuristic advice injection** — helpers must not generate advice, recommendation text, or heuristic interpretations inside canonical CE-First entry points. Such logic belongs only in narrative/plugin layers.
-   - **Uncalibrated escape hatch normalization** — `calibrated=False` and similar escape hatches must never appear as a default, a fallback without warning, or as a documented "normal" usage path. They are explicit opt-outs, not canonical output modes.
-   - **Façade-reinforcing tests/docs** — tests or docstrings that teach `wrap_and_explain(...)` as the *primary* example, or that mock out `fit`/`calibrate` to avoid testing the real lifecycle, are CE-First compliance issues — not merely style issues.
+9. **CE-First compliance** — public methods return calibrated types; assert fitted + calibrated.
 
 ---
 
@@ -84,15 +78,9 @@ Type hints:                 PASS / FAIL
 
 Deprecation (ADR-011):      PASS / FAIL / N_A
 
-CE-First compliance:        PASS / FAIL  [BLOCKING]
-  public contract fidelity:   <list fn:issue>
-  shadow-API drift:           <list helper:issue>
-  silent kwarg dropping:      <list fn:issue>
-  heuristic advice injection: <list fn:issue>
-  uncalibrated escape hatch:  <list fn:issue>
-  façade-reinforcing docs/tests: <list>
+CE-First compliance:        PASS / FAIL
 
-Overall: CONFORMANT / NON-CONFORMANT (<N> issues, <M> blocking)
+Overall: CONFORMANT / NON-CONFORMANT (<N> issues)
 ```
 
 ## Evaluation Checklist
@@ -101,9 +89,8 @@ Overall: CONFORMANT / NON-CONFORMANT (<N> issues, <M> blocking)
 - [ ] ADR-001 boundary violations are blocking (must fix before merge).
 - [ ] Fallback visibility violations are blocking.
 - [ ] Lazy-import violations are blocking.
-- [ ] CE-First compliance violations are blocking (treat as CRITICAL, not style).
-- [ ] CE-First sub-criteria all checked: contract fidelity, shadow-API drift, silent kwarg dropping, heuristic injection, uncalibrated escape hatch, façade-reinforcing tests/docs.
 - [ ] Report produced with file:line references for each issue.
+
 
 
 ## Self-Check Before Responding
@@ -112,6 +99,4 @@ Overall: CONFORMANT / NON-CONFORMANT (<N> issues, <M> blocking)
 - [ ] ADR-001 boundary violations are blocking (must fix before merge).
 - [ ] Fallback visibility violations are blocking.
 - [ ] Lazy-import violations are blocking.
-- [ ] CE-First compliance violations are blocking (treat as CRITICAL, not style).
-- [ ] CE-First sub-criteria all checked: contract fidelity, shadow-API drift, silent kwarg dropping, heuristic injection, uncalibrated escape hatch, façade-reinforcing tests/docs.
 - [ ] Report produced with file:line references for each issue.

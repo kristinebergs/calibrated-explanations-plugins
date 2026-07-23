@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-test-pruning-expert
 description: >
   Identify redundant or low-value tests using unique-lines and overlap evidence while preserving behavior coverage, with Option A/B/C routing from the Test Quality Method.
@@ -15,7 +15,7 @@ Format: `markdown`
 Required sections:
 - output
 
-# Ce Test Pruning Expert — Core Instructions
+﻿# Ce Test Pruning Expert — Core Instructions
 
 # CE Test Pruning Expert
 

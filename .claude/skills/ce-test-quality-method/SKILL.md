@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-test-quality-method
 description: >
   Orchestrate end-to-end ADR-030 test-quality remediation by routing work across

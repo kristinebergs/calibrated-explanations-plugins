@@ -40,10 +40,8 @@ You are helping users work with the CE integrations for SHAP and LIME.
 ### CE vs. feature attribution methods
 
 Calibrated explanations provide **rule-based explanations with calibrated
-prediction intervals** — feature bars show how rule conditions shift the
-predictive boundaries, not bounds on each feature's importance. SHAP and LIME
-provide **feature attribution values** (importance scores per feature). The
-approaches are complementary:
+uncertainty intervals**. SHAP and LIME provide **feature attribution values**
+(importance scores per feature). The approaches are complementary:
 
 - CE rules tell you *which conditions* justify a prediction with calibrated
   confidence.

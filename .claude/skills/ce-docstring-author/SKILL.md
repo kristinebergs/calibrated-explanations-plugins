@@ -1,8 +1,9 @@
----
+﻿---
 name: ce-docstring-author
 description: >
   Write or repair NumPy-style docstrings for public CE APIs following STD-002 and
   contributor documentation rules.
+model: haiku
 ---
 
 # CE Docstring Author

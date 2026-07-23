@@ -37,7 +37,6 @@ Load `references/rtd_audit_checklist.md` before producing findings.
 ```bash
 rg --files docs
 rg -n "{doc}|toctree|WrapCalibratedExplainer|ce_agent_utils" docs
-# Note: ce_agent_utils hits in docs are a smell — flag if examples recommend it as the agent interface
 ```
 
 2. Validate navigation and discoverability:
@@ -45,7 +44,7 @@ rg -n "{doc}|toctree|WrapCalibratedExplainer|ce_agent_utils" docs
 - page title and sectioning are clear and stable
 
 3. Validate technical correctness:
-- examples use public API (`WrapCalibratedExplainer`, direct `fit`, `calibrate`, `explain_factual`, `explore_alternatives`, calibrated `predict`/`predict_proba`) — flag any example that routes through `ce_agent_utils` as a CE-first violation
+- examples use public API (`WrapCalibratedExplainer`, `ce_agent_utils`)
 - no private-member guidance
 - uncertainty semantics and CE-first lifecycle are consistent
 

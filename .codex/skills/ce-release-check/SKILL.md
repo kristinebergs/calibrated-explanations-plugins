@@ -1,7 +1,7 @@
-﻿---
+---
 name: ce-release-check
 description: >
-  Read release-plan state and select the next ADR-compliant actionable development step.
+  Read the active version plan and select the next ADR-compliant actionable development step.
 ---
 
 ## Inputs
@@ -19,25 +19,26 @@ Required sections:
 
 # CE Release Check
 
-You are determining the next development step from the release plan.
+You are determining the next development step from the active version plan.
 This skill implements the "proceed according to plan" workflow defined in
 `execution-plan.instructions.md`.
 
 **Mandatory sequence:**
-1. Read `development/current-work/RELEASE_PLAN_v1.md`.
-2. Identify the current released version and the target next milestone.
-3. List outstanding gates and work items for that milestone.
+1. Read the sole active `development/current-work/vX.Y.Z_plan.md`.
+2. Identify the release/development version and the plan's `## Included work`
+   table.
+3. List rows whose Status is not `Done`.
 4. Verify that the proposed next step is allowed by all relevant ADRs.
-5. If an ADR constraint and a plan step conflict, the ADR wins.
+5. If an ADR constraint and a plan row conflict, the ADR wins.
 
 ---
 
 ## Files to read
 
 ```
-development/current-work/RELEASE_PLAN_v1.md   ← primary source: current version, milestones, gates
-development/adrs/                ← governance constraints (ADR takes precedence)
-CHANGELOG.md                          ← completed items; do not duplicate
+development/current-work/vX.Y.Z_plan.md   ← primary source: included work, exclusions, gates, decision
+development/adrs/                          ← governance constraints (ADR takes precedence)
+CHANGELOG.md                               ← completed items; do not duplicate
 ```
 
 ---
@@ -45,40 +46,37 @@ CHANGELOG.md                          ← completed items; do not duplicate
 ## Step 1 — Identify current state
 
 ```markdown
-Current released version: v<X.Y.Z>   (from RELEASE_PLAN_v1.md top section)
-Target next milestone:    v<X.Y.Z+1>
+Active version plan:  development/current-work/vX.Y.Z_plan.md
+Release version:      X.Y.Z   (from the plan's front matter)
 ```
 
 ---
 
-## Step 2 — Scan open gates for the target milestone
+## Step 2 — Scan the Included work table
 
-Look for sections like:
 ```
-### v0.11.0 — <milestone name>
-#### Gates
-- [ ] ADR-NNN gap <description>
-- [x] (already closed)
+| ID | Deliverable | Issue | ADR/Standard | Status |
 ```
 
-Gates marked `[ ]` are outstanding. List them with their ADR reference.
+Rows with Status `Not started` or `In progress` are outstanding. List them
+with their linked issue and governing ADR/Standard.
 
 ---
 
 ## Step 3 — Cross-reference ADRs
 
-For each outstanding gate, identify the governing ADR(s) using `ce-adr-consult`.
-If the proposed work from the plan conflicts with an ADR decision, **stop** and
-flag the conflict rather than proceeding.
+For each outstanding row, identify the governing ADR(s) using `ce-adr-consult`.
+If the proposed work conflicts with an ADR decision, **stop** and flag the
+conflict rather than proceeding.
 
 ---
 
 ## Step 4 — Select the next actionable item
 
 Priority order:
-1. **Blocking gates** — items explicitly labeled as release blockers.
-2. **Open ADR implementation gaps** — items in the ADR roadmap summary with open status.
-3. **Non-gate improvements** — feature additions scheduled for the milestone.
+1. **Blocking gates** — rows explicitly required by `## Release-specific gates`.
+2. **Linked-issue work** — rows with an open governing issue.
+3. **Remaining rows** — anything else still `Not started`.
 
 ---
 
@@ -91,6 +89,11 @@ head -100 CHANGELOG.md
 
 Do not propose work that is already present in `CHANGELOG.md`.
 
+When recommending closure evidence for a planned item, prefer:
+- `make local-checks-task TASK=<n>` for task completion (when the plan maps one)
+- `make local-checks-pr` for PR preflight
+- `make local-checks-release` for release-boundary validation
+
 ---
 
 ## Output format
@@ -98,18 +101,17 @@ Do not propose work that is already present in `CHANGELOG.md`.
 ```
 Release Check: <date>
 ======================
-Current released version:  v<X.Y.Z>
-Target next milestone:      v<X.Y.Z+1>
+Active version plan:  vX.Y.Z_plan.md (release X.Y.Z)
 
-Outstanding gates:
-  1. [ADR-NNN] <brief description>
-  2. [ADR-NNN] <brief description>
+Outstanding rows:
+  1. [T2] <deliverable> — issue #<n> — ADR-NNN
+  2. [T3] <deliverable> — issue #<n> — ADR-NNN
   ...
 
 Next actionable step:
   Work item: <title>
   ADR(s):    ADR-NNN (Decision section: <binding rule>)
-  Plan ref:  RELEASE_PLAN_v1.md § <section>
+  Plan ref:  vX.Y.Z_plan.md, row <ID>
   Rationale: <one sentence>
 
 ADR conflicts detected: NONE | <list if any>
@@ -132,42 +134,26 @@ the appropriate section header:
 - ...
 ```
 
----
-
-## Quick reference: upcoming milestone summary (v0.11.x)
-
-Based on `RELEASE_PLAN_v1.md` (verify current status in the file):
-
-| ADR | Outstanding work | Target |
-|---|---|---|
-| ADR-004 | `ParallelFacade` → `ParallelExecutor` name alignment (docs) | v0.11.0 |
-| ADR-005 | Strict payload validator + fixtures | v0.11.1 |
-| ADR-006 | `PluginManager` shell, over-scoped surface cleanup | v0.11.0 |
-| ADR-008 | Domain-model hardening | v0.11.1 |
-| ADR-020 | Release checklist + legacy API audit workflow | v0.11.0 |
-| ADR-026 | Strict invariant enforcement + immutability | v0.11.0 |
-| ADR-028 | Enforcement tooling + examples | v0.11.1 |
-| ADR-030 | Determinism / assertion checks in CI | v0.11.0 |
-| ADR-031 | `to_primitive` / `from_primitive` + `save_state` / `load_state` | v0.11.x |
-| ADR-033 | Metadata contract (v0.11.0); CLI/shims (v0.11.1) | v0.11.0–v0.11.1 |
+Then update the row's Status in `vX.Y.Z_plan.md` to `Done`.
 
 ---
 
 ## Evaluation Checklist
 
-- [ ] `RELEASE_PLAN_v1.md` read before proposing any step.
-- [ ] Current version and target milestone clearly identified.
-- [ ] Outstanding gates listed with ADR references.
+- [ ] The active `vX.Y.Z_plan.md` read before proposing any step.
+- [ ] Release version and outstanding rows clearly identified.
+- [ ] Outstanding rows listed with linked issue and ADR references.
 - [ ] No ADR constraint violated by the proposed next step.
 - [ ] `CHANGELOG.md` checked to avoid duplicate work.
-- [ ] Completed items added to `CHANGELOG.md` under `[Unreleased]`.
+- [ ] Completed items added to `CHANGELOG.md` under `[Unreleased]` and marked `Done` in the plan.
+
 
 
 ## Self-Check Before Responding
 
-- [ ] `RELEASE_PLAN_v1.md` read before proposing any step.
-- [ ] Current version and target milestone clearly identified.
-- [ ] Outstanding gates listed with ADR references.
+- [ ] The active `vX.Y.Z_plan.md` read before proposing any step.
+- [ ] Release version and outstanding rows clearly identified.
+- [ ] Outstanding rows listed with linked issue and ADR references.
 - [ ] No ADR constraint violated by the proposed next step.
 - [ ] `CHANGELOG.md` checked to avoid duplicate work.
-- [ ] Completed items added to `CHANGELOG.md` under `[Unreleased]`.
+- [ ] Completed items added to `CHANGELOG.md` under `[Unreleased]` and marked `Done` in the plan.

@@ -57,7 +57,7 @@ from calibrated_explanations.viz.plotspec import (
 BarItem(
     label="age <= 30",           # feature rule label
     value=-0.12,                 # contribution weight
-    interval_low=-0.18,          # optional weight envelope (prediction-bound projection)
+    interval_low=-0.18,          # optional uncertainty band
     interval_high=-0.06,
     color_role="negative",       # "positive" | "negative" | "regression"
     instance_value=25,           # original feature value (displayed on hover)
@@ -240,6 +240,7 @@ BarItem(label="age", value=0.3, color="#3B82F6")  # hex colour hardcoded in spec
 - [ ] Test asserts semantic correctness (ordering, required fields), not colours.
 - [ ] Viz test decorated with `@pytest.mark.viz` (ADR-023 exemption).
 - [ ] Legacy `.plot()` still defaults to legacy renderer.
+
 
 
 ## Self-Check Before Responding

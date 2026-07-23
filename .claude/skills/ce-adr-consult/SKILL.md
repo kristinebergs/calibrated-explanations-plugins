@@ -3,13 +3,14 @@ name: ce-adr-consult
 description: >
   Map a proposed change to governing ADRs and constraints before implementation; use
   for ADR applicability and conflict checks.
+model: haiku
 ---
 
 # CE ADR Consult
 
 You are identifying which ADRs govern a proposed change and extracting their
-binding constraints. ADR decisions take precedence over the release plan whenever
-they conflict (execution-plan.instructions.md §3).
+binding constraints. ADR decisions take precedence over the active version
+plan whenever they conflict (execution-plan.instructions.md).
 
 ADRs live in `development/adrs/`. Superseded ADRs are prefixed with
 `superseded ` and should not be consulted for new work.
@@ -55,8 +56,9 @@ ADRs live in `development/adrs/`. Superseded ADRs are prefixed with
 2. Check `Status:` — skip if `Superseded`.
 3. Read the **Decision** section to extract binding constraints.
 4. Note the **Consequences** section for risk awareness.
-5. Check the `development/current-work/RELEASE_PLAN_v1.md` entry for the ADR to see
-   which release milestone closes outstanding gaps.
+5. Check the active `development/current-work/vX.Y.Z_plan.md`'s
+   `## Included work` table for a row that closes outstanding gaps for this
+   ADR, if any is scheduled for the current release.
 
 ```bash
 # List all active (non-superseded) ADRs
@@ -105,7 +107,7 @@ Get-ChildItem development/adrs/*.md | Where-Object Name -NotMatch '^superseded'
 ### ADR-032 — Guarded explanations
 - Use `explain_factual(..., guarded_options=GuardedOptions())` / `explore_alternatives(..., guarded_options=GuardedOptions())` for unknown distributions.
 - Import: `from calibrated_explanations.explanations.guarded_options import GuardedOptions`
-- `guarded=True` kwarg is deprecated (removed v1.0.0); `explain_guarded_factual` / `explore_guarded_alternatives` were REMOVED in v0.11.3.
+- `guarded=True` kwarg was removed in v0.11.5; `explain_guarded_factual` / `explore_guarded_alternatives` were REMOVED in v0.11.3.
 
 ### ADR-033 — Modality extension
 - Non-tabular modality code must NOT enter `core/`.
@@ -115,7 +117,7 @@ Get-ChildItem development/adrs/*.md | Where-Object Name -NotMatch '^superseded'
 
 ## Conflict resolution
 
-When a release plan step and an ADR conflict:
+When a version-plan row and an ADR conflict:
 1. The **ADR takes precedence**.
 2. Document the conflict in the PR.
 3. If the plan needs to supersede the ADR, a new ADR or ADR update is required first.
@@ -128,4 +130,4 @@ When a release plan step and an ADR conflict:
 - [ ] Status field checked (not `Superseded`).
 - [ ] Decision section read; binding constraints listed.
 - [ ] No ADR constraint violated by the proposed implementation.
-- [ ] Release plan milestone for outstanding gaps noted and respected.
+- [ ] Active-plan row (if any) for outstanding gaps noted and respected.

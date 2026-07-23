@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-deadcode-hunter
 description: >
   Identify unreachable or non-contributing source code and separate true dead code

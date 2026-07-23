@@ -94,7 +94,7 @@ explanations.plot(index=2, filter_top=5)                   # plot one instance b
 | Parameter | Default | Notes |
 |---|---|---|
 | `filter_top` | `None` (single) / `10` (collection) | Maximum rules to show. `None` = show all. |
-| `uncertainty` | `False` | Show prediction-bound projection bands on feature bars — each band shows how the feature shifts the calibrated prediction interval endpoints, not statistical uncertainty of the feature's importance. Not valid for one-sided intervals. |
+| `uncertainty` | `False` | Show uncertainty interval bands on bars. Not valid for one-sided intervals. |
 | `style` | `"regular"` | `"regular"` for all types; `"triangular"` / `"ensured"` for `AlternativeExplanation` only |
 | `rnk_metric` | varies by type | `"feature_weight"` (factual/fast default), `"ensured"` (alternative default), `"uncertainty"` |
 | `rnk_weight` | `0.5` | Used with `rnk_metric="ensured"`. Range −1 to 1; 0 = uncertainty only, ±1 = output only |
@@ -232,6 +232,7 @@ narrative = (
 - [ ] Exactly one of `include_features` / `exclude_features` for `filter_features`.
 - [ ] `copy=True` preserved (default) unless in-place mutation is intended.
 - [ ] Interval invariant `low ≤ predict ≤ high` still holds after filtering.
+
 
 
 ## Self-Check Before Responding

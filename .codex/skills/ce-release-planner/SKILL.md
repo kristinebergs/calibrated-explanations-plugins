@@ -1,7 +1,7 @@
-﻿---
+---
 name: ce-release-planner
 description: >
-  Analyze RELEASE_PLAN_v1.md for an upcoming release version and produce a detailed vX.Y.Z_plan.md implementation plan with task breakdowns.
+  Create a versioned vX.Y.Z_plan.md from an approved GitHub milestone or an explicit maintainer-selected issue list, coordinating the active release.
 ---
 
 ## Inputs
@@ -19,78 +19,86 @@ Required sections:
 
 # CE Release Planner
 
-You are creating a versioned implementation plan for an upcoming CE release.
+You are creating the sole active version plan for an upcoming CE release.
+The plan coordinates the release; it does not hold proposed work or approved
+scope — those live in GitHub issues and a GitHub milestone.
 
 ## Required references
 
-- `development/current-work/RELEASE_PLAN_v1.md` (master release plan with milestones,
-  ADR gap appendix, and release gates)
+- The GitHub milestone the maintainer has selected for this release (its
+  issue list is the scope), or an explicit maintainer-supplied issue list
+  when no milestone exists yet.
+- `release.md` (maintainer release sequence; steps 1-10 automated by preflight,
+  11-13 manual, and 14-17 automated by postcommit)
+- `scripts/local_checks.py` and `Makefile` (executable release workflow)
 - `references/version_plan_reference.md` (canonical structure/template for
   `development/current-work/vX.Y.Z_plan.md` files)
-- All ADR files referenced by the target milestone
-- All STD files referenced by the target milestone
-- Existing version plans for pattern reference:
-  `development/finished-work/v0.11.0_plan.md`, `development/finished-work/v0.11.1_plan.md`
+- Governing ADRs and Standards for each selected issue
+- The most recently archived `development/finished-work/vX.Y.Z_plan.md` for
+  formatting reference only (not for scope — do not mine it for carry-over work)
 
 ## Use this skill when
 
 - Planning the next release version.
-- Creating a new `vX.Y.Z_plan.md` from the master release plan.
-- Reviewing which tasks from `RELEASE_PLAN_v1.md` apply to a specific version.
+- Creating a new `vX.Y.Z_plan.md` after maintainers have chosen a GitHub
+  milestone (or an explicit issue list) for the release.
+- Confirming there is exactly one active version plan before release work starts.
 
 ## Workflow
 
-1. **Identify target version.**
-   - Read `RELEASE_PLAN_v1.md` to find the current released version and the
-     next planned milestone.
-   - Confirm with the user which version to plan.
+1. **Confirm exactly one active plan.**
+   - Check `development/current-work/` for existing `vX.Y.Z_plan.md` files.
+     There must be exactly one. If one already exists and is still open, work
+     within it instead of creating a second one.
 
-2. **Extract tasks from the master plan.**
-   - Read the target milestone section in `RELEASE_PLAN_v1.md`.
-   - For each task, identify:
-     - governing ADRs and standards
-     - current implementation status (check the appendix gap tables)
-     - dependencies on other tasks or prior milestones
+2. **Identify target version and scope.**
+   - Ask the maintainer which GitHub milestone (or explicit issue list) this
+     plan implements if it is not already clear from the conversation.
+   - Do not promote unapproved work to a committed version without an
+     explicit maintainer decision — this skill does not decide release scope
+     by itself, and it does not search archived plans for "carry-over" work.
+   - Record both the exact PEP 440 release version and its development
+     placeholder. Do not infer `X.Y.(Z+1)` when the maintainer names a minor,
+     major, or prerelease milestone.
 
-3. **Read governing ADRs.**
-   - For each referenced ADR, read the full ADR and its appendix gap table.
-   - Note which gaps are already closed vs. still open.
+3. **Read governing ADRs and Standards** for each selected issue. Note
+   current implementation status against the relevant source and tests.
 
-4. **Check current codebase state.**
-   - For each task, identify the relevant source modules and their current
-     implementation state.
-   - Note any tasks already partially or fully completed.
+4. **Check current codebase state** for each deliverable — relevant modules,
+   existing tests, anything already partially or fully done.
 
 5. **Draft the plan.**
-   - Create `development/current-work/vX.Y.Z_plan.md` following the structure of
-     `references/version_plan_reference.md` and existing plans
-     (v0.11.0_plan.md, v0.11.1_plan.md).
-   - Each task section must include:
-     - goal statement
-     - relevant references (ADRs, standards, source files)
-     - current status assessment
-     - implementation steps (concrete, actionable)
-     - verification checklist
-   - Include a release gate summary at the end.
+   - Create `development/current-work/vX.Y.Z_plan.md` following
+     `references/version_plan_reference.md`.
+   - Populate the `## Included work` table with one row per deliverable,
+     each linked to its GitHub issue where one exists.
+   - Keep `## Excluded`, `## Dependencies`, and `## Release-specific gates`
+     short and specific to this release.
+   - `## Release decision` is optional, non-authoritative prose (not parsed
+     by automation) — add it only if a short human-readable summary helps
+     readers; readiness derives solely from `## Included work` statuses.
+   - Do not duplicate the `release.md` step sequence in the plan; the
+     template already links to it.
 
 6. **Cross-check completeness.**
-   - Verify every task from the master plan milestone has a section.
-   - Verify every open gap from the appendix for referenced ADRs is addressed.
-   - List minimal new tests required.
+   - Verify every issue selected for this milestone has a row.
+   - Verify no command, path, expected version, or next-version rule is
+     hard-coded to the release that happened to precede this one.
 
 ## Output contract
 
-Produce `development/current-work/vX.Y.Z_plan.md` with:
-- header identifying version, milestone type, and authoritative task source
-- source references reviewed
-- global rules section (if applicable)
-- numbered task sections matching the master plan
-- release gate summary
-- minimal new tests section
+Produce `development/current-work/vX.Y.Z_plan.md` matching
+`references/version_plan_reference.md`: front matter, `Outcome`,
+`Included work`, `Excluded`, `Dependencies`, `Release-specific gates`, and
+optionally `Release decision`.
 
 ## Constraints
 
-- Do not invent tasks not in `RELEASE_PLAN_v1.md` without explicit user approval.
-- Do not modify `RELEASE_PLAN_v1.md` itself (use `ce-adr-author` for that).
-- Mark tasks as completed only when verification evidence exists in the codebase.
-- Respect the existing plan format conventions from v0.11.0_plan.md.
+- Do not invent deliverables that are not backed by an approved GitHub
+  milestone or an explicit maintainer-supplied issue list.
+- Do not create a second active version plan; exactly one must exist under
+  `development/current-work/`.
+- Do not create another master roadmap document (by any name) — proposed
+  work belongs in GitHub issues, approved scope in a GitHub milestone.
+- Mark rows `Done` only when verification evidence exists in the codebase.
+- Do not copy the `release.md` step sequence into the plan; link to it.

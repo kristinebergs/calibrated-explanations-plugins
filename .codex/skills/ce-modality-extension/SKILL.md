@@ -1,7 +1,7 @@
 ---
 name: ce-modality-extension
 description: >
-  Extend CE to non-tabular data modalities (vision, audio, timeseries, text) via ADR-033 plugin contracts, modality naming rules, and extension safety guardrails.
+  Extend CE to non-tabular data modalities (vision, audio, text) via ADR-033 plugin contracts, modality naming rules, and extension safety guardrails.
 ---
 
 ## Inputs
@@ -42,7 +42,6 @@ if the extension package is absent.
 | `"image"` | `"vision"` |
 | `"audio"` | — |
 | `"text"` | — |
-| `"timeseries"` | `"time_series"` |
 | `"multimodal"` | `"multi-modal"` |
 | `"x-<vendor>-<name>"` | Custom extension namespace |
 
@@ -178,6 +177,7 @@ def test_should_raise_on_major_version_mismatch_when_plugin_api_version_incompat
 - [ ] Shim raises `MissingExtensionError` (not `ImportError`) when extension absent.
 - [ ] CI smoke test validates entry-point discovery and import behaviour.
 - [ ] Extension packaged independently with its own version.
+
 
 
 ## Self-Check Before Responding

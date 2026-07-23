@@ -44,9 +44,10 @@ for quick reference.
    explainer.explain_factual(X, guarded_options=GuardedOptions())
    explainer.explore_alternatives(X, guarded_options=GuardedOptions())
    ```
+   Also use when rule conditions of the form `x < feature <= y` are needed, since
    guarded mode supports interval rules natively.
    The REMOVED `explain_guarded_factual(X)` / `explore_guarded_alternatives(X)` methods
-   (deleted v0.11.3) and the deprecated `guarded=True` kwarg (removed v1.0.0) must
+   (deleted v0.11.3) and the removed `guarded=True` kwarg (removed in v0.11.5) must
    NOT be used.
 7. **Conjunctions** — `explanations.add_conjunctions(...)` or
    `explanations[idx].add_conjunctions(...)`.

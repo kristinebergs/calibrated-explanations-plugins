@@ -153,11 +153,11 @@ def render(self, ...):
 ## Audit Dimension 7 — ADR-033 modality contract (if applicable)
 
 If the plugin targets a non-tabular modality (`"image"`, `"audio"`, `"text"`,
-`"timeseries"`, `"multimodal"`, or `"x-<vendor>-<name>"`):
+`"multimodal"`, or `"x-<vendor>-<name>"`):
 
 - `data_modalities` must be present in `plugin_meta`.
 - Modality strings must be in the canonical taxonomy or use the `x-<vendor>-<name>` namespace.
-- Aliases (`"vision" → "image"`, `"time_series" → "timeseries"`) are acceptable inputs but
+- Aliases (`"vision" → "image"`) are acceptable inputs but
   are normalised to canonical form by the registry.
 - `plugin_api_version` must be present; major-version mismatch causes a registry rejection.
 
@@ -208,6 +208,7 @@ Overall:   CONFORMANT / NON-CONFORMANT (N issues)
 - [ ] Every fallback emits `warnings.warn + _LOGGER.info`.
 - [ ] No eager top-level imports of matplotlib/pandas/joblib.
 - [ ] ADR-033 metadata present if non-tabular modality targeted.
+
 
 
 ## Self-Check Before Responding

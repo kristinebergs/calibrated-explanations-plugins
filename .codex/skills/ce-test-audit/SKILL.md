@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-test-audit
 description: >
   Audit existing tests for ADR-030 anti-patterns, redundancy risk, and compliance with repository test standards.
@@ -15,7 +15,7 @@ Format: `markdown`
 Required sections:
 - output
 
-# Ce Test Audit — Core Instructions
+﻿# Ce Test Audit — Core Instructions
 
 # CE Test Audit
 
@@ -186,6 +186,15 @@ When reporting audit findings, use this structure:
 
 ## Self-Check Before Responding
 
+- [ ] <test name>: <issue description> → <fix>
+- [ ] <test name>: <private symbol accessed> → <fix>
+- [ ] <test name>: assertion is execution-only → replace with <semantic assertion>
+- [ ] <test file>: scope mismatch → move to <target path>
+- [ ] <fixture name>: depth <N> → simplify
+- [ ] <test name>: 0 unique lines / identical fingerprint to <other test> → delete or parametrize
+- [ ] Private-member scan violations
+- [ ] No-test-helper-export violations
+- [ ] 90% coverage gate status
 - [ ] Selected focus-option command set run and output reviewed.
 - [ ] Issues classified by ADR-030 priority.
 - [ ] Hard gate violations flagged separately.

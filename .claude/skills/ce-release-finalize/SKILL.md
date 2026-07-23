@@ -1,114 +1,86 @@
-﻿---
+---
 name: ce-release-finalize
 description: >
-  Execute the PyPI release checklist for calibrated-explanations: version bumps,
-  changelog, build, validation, tagging, RTD publication, and PyPI upload.
+  Execute the complete calibrated-explanations release handoff: automated
+  preflight, human-gated publication, and automated postcommit cleanup.
 ---
 
 # CE Release Finalize
 
-You are finalizing a release of calibrated-explanations for publication on PyPI.
-This skill follows the canonical release guide step by step.
-
-Load `references/pypi_release_guide.md` for the full release procedure.
+Finalize a calibrated-explanations release by following `release.md` exactly.
+Load `references/pypi_release_guide.md` for command details.
 
 ## Use this skill when
 
-- All release tasks for the target version are closed.
-- The user asks to "release", "publish", or "ship" a version.
-- Preparing the final version bump, changelog, and build artifacts.
+- All implementation tasks for the target version are closed.
+- The user asks to release, publish, or ship a version.
+- A release needs its final metadata, artifacts, publication, or handoff.
 
-## Pre-flight checks
+## Version contract
 
-Before starting the release process:
-
-1. Confirm all tasks in `development/current-work/vX.Y.Z_plan.md` are completed.
-2. Confirm CI is green on `main`: `make ci-local-new`.
-3. Confirm the user has PyPI credentials configured.
+- Read the exact PEP 440 release and development versions from the active
+  version plan's front matter. Do not assume the next version is
+  `X.Y.(Z+1)` — that is a maintainer decision made through a GitHub milestone,
+  not something to infer.
+- `make release-preflight` updates deterministic release metadata. Do not
+  duplicate that work manually before the command.
+- A leading `v` is used for tags/citation display, not package/runtime metadata.
 
 ## Release workflow
 
-### Step 1: Version files update
-
-Update version strings in all required files. The version format rules:
-- PEP 440 version (no `v` prefix): `pyproject.toml`, `docs/conf.py` release,
-  `METADATA.json`
-- Display version (with `v` prefix): `__init__.py`, `CITATION.cff`,
-  `docs/citing.md`
-- Short version: `docs/conf.py` version field (e.g., `"0.11"`)
-
-Files to update:
-- `pyproject.toml` -> `[project].version = "X.Y.Z"`
-- `src/calibrated_explanations/__init__.py` -> `__version__ = "vX.Y.Z"`
-- `CITATION.cff` -> `version: vX.Y.Z` and `date-released: 'YYYY-MM-DD'`
-- `docs/conf.py` -> `release = "X.Y.Z"` and `version = "X.Y"`
-- `docs/citing.md` -> BibTeX `version = {vX.Y.Z}` and month/year
-- `METADATA.json` -> `"version": "X.Y.Z"`
-
-### Step 2: Changelog
-
-Update `CHANGELOG.md`:
-- Create new version section under `[Unreleased]`
-- Move relevant bullets from `[Unreleased]` into the new section
-- Update compare links
-
-### Step 3: Version consistency check
-
-Verify all version strings are aligned across all files listed above.
-
-### Step 4: Build and validate
+### Steps 1-10: automated preflight
 
 ```bash
-rm -rf dist/ build/ *.egg-info/
-python -m build
-python -m twine check dist/*
+make release-preflight
+make release-finalize
 ```
 
-### Step 5: Smoke test (recommended)
+`release-preflight` owns release-plan readiness, CHANGELOG conversion, all
+deterministic release-file updates, tests, notebook execution/save, version
+alignment, clean build, Twine/artifact validation, and clean-wheel smoke.
+`release-finalize` verifies that the green snapshot and worktree are unchanged.
 
-Test the wheel locally in a clean venv before publishing.
-
-### Step 6: Commit and tag
+For an intentional override:
 
 ```bash
-git add .
-git commit -m 'calibrated-explanations vX.Y.Z'
-git tag vX.Y.Z
-git push
-git push --tags
+make release-preflight VERSION=<exact-version> RELEASE_DATE=YYYY-MM-DD
 ```
 
-### Step 7: RTD publication
+Do not proceed unless both commands exit 0.
 
-- Confirm tag is on remote
-- Trigger RTD build for the tag
-- Activate the tag version and set as stable
-- Spot-check rendered docs
+### Steps 11-13: maintainer only
 
-### Step 8: PyPI upload
+The maintainer performs and confirms these immutable/external actions:
+
+11. Commit, tag, and push.
+12. Publish/activate/verify the tag on Read the Docs.
+13. Upload the validated artifacts to TestPyPI/PyPI.
+
+Do not execute these actions. Pause after `make release-finalize` and wait for
+the maintainer to confirm that all three succeeded.
+
+### Steps 14-17: automated postcommit
+
+After the maintainer confirms steps 11-13:
 
 ```bash
-python -m twine upload --repository pypi dist/*
+make release-postcommit
 ```
 
-### Step 9: Post-release verification
-
-- Check PyPI project page renders correctly
-- Test installation in a clean venv
-
-### Step 10: Post-release dev bump (required finalization)
-
-Immediately after publishing `X.Y.Z`, bump to next development version:
-
-- `pyproject.toml` -> `[project].version = "X.Y.(Z+1)-dev"`
-- `src/calibrated_explanations/__init__.py` -> `__version__ = "vX.Y.(Z+1)-dev"`
-
-Commit this as a separate post-release commit (recommended message:
-`start vX.Y.(Z+1)-dev`) so `main` never remains on the released version.
+The command verifies the exact PyPI metadata and rendered page, installs the
+published pin in a clean environment with an exact version assertion, archives
+the released plan to `development/finished-work/`, and bumps to the next
+development version. Use `NEXT_VERSION=<version>` for an explicit next-release
+label; otherwise it advances by one patch. It never invents a minor/major bump
+and never creates a next version plan — open one with `ce-release-planner`
+only once maintainers have selected the next GitHub milestone.
 
 ## Constraints
 
-- Never upload to PyPI without user confirmation (immutable action).
-- Never push tags without user confirmation.
-- Always run `twine check` before upload.
-- Follow the canonical release guide in `references/pypi_release_guide.md`.
+- Never upload to PyPI, push tags, or publish RTD from this skill; those actions
+  belong to the maintainer in steps 11-13.
+- Never bypass `twine check`, preflight, or finalize.
+- Steps 11-13 are the only human-gated release actions; do not leave steps
+  1-10 or 14-17 as undocumented manual follow-ups.
+- Follow `release.md` and the canonical guide in
+  `references/pypi_release_guide.md`.

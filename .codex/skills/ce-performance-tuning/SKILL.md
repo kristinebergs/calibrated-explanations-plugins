@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-performance-tuning
 description: >
   Configure CE caching, parallel execution, batch-size tuning, and FAST feature filtering per ADR-003 and ADR-004 for faster explanations on large datasets.
@@ -15,7 +15,7 @@ Format: `markdown`
 Required sections:
 - output
 
-# Ce Performance Tuning — Core Instructions
+﻿# Ce Performance Tuning — Core Instructions
 
 # CE Performance Tuning
 

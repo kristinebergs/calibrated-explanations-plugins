@@ -64,8 +64,14 @@ per bin. Resulting intervals are:
 | `explore_alternatives(x, ...)` | same as above |
 
 **CRITICAL**: always pass `bins=` at inference time whenever the explainer
-was calibrated with Mondrian bins. Omitting it silently falls back to global
-calibration, which defeats fairness analysis.
+was calibrated with inline Mondrian bins. Omitting it raises `ValidationError`;
+passing `bins=` after global calibration raises `ConfigurationError`. When
+`mc=` was used at calibration time, omit `bins=` at inference because the stored
+categorizer derives labels automatically.
+
+Recalibrating without `bins=` or `mc=` resets to global calibration. Use
+`calibrate(..., reuse_conditional=True)` only when intentionally reusing a
+stored categorizer on a new calibration set.
 
 ---
 
@@ -88,17 +94,18 @@ per bin leads to unreliable or very wide intervals.
 
 - [ ] Group labels at explain/predict time match the label space used at calibrate time.
 - [ ] Minimum bin size verified (>= 30 samples per bin recommended).
-- [ ] Both `calibrate(mc=...)` and `explain_factual(bins=...)` consistently use the same categorizer.
+- [ ] Inline `bins=` were supplied at calibration and inference, or `mc=` was supplied at calibration and inference omits `bins=`.
 - [ ] If comparing global vs Mondrian: separate `WrapCalibratedExplainer` instances used.
 - [ ] Per-group interval widths inspected to surface differential uncertainty.
 - [ ] Coverage rate verified per group (not just pooled).
+
 
 
 ## Self-Check Before Responding
 
 - [ ] Group labels at explain/predict time match the label space used at calibrate time.
 - [ ] Minimum bin size verified (>= 30 samples per bin recommended).
-- [ ] Both `calibrate(mc=...)` and `explain_factual(bins=...)` consistently use the same categorizer.
+- [ ] Inline `bins=` were supplied at calibration and inference, or `mc=` was supplied at calibration and inference omits `bins=`.
 - [ ] If comparing global vs Mondrian: separate `WrapCalibratedExplainer` instances used.
 - [ ] Per-group interval widths inspected to surface differential uncertainty.
 - [ ] Coverage rate verified per group (not just pooled).

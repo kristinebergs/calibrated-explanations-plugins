@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-performance-tuning
 description: >
   Configure CE caching, parallel execution, batch-size tuning, and FAST feature

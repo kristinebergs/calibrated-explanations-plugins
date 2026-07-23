@@ -142,7 +142,9 @@ When `schema_version` changes in a calibrator:
 - [ ] New version added to the supported-version list in `from_primitive()`.
 - [ ] Old version retained for the minimum migration window (usually one minor release).
 - [ ] Migration notes added to `docs/migration/`.
-- [ ] `RELEASE_PLAN_v1.md` updated with the new schema version note.
+- [ ] Schema version change noted in `docs/migration/` and, if it changes what
+      is committed for the release currently being coordinated, added as a
+      row in the active `development/current-work/vX.Y.Z_plan.md`.
 
 ---
 
@@ -154,6 +156,40 @@ Verify legacy object round-trips remain functional:
 - `pickle.dump(explanations)` / `pickle.load(...)`
 
 These are complementary to ADR-031 and should be exercised in integration tests.
+They are a *different* trust boundary than `save_state()`/`load_state()`: the
+caller pickling/unpickling their own object already trusts whoever produced
+those bytes. Do not use this dimension to justify pickle on the `load_state()`
+call path (Dimension 7 governs that).
+
+---
+
+## Dimension 7 — Trust boundary: no pickle on the safe load path (blocking)
+
+A SHA-256 checksum stored *inside* the same artifact as the payload it
+checksums proves internal consistency only -- never who produced the
+artifact. Treat any code path that would decode a checksum-gated payload with
+`pickle.loads`/`pickle.load`/`joblib.load`/`cloudpickle.loads` as a finding,
+regardless of how carefully the checksum is verified first.
+
+| Check | Requirement | Pass / Fail |
+|---|---|---|
+| `load_state()` never calls `pickle.loads`/`pickle.load`/`joblib.load`/`cloudpickle.loads` on artifact bytes | Blocking | |
+| Legacy (pre-hardening) schema versions are rejected unconditionally, before any other file is opened | Blocking | |
+| An unknown/`python_pickle` `calibrator_type` is rejected before any base64 decode or checksum comparison | Blocking | |
+| `save_state()` never falls back to pickling an unsupported calibrator/preprocessor/plugin | Blocking | |
+| Manifest file inventory rejects absolute paths, `..` traversal, symlink escape, and files outside a fixed allow-list -- even with a correct checksum | Blocking | |
+| An AST-based (or equivalent static) test guards the module implementing `load_state()` against reintroducing a forbidden deserializer call | Should exist |
+
+```python
+# Quick manual check: does this module import pickle/joblib/cloudpickle at
+# all, and if so, is every call site something other than *.loads/*.load on
+# artifact-provided bytes?
+import ast, inspect
+tree = ast.parse(inspect.getsource(module_under_audit))
+# See tests/unit/core/test_wrap_explainer_persistence_security.py::
+# test_wrap_explainer_module_never_calls_unsafe_deserializers for the full
+# reusable pattern (handles both `import pickle` and `from pickle import loads`).
+```
 
 ---
 
@@ -187,9 +223,15 @@ legacy pickle/joblib:
   wrapper joblib round-trip:      PASS / FAIL
   explanation pickle round-trip:  PASS / FAIL
 
+Trust boundary (Dimension 7, blocking):
+  no pickle/joblib/cloudpickle load on load_state() path: PASS / FAIL
+  legacy schema versions rejected unconditionally:         PASS / FAIL
+  python_pickle / unknown calibrator_type fails closed:    PASS / FAIL
+  manifest path/symlink/allow-list hardening:              PASS / FAIL
+
 Migration guidance:
   docs/migration/ entry:          PRESENT / MISSING / N_A
-  RELEASE_PLAN_v1.md updated:     YES / NO / N_A
+  Active vX.Y.Z_plan.md updated (if scope changed): YES / NO / N_A
 
 Overall: CONFORMANT / NON-CONFORMANT (<N> issues)
 ```
@@ -206,10 +248,18 @@ Overall: CONFORMANT / NON-CONFORMANT (<N> issues)
 - [ ] `load_state()` raises `IncompatibleStateError` on unsupported manifest schema.
 - [ ] Pickle and joblib wrapper round-trips pass on real `WrapCalibratedExplainer` objects.
 - [ ] Migration guide entry present when schema version incremented.
+- [ ] `load_state()` never calls a pickle/joblib/cloudpickle deserializer on artifact bytes, even when checksums match (Dimension 7, blocking).
+- [ ] Legacy pickle-based schema versions are rejected unconditionally, not merely deprecated.
+- [ ] Unsupported calibrators/preprocessors fail closed at save time instead of falling back to pickling.
+
 
 
 ## Self-Check Before Responding
 
+- [ ] New version added to the supported-version list in `from_primitive()`.
+- [ ] Old version retained for the minimum migration window (usually one minor release).
+- [ ] Migration notes added to `docs/migration/`.
+- [ ] Schema version change noted in `docs/migration/` and, if it changes what
 - [ ] `to_primitive()` passes `json.dumps()` without error.
 - [ ] `from_primitive()` raises `ConfigurationError` on version mismatch.
 - [ ] Round-trip test verifies identical `predict_proba` outputs (not just no-exception).
@@ -218,3 +268,6 @@ Overall: CONFORMANT / NON-CONFORMANT (<N> issues)
 - [ ] `load_state()` raises `IncompatibleStateError` on unsupported manifest schema.
 - [ ] Pickle and joblib wrapper round-trips pass on real `WrapCalibratedExplainer` objects.
 - [ ] Migration guide entry present when schema version incremented.
+- [ ] `load_state()` never calls a pickle/joblib/cloudpickle deserializer on artifact bytes, even when checksums match (Dimension 7, blocking).
+- [ ] Legacy pickle-based schema versions are rejected unconditionally, not merely deprecated.
+- [ ] Unsupported calibrators/preprocessors fail closed at save time instead of falling back to pickling.

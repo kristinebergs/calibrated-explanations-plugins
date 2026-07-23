@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-test-audit
 description: >
   Audit existing tests for ADR-030 anti-patterns, redundancy risk, and compliance

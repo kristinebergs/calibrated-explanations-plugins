@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-data-preparation
 description: >
   Validate and preprocess input data for CE pipelines, handle mixed types and

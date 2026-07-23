@@ -43,7 +43,7 @@ Guarded variant: out-of-distribution instances are flagged rather than silently
 included. Use in production or when the input distribution is unknown.
 
 > **API note**: `explore_guarded_alternatives(...)` was REMOVED in v0.11.3. The `guarded=True`
-> boolean kwarg is deprecated (removed in v1.0.0). Always use `guarded_options=GuardedOptions()`.
+> boolean kwarg was removed in v0.11.5. Always use `guarded_options=GuardedOptions()`.
 
 ---
 

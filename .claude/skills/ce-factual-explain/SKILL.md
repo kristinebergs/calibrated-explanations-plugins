@@ -44,7 +44,7 @@ Use the guarded variant when:
 - Calibration set coverage is limited.
 
 > **API note**: `explain_guarded_factual(...)` was REMOVED in v0.11.3. The `guarded=True`
-> boolean kwarg is deprecated (removed in v1.0.0). Always use `guarded_options=GuardedOptions()`.
+> boolean kwarg was removed in v0.11.5. Always use `guarded_options=GuardedOptions()`.
 
 ---
 

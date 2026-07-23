@@ -67,7 +67,7 @@ For each created/refactored skill, provide:
 
 1. skill name + path
 2. trigger description summary
-3. any added assets/references/scripts
+3. any added assets, references, or scripts
 4. registry updates completed
 
 ## Constraints

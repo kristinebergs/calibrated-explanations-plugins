@@ -1,8 +1,9 @@
----
+﻿---
 name: ce-rtd-auditor
 description: >
   Audit RTD documentation for navigation, technical accuracy, audience fit, and ADR
   or standards consistency.
+model: haiku
 ---
 
 # CE RTD Auditor

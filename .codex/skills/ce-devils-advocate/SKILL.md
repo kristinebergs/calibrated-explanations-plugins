@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-devils-advocate
 description: >
   Adversarially challenge cleanup and test proposals for hidden risk, weak evidence, and coverage or behavior regressions, including Option A/B/C focus-specific risks.
@@ -15,7 +15,7 @@ Format: `markdown`
 Required sections:
 - output
 
-# Ce Devils Advocate — Core Instructions
+﻿# Ce Devils Advocate — Core Instructions
 
 # CE Devil's Advocate
 

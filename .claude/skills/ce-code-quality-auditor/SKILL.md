@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-code-quality-auditor
 description: >
   Audit source and tests for ADR-030 anti-patterns, determinism failures,

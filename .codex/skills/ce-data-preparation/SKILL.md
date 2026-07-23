@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-data-preparation
 description: >
   Validate and preprocess input data for CE pipelines, handle mixed types and categorical features, and configure encoding per ADR-002 and ADR-009.
@@ -15,7 +15,7 @@ Format: `markdown`
 Required sections:
 - output
 
-# Ce Data Preparation — Core Instructions
+﻿# Ce Data Preparation — Core Instructions
 
 # CE Data Preparation
 

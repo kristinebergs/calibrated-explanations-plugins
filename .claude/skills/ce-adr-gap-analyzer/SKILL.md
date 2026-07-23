@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-adr-gap-analyzer
 description: >
   Analyze ADR compliance by interpreting the ADR's intent, verifying that
@@ -65,19 +65,19 @@ substantive compliance analysis.
 6. Mark outcomes that **are fully satisfied** as completed — these will be
    purged from the output (see Phase 4).
 
-## Phase 4 — Update the ADR status appendix
+## Phase 4 — Record the gap report in the ADR itself
 
-The output format and rules are defined in the **ADR status appendix** heading
-of `development/current-work/RELEASE_PLAN_v1.md`. The appendix states:
+There is no shared, continuously-updated ADR status appendix in
+`development/current-work/` (the pre-v1.0.0 build-out appendix is archived at
+`development/finished-work/RELEASE_PLAN_status_appendix.md` as a historical
+record and is not updated further). Record gap results as a dated report
+directly in the target ADR's own status note, following the pattern already
+used by individual ADRs (see the `> **Status note (YYYY-MM-DD):**` line near
+the top of most ADR files, e.g. ADR-003, ADR-009, ADR-029).
 
-> This appendix lists only unresolved gaps per ADR. ADRs with no open gaps
-> show a clear compliance verification line (date-stamped). Tables use the
-> project's severity axes: Violation impact (1–5) × Code scope (1–5) =
-> Unified severity.
+Rules:
 
-Follow these rules exactly when writing or updating appendix sections:
-
-7. **Purge completed gaps.** When updating an existing appendix section:
+7. **Purge completed gaps.** When updating an ADR's own gap material:
    - **Remove every row whose gap is resolved.** Do not keep completed rows
      with zeroed-out scores — delete them entirely.
    - If a table mixes completed and open rows, rewrite it with **only the
@@ -86,7 +86,7 @@ Follow these rules exactly when writing or updating appendix sections:
      separator, data rows) with a single compliance verification line.
 8. **Only unresolved gaps appear.** Never list completed, resolved, or
    zeroed-out rows in the table.
-9. **Date stamp — mandatory on every update.** Every time the appendix is
+9. **Date stamp — mandatory on every update.** Every time gap status is
    updated (single ADR or full sweep), stamp today's date:
    - Compliance lines use format:
      `**Compliance verification (YYYY-MM-DD):** Reviewed code and RTD — no ADR-XXX gaps found; ADR-XXX is fully compliant. No further action required.`
@@ -95,6 +95,10 @@ Follow these rules exactly when writing or updating appendix sections:
 10. **If NO gaps remain** the compliance verification line must be
     unambiguous — it replaces the entire table and makes clear that no
     further action is required.
+11. If the gap changes what is committed for the release currently being
+    coordinated, propose a row update in the active
+    `development/current-work/vX.Y.Z_plan.md` (see `ce-adr-author`), or
+    file/link a GitHub issue when no release is currently scoping this work.
 
 ---
 
@@ -113,18 +117,18 @@ Follow these rules exactly when writing or updating appendix sections:
 - **Evidence-based.** Every gap claim must cite specific files and lines (or
   their absence). Every compliance claim must cite the evidence that satisfies
   the ADR requirement.
-- **Keep ADR status appendix tidy.** Status reports must be placed correctly in the order under the correct header in the ADR status appendix. No duplicate entries per ADR allowed.
+- **Keep the ADR's own gap material tidy.** No duplicate gap entries within an ADR.
 
 ---
 
 ## Files to read
 
 ```
-development/adrs/ADR-XXX-*.md     ← the ADR itself (primary source of intent)
-development/current-work/RELEASE_PLAN_v1.md    ← appendix to update with gap results
-src/                                   ← implementation evidence
-tests/                                 ← test coverage of ADR requirements
-docs/                                  ← RTD evidence (when ADR has doc requirements)
+development/adrs/ADR-XXX-*.md              ← the ADR itself (primary source of intent and gap-report target)
+development/current-work/vX.Y.Z_plan.md    ← update a row if the gap changes the active release's scope
+src/                                        ← implementation evidence
+tests/                                      ← test coverage of ADR requirements
+docs/                                       ← RTD evidence (when ADR has doc requirements)
 ```
 
 ---

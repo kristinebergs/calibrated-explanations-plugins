@@ -1,8 +1,9 @@
----
+﻿---
 name: ce-rtd-writer
 description: >
   Write or revise RTD pages with audience-aware structure, CE-first examples, and
   correct toctree integration.
+model: haiku
 ---
 
 # CE RTD Writer

@@ -51,11 +51,11 @@ from calibrated_explanations.explanations.guarded_options import GuardedOptions
 alternatives = explainer.explore_alternatives(X_query, guarded_options=GuardedOptions())
 ```
 
-> **API note**: `explore_guarded_alternatives(...)` was REMOVED in v0.11.3. The `guarded=True`
-> boolean kwarg is deprecated (removed in v1.0.0). Always use `guarded_options=GuardedOptions()`.
-
 Guarded variant: out-of-distribution instances are flagged rather than silently
 included. Use in production or when the input distribution is unknown.
+
+> **API note**: `explore_guarded_alternatives(...)` was REMOVED in v0.11.3. The `guarded=True`
+> boolean kwarg was removed in v0.11.5. Always use `guarded_options=GuardedOptions()`.
 
 ---
 
@@ -109,10 +109,7 @@ explanations (`pred['low'] <= pred['predict'] <= pred['high']`), but the
 
 ## Self-Check Before Responding
 
-- [ ] `WrapCalibratedExplainer` instance confirmed (not raw `CalibratedExplainer` or subclass).
-- [ ] `explainer.fitted is True` asserted before explore call — fail fast if not.
-- [ ] `explainer.calibrated is True` asserted before explore call — fail fast if not.
-- [ ] Correct variant (`explore_alternatives` vs `explore_alternatives(guarded=True)`).
+- [ ] Correct variant (`explore_alternatives` vs `explore_alternatives(..., guarded_options=GuardedOptions())`).
 - [ ] Threshold provided if the user wants boundary-crossing alternatives for regression.
 - [ ] Ensured-framework filter selected appropriately for the use case.
 - [ ] `only_ensured=True` used when narrower-uncertainty alternatives are required.
@@ -120,4 +117,3 @@ explanations (`pred['low'] <= pred['predict'] <= pred['high']`), but the
 - [ ] Plot style is `"triangular"` or `"ensured"` (not `"regular"`) when showing alternatives in a confidence-uncertainty view.
 - [ ] `rnk_metric="ensured"` with appropriate `rnk_weight` when ranking by output/uncertainty trade-off.
 - [ ] Interval invariant `low <= predict <= high` verified on at least one output.
-- [ ] No uncalibrated output returned.

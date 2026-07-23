@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-test-pruning-expert
 description: >
   Identify redundant or low-value tests using unique-lines and overlap evidence

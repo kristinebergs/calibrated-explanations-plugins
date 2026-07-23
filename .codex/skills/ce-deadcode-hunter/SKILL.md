@@ -1,4 +1,4 @@
-﻿---
+---
 name: ce-deadcode-hunter
 description: >
   Identify unreachable or non-contributing source code and separate true dead code from merely untested reachable paths, with Test Quality Method Option A/B/C routing.
@@ -15,7 +15,7 @@ Format: `markdown`
 Required sections:
 - output
 
-# Ce Deadcode Hunter — Core Instructions
+﻿# Ce Deadcode Hunter — Core Instructions
 
 # CE Dead-Code Hunter
 
