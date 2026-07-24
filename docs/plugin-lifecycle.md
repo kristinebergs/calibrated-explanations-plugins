@@ -76,15 +76,16 @@ acceptable dependencies, PyPI name control, credible maintainer).
 
 ## Public intake (external contributors)
 
-This repository is private. External contributors use the **plugin intake
-issue form** in the public
-[`calibrated_explanations`](https://github.com/kristinebergs/calibrated_explanations)
-repository to propose: adoption of an external plugin, promotion of an
-existing repository plugin, or a community-plugin listing. Submitting the form
-never authorises publication; accepted plugins are transferred here and start
-as experimental. Maturity-review details (compatibility matrix, PyPI
-ownership, curation) are discussed after maintainers confirm the plugin is
-relevant, not at intake.
+Use the **plugin intake issue form** in the authoritative
+[`Moffran/calibrated_explanations`](https://github.com/Moffran/calibrated_explanations/issues/new?template=plugin_publication_request.yml)
+repository to propose adoption of an external plugin, promotion of an existing
+repository plugin, or a community-plugin listing. Submitting the form never
+authorises publication; accepted official plugins start here as experimental.
+
+This repository is public. Direct pull requests are accepted for fixes and
+development of plugins already maintained or accepted for incubation here.
+Maturity-review details (compatibility matrix, PyPI ownership, curation) are
+discussed after maintainers confirm a new plugin is relevant, not at intake.
 
 ## Release
 

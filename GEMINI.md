@@ -45,7 +45,7 @@ When a correction is needed:
 | Type | Where to record |
 |---|---|
 | Plugin protocol or registry rule | Update `AGENTS.md` |
-| Upstream OSS contract | Update `../calibrated_explanations/CONTRIBUTOR_INSTRUCTIONS.md` |
+| Upstream OSS contract | Propose the change in `Moffran/calibrated_explanations` |
 | Platform-specific Gemini quirk | Add a bullet to this file |
 
 ## Key Documentation
@@ -53,6 +53,6 @@ When a correction is needed:
 | Document | Purpose |
 |---|---|
 | `AGENTS.md` | Plugin protocol, registry rules, release relationship |
-| `../calibrated_explanations/CONTRIBUTOR_INSTRUCTIONS.md` | Upstream OSS canonical rules |
-| `../calibrated_explanations/docs/improvement/adrs/ADR-006-plugin-model.md` | Plugin trust model |
-| `../calibrated_explanations/docs/improvement/adrs/ADR-014-plugin-interface.md` | Plugin interface |
+| [Upstream contributor instructions](https://github.com/Moffran/calibrated_explanations/blob/main/CONTRIBUTOR_INSTRUCTIONS.md) | Upstream OSS canonical rules |
+| [ADR-006](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-006-plugin-registry-trust-model.md) | Plugin trust model |
+| [Plugin contract](https://github.com/Moffran/calibrated_explanations/blob/main/docs/contributor/plugin-contract.md) | Plugin interface |

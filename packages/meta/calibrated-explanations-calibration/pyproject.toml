@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     # Curation policy: only plugins with status = "mature" may be listed here.
-    # No plugin has completed a maturity review yet, so this set is empty.
+    # No calibration plugin is currently mature, so this set is empty.
 ]
 
 [tool.hatch.build.targets.wheel]

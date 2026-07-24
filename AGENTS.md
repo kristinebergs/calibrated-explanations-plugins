@@ -8,11 +8,12 @@ It contains packages across three families: `calibration`, `explanation`, `visua
 The OSS library defines the contracts all plugins must conform to.
 Read these before making any changes:
 
-- `../calibrated_explanations/CONTRIBUTOR_INSTRUCTIONS.md` — CE conventions, branching, testing
-- `../calibrated_explanations/docs/improvement/adrs/ADR-006-plugin-model.md` — plugin trust model
-- `../calibrated_explanations/docs/improvement/adrs/ADR-013-plugin-registry.md` — plugin registry
-- `../calibrated_explanations/docs/improvement/adrs/ADR-014-plugin-interface.md` — plugin interface
-- `../calibrated_explanations/docs/improvement/adrs/ADR-015-plugin-lazy-import.md` — lazy import pattern
+- [`CONTRIBUTOR_INSTRUCTIONS.md`](https://github.com/Moffran/calibrated_explanations/blob/main/CONTRIBUTOR_INSTRUCTIONS.md) — CE conventions, branching, and testing
+- [ADR-006](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-006-plugin-registry-trust-model.md) — plugin trust model
+- [ADR-013](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-013-interval-calibrator-plugin-strategy.md) — interval calibrator strategy
+- [ADR-015](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-015-explanation-plugin.md) — explanation plugins
+- [ADR-037](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-037-visualization-extension-and-rendering-governance.md) — visualization extensions
+- [Plugin contract](https://github.com/Moffran/calibrated_explanations/blob/main/docs/contributor/plugin-contract.md) — public extension interfaces
 
 ## Repository Structure
 

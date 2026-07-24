@@ -38,8 +38,9 @@ and `MATURITY.md` for the exact floor/newest-boundary environments).
 
 Installing this metapackage (with or without `[live]`) does not automatically
 trust, register, or activate the Plotly plugin, and does not replace CE's
-built-in plotting. CE's plugin trust model (see the upstream
-`ADR-006-plugin-model.md`) requires an explicit decision:
+built-in plotting. CE's
+[plugin trust model](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-006-plugin-registry-trust-model.md)
+requires an explicit decision:
 
 ```python
 from ce_visualization_plotly.plugin import register_plotly_visualization_components

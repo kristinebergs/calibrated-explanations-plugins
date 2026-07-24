@@ -50,8 +50,8 @@ Run both commands from the affected package directory.
 | Document | Purpose |
 |---|---|
 | `AGENTS.md` | Plugin protocol, registry rules, release relationship |
-| `../calibrated_explanations/CONTRIBUTOR_INSTRUCTIONS.md` | Upstream OSS canonical rules |
-| `../calibrated_explanations/docs/improvement/adrs/ADR-006-plugin-model.md` | Plugin trust model |
-| `../calibrated_explanations/docs/improvement/adrs/ADR-013-plugin-registry.md` | Plugin registry |
-| `../calibrated_explanations/docs/improvement/adrs/ADR-014-plugin-interface.md` | Plugin interface |
-| `../calibrated_explanations/docs/improvement/adrs/ADR-015-plugin-lazy-import.md` | Lazy import pattern |
+| [Upstream contributor instructions](https://github.com/Moffran/calibrated_explanations/blob/main/CONTRIBUTOR_INSTRUCTIONS.md) | Upstream OSS canonical rules |
+| [ADR-006](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-006-plugin-registry-trust-model.md) | Plugin trust model |
+| [ADR-013](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-013-interval-calibrator-plugin-strategy.md) | Interval plugin strategy |
+| [ADR-015](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-015-explanation-plugin.md) | Explanation plugin architecture |
+| [ADR-037](https://github.com/Moffran/calibrated_explanations/blob/main/development/adrs/ADR-037-visualization-extension-and-rendering-governance.md) | Visualization plugin governance |

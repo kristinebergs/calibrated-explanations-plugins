@@ -14,7 +14,7 @@ Status: `mature`
 > the full, dated audit trail.
 
 Interactive Plotly visualization layouts for
-[`calibrated-explanations`](https://github.com/kristinebergs/calibrated_explanations) (CE).
+[`calibrated-explanations`](https://github.com/Moffran/calibrated_explanations) (CE).
 
 ## Purpose
 
@@ -328,7 +328,7 @@ the release existed.
 
 ## Support
 
-- Issues: <https://github.com/kristinebergs/calibrated_explanations/issues>
+- Issues: <https://github.com/Moffran/calibrated_explanations/issues>
   (public intake for the CE plugin ecosystem).
 - Maintainer: Tuwe Löfström (`tuwe.lofstrom@ju.se`).
 - Security reports: see `SECURITY.md` at the repository root.

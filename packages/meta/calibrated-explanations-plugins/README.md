@@ -10,7 +10,10 @@ Install:
 pip install calibrated-explanations-plugins
 ```
 
-Compatibility: `calibrated-explanations>=0.11`
+Effective compatibility of the current dependency closure:
+`calibrated-explanations>=1.0.0rc2,<2`, Python `>=3.11`. The curated Plotly
+plugin determines this CE floor; the umbrella's direct family dependencies
+must not be interpreted as broader compatibility.
 
 ## Dependency closure
 

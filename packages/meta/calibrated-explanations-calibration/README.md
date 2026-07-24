@@ -10,7 +10,9 @@ Install:
 pip install calibrated-explanations-calibration
 ```
 
-Compatibility: `calibrated-explanations>=0.11`
+The curated set is empty, so this metapackage currently has no effective CE
+runtime requirement. Consult the generated package index when plugins are
+curated.
 
 This metapackage installs only plugins that completed a maturity review and
 were explicitly curated as the recommended default set (see

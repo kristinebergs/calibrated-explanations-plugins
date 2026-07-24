@@ -7,7 +7,7 @@ in the release automation.
 
 - Preferred: use GitHub private vulnerability reporting on the public
   `calibrated_explanations` repository
-  (<https://github.com/kristinebergs/calibrated_explanations/security>), and
+  (<https://github.com/Moffran/calibrated_explanations/security>), and
   state that the report concerns a plugin package.
 - Alternative: contact the maintainer listed in `.github/CODEOWNERS`.
 

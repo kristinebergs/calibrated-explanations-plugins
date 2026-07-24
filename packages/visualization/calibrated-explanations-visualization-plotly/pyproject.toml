@@ -40,11 +40,10 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/kristinebergs/calibrated-explanations-plugins"
-# Public intake for the CE plugin ecosystem lives in the public core repository
-# (this plugin monorepo is private); the same applies to security reports.
-Issues = "https://github.com/kristinebergs/calibrated_explanations/issues"
-Security = "https://github.com/kristinebergs/calibrated_explanations/security/policy"
-Documentation = "https://github.com/kristinebergs/calibrated_explanations"
+# Public intake and CE security reporting use the authoritative core repository.
+Issues = "https://github.com/Moffran/calibrated_explanations/issues"
+Security = "https://github.com/Moffran/calibrated_explanations/security/policy"
+Documentation = "https://calibrated-explanations.readthedocs.io/en/latest/plugins.html"
 
 [project.optional-dependencies]
 live = [

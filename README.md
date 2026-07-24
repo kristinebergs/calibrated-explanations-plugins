@@ -1,60 +1,65 @@
 # calibrated-explanations-plugins
 
-Plugin monorepo for
-[`calibrated-explanations`](https://calibrated-explanations.readthedocs.io/en/latest/),
-organised into three plugin families plus curated metapackages:
+Official public companion repository for optional
+[`calibrated-explanations`](https://github.com/Moffran/calibrated_explanations)
+extensions. Packages are independently versioned and organised into
+calibration, explanation, and visualization families plus curated
+metapackages.
 
-- `packages/calibration/`
-- `packages/explanation/`
-- `packages/visualization/`
-- `packages/meta/` — curated metapackages
+The generated [package index](docs/package-index.md) is authoritative for the
+complete inventory, versions, lifecycle state, and curation. Currently, the
+visualization family contains the mature Plotly plugin; the calibration and
+explanation families have no curated plugins.
 
-## Lifecycle in one paragraph
+## Recommended installation
 
-Every plugin declares `status = "experimental" | "mature" | "deprecated"` in
-its `pyproject.toml` (`[tool.ce_plugin_repo]`). Experimental plugins install
-from source only and are never on PyPI or in a metapackage. Mature plugins
-(named maintainer, licence, wheel-tested, reviewed) may be released to PyPI
-and may additionally be curated into their family metapackage. Deprecated
-plugins receive no releases. The complete policy is
-[docs/plugin-lifecycle.md](docs/plugin-lifecycle.md); the generated
-[docs/package-index.md](docs/package-index.md) lists every package by bucket.
-
-## Install
+Install the populated visualization family:
 
 ```bash
-# Curated sets and mature plugins, from PyPI once released:
-pip install calibrated-explanations-plugins          # umbrella
-pip install <distribution-name>                      # one plugin
-
-# Experimental plugins, from a checkout only:
-git clone https://github.com/kristinebergs/calibrated-explanations-plugins.git
-pip install ./calibrated-explanations-plugins/packages/<family>/<distribution-name>
+pip install calibrated-explanations-visualization
 ```
 
-No plugin has completed a maturity review yet, so nothing is currently
-published and the curated sets are empty.
-
-## Contributing a plugin
-
-**External contributors:** this repository is private — use the plugin intake
-issue form in the public
-[`calibrated_explanations`](https://github.com/kristinebergs/calibrated_explanations)
-repository. Accepted plugins are transferred here and start experimental.
-
-**Collaborators:** scaffold a new (always experimental) package with
-`python scripts/scaffold_package.py --help`, and promote it with a PR using
-`.github/PULL_REQUEST_TEMPLATE/maturity_promotion.md`.
-
-## Maintainer workflow
+This installs the mature Plotly visualization plugin. Install the individual
+distribution when you intentionally want to manage that package directly or
+use its package-specific extras:
 
 ```bash
-python scripts/validate_repo_structure.py   # structure + plugin contract
-python scripts/lifecycle.py check           # statuses + curation
-python scripts/lifecycle.py index --check   # generated package index
-python -m pytest tests -q                   # lifecycle policy tests
+pip install calibrated-explanations-visualization-plotly
 ```
 
-Releases are tag-driven (`pkg/<distribution-name>/v<version>`) and gated by
-`python scripts/lifecycle.py release`; see
-[docs/maintainer-release.md](docs/maintainer-release.md).
+The umbrella `calibrated-explanations-plugins` package is not the default
+recommendation while only one family is populated.
+
+## Lifecycle
+
+- **Experimental:** source-only incubation; not published or curated.
+- **Mature:** release-ready within its documented scope; may be published and
+  separately selected for a family metapackage.
+- **Deprecated:** no longer recommended and removed from curation.
+
+See the [lifecycle policy](docs/plugin-lifecycle.md), generated
+[package index](docs/package-index.md), Plotly
+[maturity record](packages/visualization/calibrated-explanations-visualization-plotly/MATURITY.md),
+and [maintainer release guide](docs/maintainer-release.md).
+
+## Contributing
+
+Propose a new official plugin, promotion, or community listing through the
+[authoritative Moffran plugin-intake form](https://github.com/Moffran/calibrated_explanations/issues/new?template=plugin_publication_request.yml).
+Accepted official plugins enter this repository as experimental.
+
+Because this repository is public, direct pull requests are accepted for
+changes to plugins already under review or maintained here. Use
+`python scripts/scaffold_package.py --help` for accepted new packages and the
+[maturity-promotion template](.github/PULL_REQUEST_TEMPLATE/maturity_promotion.md)
+for promotion. Automated gates and maintainer review determine maturity;
+tag validation and the protected PyPI environment govern publication.
+
+## Maintainer checks
+
+```bash
+python scripts/validate_repo_structure.py
+python scripts/lifecycle.py check
+python scripts/lifecycle.py index --check
+python -m pytest tests -q
+```
